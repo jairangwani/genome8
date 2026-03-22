@@ -179,8 +179,8 @@
 - [x] Run todo app: converged (88 nodes, 0 errors) ✅
 - [ ] Run Pando: hierarchy + convergence + publish — 🔄 TWO TESTS RUNNING (v7 single-engine + pando18 hierarchy)
 - [x] No TODOs, no stubs in genome code (only in generated skeleton output — intentional)
-- [ ] BLUEPRINT matches code — pending final review after tests
-- [ ] GOALPOST matches BLUEPRINT — pending final review
+- [x] BLUEPRINT matches code — verified via agent audit
+- [x] GOALPOST matches BLUEPRINT — fixed lens count mismatch (was "50 rounds/10 perspectives", now "8 lenses/unlimited rounds")
 
 ---
 

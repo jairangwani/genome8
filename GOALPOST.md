@@ -280,22 +280,20 @@ Multi-angle exploration applied to finding actors and journeys:
 
 Each round reads ALL previous findings, looks from a NEW angle, adds what was missed.
 
-### 50+ rounds with 10 perspectives
+### 8 lenses, unlimited rounds, convergence decides
 
-| Rounds | Perspective |
-|--------|-----------|
-| 1-5 | Happy paths |
-| 6-10 | Failures and recovery |
-| 11-15 | Threat exploitation |
-| 16-20 | Edge cases and conflicts |
-| 21-25 | Scale (10x, 100x, 1000x) |
-| 26-30 | Completeness (spec line by line) |
-| 31-35 | Simplicity (prune unnecessary) |
-| 36-40 | Consistency (contradictions) |
-| 41-45 | Honesty (tested or assumed?) |
-| 46-50 | Evolution (requirements change) |
+| Lens | Perspective |
+|------|-----------|
+| Happy paths | Core flows that make the product work |
+| Failures | What breaks, error recovery, edge cases |
+| Threats | How each threat actor exploits each journey |
+| Edge cases | Race conditions, simultaneous actions, conflicts |
+| Scale | What happens at 10x, 100x, 1000x |
+| Completeness | Walk spec line by line — every bullet has a journey |
+| Simplicity | Prune unnecessary, merge duplicates |
+| Consistency | Does part A contradict part B? |
 
-Not because 50 rounds is magic. Because CONTEXT IS DEEP. A single pass finds the obvious. Round 20 finds the edge case that crashes production. Round 35 finds the contradiction between two teams. Round 45 finds the assumption nobody tested.
+No hardcoded round count. Lenses rotate until 3 consecutive rounds find nothing new, then 3 auditors verify depth from independent angles. CONTEXT IS DEEP. A single pass finds the obvious. Round 20 finds the edge case that crashes production. Round 35 finds the contradiction between two teams.
 
 ### Three-level convergence
 
