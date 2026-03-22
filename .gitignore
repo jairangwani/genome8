@@ -1,1 +1,2 @@
 node_modules/\ndist/\n*.js\n*.d.ts\n*.js.map\ntest-project/\npando*/\ncar-game/\n
+node_modules/
