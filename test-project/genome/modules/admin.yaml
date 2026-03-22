@@ -1,0 +1,910 @@
+spec_sections: [3]
+
+nodes:
+  AdminDashboard:
+    type: interface
+    description: Landing page for the admin panel showing summary counts of all users and tasks
+
+  AdminAPI:
+    type: interface
+    description: HTTP endpoints restricted to admin-role users for viewing all users and all tasks
+
+  AdminGuard:
+    type: process
+    description: Validates the requesting user's SessionToken against the session store; does not check the admin role — that is enforced separately by AdminRoleRule
+
+  AdminDownstreamErrorHandler:
+    type: process
+    description: Catches errors returned by upstream modules and maps them to appropriate admin error responses
+
+  AdminSearchFilter:
+    type: process
+    description: Parses and validates caller-supplied filter parameters such as email prefix, role, and date range before forwarding to upstream lookup modules; rejects malformed or out-of-bounds filter values before any data fetch occurs
+
+  AdminRateLimiter:
+    type: process
+    description: Tracks per-admin-identity request counts in a sliding time window and blocks requests that exceed the configured threshold before any role check or data fetch proceeds
+
+  AdminBatchEnricher:
+    type: process
+    description: Collects all distinct owner IDs from a page of Task records and issues a single bulk query to users/UserLookup, replacing per-task individual lookups that cause N+1 query explosion at scale
+
+  UserListView:
+    type: artifact
+    description: Aggregated read-only snapshot of all user records returned to the admin caller
+
+  UserDetailView:
+    type: artifact
+    description: Read-only snapshot of a single user's full profile including id, email, role, and timestamps
+
+  AdminTaskListView:
+    type: artifact
+    description: Aggregated read-only snapshot of task records each enriched with their owner's user data, for admin use only
+
+  TaskDetailView:
+    type: artifact
+    description: Read-only snapshot of a single task's full record including owner id, title, completed state, and timestamps
+
+  AdminAuditLog:
+    type: artifact
+    description: Append-only log of admin data access events; each entry records admin id, operation, target resource id, and timestamp
+
+  AdminPaginationCursor:
+    type: artifact
+    description: Opaque cursor token encoding page position and sort state, issued by list endpoints and decoded on the next request to continue traversal without full-table rescans
+
+  AdminAuditLogQuery:
+    type: artifact
+    description: Filtered and paginated read-only slice of AdminAuditLog entries matching caller-supplied criteria such as date range, operation type, and target resource ID
+
+  AdminAuditLogArchive:
+    type: artifact
+    description: Cold storage of AdminAuditLog entries moved past the retention window; immutable once written and indexed by timestamp range for retrieval
+
+  AdminRoleRule:
+    type: rule
+    description: Only users whose role field equals admin may receive a successful response from any admin endpoint
+
+  AuditLogRule:
+    type: rule
+    description: Every admin read operation must append an entry to AdminAuditLog before the response is returned; the only permitted exception is defined by AuditLogWaiverRule
+
+  AuditLogWaiverRule:
+    type: rule
+    description: Permits omitting an AdminAuditLog entry only when a downstream service error prevents any data from being fetched, making the request a no-op; the waiver is void if any portion of the requested data was successfully assembled
+
+  AuditFailureRule:
+    type: rule
+    description: If the AdminAuditLog write fails, the assembled result is discarded and an error is returned — no data is released without an audit trail
+
+  DanglingTaskRule:
+    type: rule
+    description: Tasks whose owner UserRecord cannot be resolved are included in AdminTaskListView with owner marked as deleted rather than dropped or causing full failure
+
+  AuditLogAtomicityRule:
+    type: rule
+    description: Concurrent AdminAuditLog appends must be serialized atomically so no two entries interleave and no entry is lost under simultaneous admin load
+
+  PaginationRule:
+    type: rule
+    description: All admin list endpoints must accept a cursor and page-size parameter; unbounded full-table scans are forbidden and requests without a page-size are rejected before any upstream call is made
+
+  AdminRateLimitRule:
+    type: rule
+    description: Each admin identity may not exceed the configured request count within a rolling time window; requests over the limit receive 429 without any data being accessed
+
+  AuditLogRetentionRule:
+    type: rule
+    description: AdminAuditLog entries older than the configured retention window must be archived to AdminAuditLogArchive before deletion; no entry may be purged without a confirmed archived copy
+
+  AdminArchiveBatchRule:
+    type: rule
+    description: Caps the number of AdminAuditLog entries processed per archive invocation to a configured maximum; when the archive set exceeds the cap the operation commits the first batch and returns a continuation token requiring the caller to resubmit for the remainder
+
+journeys:
+  admin_access_dashboard:
+    steps:
+      - node: _actors/Admin
+        action: navigates to the admin panel URL with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AdminDashboard
+        action: calls users/UserLookup to retrieve total user count
+      - node: users/UserLookup
+        action: queries and returns total count of all UserRecords
+      - node: AdminDashboard
+        action: queries tasks/TaskList to retrieve total task count
+      - node: tasks/TaskList
+        action: returns total count of all Task records
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, operation, and timestamp
+      - node: AdminDashboard
+        action: renders and returns overview panel with summary counts to admin
+
+  admin_list_users:
+    steps:
+      - node: _actors/Admin
+        action: sends list-users request to AdminAPI with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: users/UserLookup
+        action: queries and returns all UserRecords
+      - node: UserListView
+        action: populated with the returned UserRecords by AdminAPI
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, operation, and timestamp
+      - node: AdminAPI
+        action: returns UserListView to admin
+
+  admin_view_user_detail:
+    steps:
+      - node: _actors/Admin
+        action: sends view-user request to AdminAPI with target user ID and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: users/UserLookup
+        action: retrieves UserRecord by target user ID
+      - node: UserDetailView
+        action: populated with the retrieved UserRecord by AdminAPI
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target user ID, operation, and timestamp
+      - node: AdminAPI
+        action: returns UserDetailView to admin
+
+  admin_list_all_tasks:
+    steps:
+      - node: _actors/Admin
+        action: sends list-all-tasks request to AdminAPI with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: tasks/TaskList
+        action: returns all Task records across all users
+      - node: AdminAPI
+        action: collects unique owner user IDs from returned Task records
+      - node: users/UserLookup
+        action: retrieves UserRecord for each unique owner ID
+      - node: AdminTaskListView
+        action: populated with each Task matched to its owner UserRecord by AdminAPI
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, operation, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView to admin
+
+  admin_list_tasks_for_user:
+    steps:
+      - node: _actors/Admin
+        action: sends list-tasks-for-user request to AdminAPI with target user ID and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: users/UserLookup
+        action: retrieves target UserRecord by ID to confirm user exists
+      - node: tasks/TaskList
+        action: returns all Task records scoped to the target user ID
+      - node: AdminTaskListView
+        action: populated with tasks matched to the target UserRecord by AdminAPI
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target user ID, operation, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView to admin
+
+  admin_view_task_detail:
+    steps:
+      - node: _actors/Admin
+        action: sends view-task request to AdminAPI with target task ID and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: tasks/TaskList
+        action: retrieves matching Task record by ID
+      - node: users/UserLookup
+        action: retrieves owner UserRecord using owner ID from the Task record
+      - node: TaskDetailView
+        action: populated with task and owner data assembled by AdminAPI
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target task ID, operation, and timestamp
+      - node: AdminAPI
+        action: returns TaskDetailView to admin
+
+  admin_audit_log_write_failure:
+    steps:
+      - node: _actors/Admin
+        action: sends an admin read request to AdminAPI with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AdminAPI
+        action: fetches requested data from relevant upstream module
+      - node: AdminAPI
+        action: assembles fetched data into the appropriate view artifact
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: write fails with storage or IO error
+      - node: AuditFailureRule
+        action: instructs AdminAPI to discard the assembled view without releasing data
+      - node: AdminAPI
+        action: returns internal-server error to admin
+
+  admin_owner_enrichment_partial_failure:
+    steps:
+      - node: _actors/Admin
+        action: sends list-all-tasks request to AdminAPI with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: tasks/TaskList
+        action: returns all Task records across all users
+      - node: AdminAPI
+        action: collects unique owner user IDs from Task records
+      - node: users/UserLookup
+        action: returns UserRecord for each resolvable owner ID and not-found for others
+      - node: DanglingTaskRule
+        action: flags tasks with unresolvable owner IDs with a deleted-user marker
+      - node: AdminTaskListView
+        action: populated with all tasks including dangling-owner entries by AdminAPI
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, operation, timestamp, and count of dangling-owner tasks
+      - node: AdminAPI
+        action: returns AdminTaskListView to admin
+
+  admin_downstream_unavailable:
+    steps:
+      - node: _actors/Admin
+        action: sends an admin read request to AdminAPI with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AdminAPI
+        action: calls relevant upstream module (users/UserLookup or tasks/TaskList)
+      - node: AdminDownstreamErrorHandler
+        action: receives timeout or service error from the upstream module
+      - node: AdminDownstreamErrorHandler
+        action: determines no data was fetched and no partial result should be released
+      - node: AuditLogWaiverRule
+        action: confirms the no-data-fetched condition qualifies for the audit waiver
+      - node: AdminDownstreamErrorHandler
+        action: signals AdminAPI to skip AdminAuditLog write per AuditLogWaiverRule
+      - node: AdminAPI
+        action: returns service-unavailable error to admin identifying the failing upstream module
+
+  admin_user_not_found:
+    steps:
+      - node: _actors/Admin
+        action: sends view-user request with a user ID that does not exist in the store
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: users/UserLookup
+        action: queries for UserRecord by the provided user ID
+      - node: users/UserLookup
+        action: returns not-found — no matching record exists
+      - node: AdminDownstreamErrorHandler
+        action: receives not-found signal and maps it to a 404 response
+      - node: AuditLogRule
+        action: requires audit entry even for not-found outcomes
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target user ID, not-found outcome, and timestamp
+      - node: AdminAPI
+        action: returns 404 not-found to admin
+
+  admin_task_not_found:
+    steps:
+      - node: _actors/Admin
+        action: sends view-task request with a task ID that does not exist in the store
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: tasks/TaskList
+        action: queries for Task record by the provided task ID
+      - node: tasks/TaskList
+        action: returns not-found — no matching record exists
+      - node: AdminDownstreamErrorHandler
+        action: receives not-found signal and maps it to a 404 response
+      - node: AuditLogRule
+        action: requires audit entry even for not-found outcomes
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target task ID, not-found outcome, and timestamp
+      - node: AdminAPI
+        action: returns 404 not-found to admin
+
+  admin_empty_task_list_for_user:
+    steps:
+      - node: _actors/Admin
+        action: sends list-tasks-for-user request for a user who has created no tasks
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: users/UserLookup
+        action: retrieves target UserRecord by ID — user exists
+      - node: tasks/TaskList
+        action: queries for Task records scoped to the target user ID
+      - node: tasks/TaskList
+        action: returns an empty result set — no tasks exist for this user
+      - node: AdminTaskListView
+        action: assembled with an empty task array and the owner UserRecord
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target user ID, operation, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView with empty task array to admin
+
+  admin_user_deleted_between_list_and_detail:
+    steps:
+      - node: _actors/Admin
+        action: selects a user ID from a previously fetched UserListView and sends a view-user request
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: users/UserLookup
+        action: queries for UserRecord by the user ID from the stale list — record has since been deleted
+      - node: users/UserLookup
+        action: returns not-found — record was deleted between the list fetch and this detail request
+      - node: AdminDownstreamErrorHandler
+        action: receives not-found and maps it to a 404 response
+      - node: AuditLogRule
+        action: requires audit entry for the failed lookup
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target user ID, not-found outcome, and timestamp
+      - node: AdminAPI
+        action: returns 404 not-found to admin — stale list reference is an expected and handled condition
+
+  admin_concurrent_audit_writes:
+    steps:
+      - node: _actors/Admin
+        action: two concurrent admin sessions each send a request with valid SessionTokens
+      - node: AdminGuard
+        action: each session's token is validated independently against auth/SessionToken
+      - node: AdminRoleRule
+        action: admin role is confirmed independently for each session
+      - node: AdminAPI
+        action: each session fetches and assembles its requested data from upstream modules
+      - node: AuditLogRule
+        action: triggers for each request independently requiring an entry before any response is released
+      - node: AuditLogAtomicityRule
+        action: serializes the two concurrent append operations to AdminAuditLog
+      - node: AdminAuditLog
+        action: accepts the first write atomically and commits the entry to the log
+      - node: AdminAuditLog
+        action: accepts the second write atomically after the first commits with no interleaving
+      - node: AdminAPI
+        action: each request returns its assembled view independently to the respective admin session
+
+  admin_rogue_admin_exfiltration:
+    steps:
+      - node: _actors/RogueAdmin
+        action: sends admin read requests using a valid admin SessionToken to access user and task data
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken — session is legitimate
+      - node: AdminRoleRule
+        action: checks admin role — RogueAdmin holds a valid admin role and passes
+      - node: AdminAPI
+        action: fetches requested data from users/UserLookup and tasks/TaskList
+      - node: AdminAPI
+        action: assembles the fetched data into the appropriate view artifact
+      - node: AuditLogRule
+        action: requires audit entry — applies equally to RogueAdmin; no bypass path exists
+      - node: AdminAuditLog
+        action: appends entry recording RogueAdmin's admin ID, operation, target resources, and timestamp
+      - node: AdminAPI
+        action: returns requested data to RogueAdmin — access is permitted but every access is permanently recorded
+      - node: AdminAuditLog
+        action: audit trail provides the evidence record for post-incident detection and forensic review
+
+  admin_invalid_session:
+    steps:
+      - node: _actors/Admin
+        action: sends a request to AdminAPI with an expired or invalidated SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken — token is rejected as expired or invalidated
+      - node: AdminGuard
+        action: propagates 401 unauthorized without proceeding to role check or data fetch
+      - node: AuditLogWaiverRule
+        action: confirms no data was accessed — no audit entry is required for a rejected authentication
+      - node: AdminAPI
+        action: returns 401 unauthorized to caller
+
+  admin_non_admin_rejected:
+    steps:
+      - node: _actors/User
+        action: sends a request to AdminAPI with a valid SessionToken that carries a non-admin role
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken — token is structurally valid and not expired
+      - node: AdminRoleRule
+        action: checks role field on the validated session — role is standard user not admin
+      - node: AdminRoleRule
+        action: rejects the request with 403 forbidden without proceeding to any data fetch
+      - node: AuditLogWaiverRule
+        action: confirms no data was accessed — no audit entry is required for a role rejection
+      - node: AdminAPI
+        action: returns 403 forbidden to caller
+
+  admin_dashboard_downstream_failure:
+    steps:
+      - node: _actors/Admin
+        action: navigates to the admin panel URL with SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AdminDashboard
+        action: calls users/UserLookup to retrieve total user count
+      - node: users/UserLookup
+        action: returns total count of all UserRecords successfully
+      - node: AdminDashboard
+        action: calls tasks/TaskList to retrieve total task count
+      - node: tasks/TaskList
+        action: returns timeout or service error — task count cannot be fetched
+      - node: AdminDownstreamErrorHandler
+        action: receives the error signal from tasks/TaskList
+      - node: AdminDownstreamErrorHandler
+        action: determines dashboard data is incomplete — task count was not accessed
+      - node: AuditLogWaiverRule
+        action: confirms the partial-fetch condition — user count was read but no task data was released to admin
+      - node: AdminDownstreamErrorHandler
+        action: signals AdminDashboard to abort rendering and skip the audit entry per AuditLogWaiverRule
+      - node: AdminDashboard
+        action: returns service-unavailable error to admin identifying tasks/TaskList as the failing upstream
+
+  admin_list_users_paginated:
+    steps:
+      - node: _actors/Admin
+        action: sends list-users request to AdminAPI with SessionToken, cursor, and page-size
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor token is well-formed and page-size does not exceed the configured maximum
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position in the UserRecord store
+      - node: users/UserLookup
+        action: queries UserRecords starting from the decoded cursor position up to page-size limit
+      - node: UserListView
+        action: populated with the returned page of UserRecords by AdminAPI
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the ID of the last returned UserRecord
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cursor position, page-size, result count, and timestamp
+      - node: AdminAPI
+        action: returns UserListView and next-page cursor to admin
+
+  admin_list_all_tasks_paginated:
+    steps:
+      - node: _actors/Admin
+        action: sends list-all-tasks request to AdminAPI with SessionToken, cursor, and page-size
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor token and page-size against the configured maximum
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position in the Task store
+      - node: tasks/TaskList
+        action: queries Task records from the decoded cursor position up to page-size limit
+      - node: AdminAPI
+        action: collects unique owner user IDs from the page of Task records
+      - node: users/UserLookup
+        action: retrieves UserRecord for each unique owner ID present in the current page
+      - node: AdminTaskListView
+        action: populated with the page of tasks each matched to its owner UserRecord by AdminAPI
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the ID of the last returned Task record
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cursor position, page-size, result count, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView and next-page cursor to admin
+
+  admin_search_users:
+    steps:
+      - node: _actors/Admin
+        action: sends search-users request to AdminAPI with filter parameters, cursor, page-size, and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor and page-size in the search request
+      - node: AdminSearchFilter
+        action: parses filter parameters and validates each field name, type, and value range
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position within the filtered result set
+      - node: users/UserLookup
+        action: queries UserRecords matching the validated filter from the cursor position up to page-size limit
+      - node: UserListView
+        action: populated with the matching UserRecords for the current page by AdminAPI
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the last returned UserRecord if more results remain
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, filter criteria applied, result count, and timestamp
+      - node: AdminAPI
+        action: returns UserListView and next-page cursor to admin
+
+  admin_rate_limit_exceeded:
+    steps:
+      - node: _actors/Admin
+        action: sends a burst of requests in rapid succession exceeding the per-window threshold
+      - node: AdminGuard
+        action: validates SessionToken on the rate-limited request — token is valid
+      - node: AdminRateLimiter
+        action: looks up cumulative request count for this admin identity in the current rolling window
+      - node: AdminRateLimitRule
+        action: determines the count exceeds the configured threshold for the window
+      - node: AdminRateLimiter
+        action: blocks the request before role check, pagination, or any data fetch proceeds
+      - node: AuditLogWaiverRule
+        action: confirms no data was accessed — rate-limited request is a no-op and no audit entry is required
+      - node: AdminAPI
+        action: returns 429 too-many-requests with a Retry-After header indicating when the window resets
+
+  admin_query_audit_log:
+    steps:
+      - node: _actors/Admin
+        action: sends query-audit-log request to AdminAPI with filter parameters, cursor, page-size, and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor and page-size in the audit log query request
+      - node: AdminSearchFilter
+        action: parses and validates filter parameters including date range, operation type, and target resource ID
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position within the audit log
+      - node: AdminAuditLog
+        action: queries entries matching the validated filter from the cursor position up to page-size limit
+      - node: AdminAuditLogQuery
+        action: populated with the matching log entries for the current page
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the timestamp of the last returned entry
+      - node: AuditLogRule
+        action: requires audit entry — querying the log is itself a logged data access operation
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, query filters applied, result count, and timestamp
+      - node: AdminAPI
+        action: returns AdminAuditLogQuery and next-page cursor to admin
+
+  admin_page_size_too_large:
+    steps:
+      - node: _actors/Admin
+        action: sends a list request to AdminAPI with a page-size parameter exceeding the configured maximum
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: checks the requested page-size against the configured maximum allowed value
+      - node: PaginationRule
+        action: rejects the request — page-size exceeds the limit and no data fetch is initiated
+      - node: AuditLogWaiverRule
+        action: confirms no data was accessed — parameter validation rejection is a no-op
+      - node: AdminAPI
+        action: returns 400 bad-request specifying the maximum permitted page-size to admin
+
+  admin_audit_log_archive:
+    steps:
+      - node: _actors/Admin
+        action: sends archive-audit-log request to AdminAPI specifying a cutoff date and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AuditLogRetentionRule
+        action: validates the cutoff date is not newer than the minimum required retention period
+      - node: AdminAuditLog
+        action: identifies all entries with timestamps older than the validated cutoff date
+      - node: AdminAuditLog
+        action: streams the identified entries to AdminAuditLogArchive for cold storage
+      - node: AdminAuditLogArchive
+        action: receives and durably stores the streamed entries indexed by timestamp range
+      - node: AdminAuditLogArchive
+        action: confirms successful storage of all received entries back to AdminAuditLog
+      - node: AdminAuditLog
+        action: removes the confirmed archived entries from the hot log to reclaim storage
+      - node: AuditLogRule
+        action: requires audit entry for the archival operation itself before confirmation is returned
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cutoff date, count of archived entries, and timestamp
+      - node: AdminAPI
+        action: returns confirmation with count of archived entries to admin
+
+  admin_task_owner_enrichment_n_plus_one:
+    steps:
+      - node: _actors/Admin
+        action: sends paginated list-all-tasks request to AdminAPI with SessionToken, cursor, and page-size of 100
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor token and page-size against the configured maximum
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position in the Task store
+      - node: tasks/TaskList
+        action: returns the current page of 100 Task records each belonging to a distinct owner
+      - node: AdminBatchEnricher
+        action: extracts all 100 distinct owner IDs from the page of Task records
+      - node: AdminBatchEnricher
+        action: issues a single bulk query to users/UserLookup with all 100 owner IDs instead of 100 individual calls
+      - node: users/UserLookup
+        action: resolves all 100 owner IDs in one round trip and returns the corresponding UserRecords
+      - node: AdminBatchEnricher
+        action: maps each Task to its resolved UserRecord by owner ID
+      - node: AdminTaskListView
+        action: populated with all 100 tasks each enriched with its owner UserRecord in a single pass
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the ID of the last returned Task record
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cursor position, page-size, result count, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView and next-page cursor to admin — one bulk lookup replaces 100 serial calls
+
+  admin_audit_log_write_backpressure:
+    steps:
+      - node: _actors/Admin
+        action: many concurrent admin sessions each complete data fetches and simultaneously reach the audit log write step
+      - node: AdminGuard
+        action: each session validated its token independently earlier in the request
+      - node: AdminRoleRule
+        action: each session confirmed admin role independently earlier in the request
+      - node: AdminAPI
+        action: each session has assembled its view artifact and is ready to write the audit entry before responding
+      - node: AuditLogRule
+        action: triggers for every session simultaneously — all are required to write before releasing data
+      - node: AuditLogAtomicityRule
+        action: serializes all concurrent write attempts — each must wait for the preceding write to commit before acquiring the lock
+      - node: AdminAuditLog
+        action: processes one write at a time under the atomicity lock; queue depth grows as sessions accumulate
+      - node: AdminAuditLog
+        action: sessions at the back of the queue exceed the write timeout threshold while waiting for the lock
+      - node: AdminAuditLog
+        action: timed-out write attempts return a storage error to their respective sessions
+      - node: AuditFailureRule
+        action: applies to each timed-out session — assembled view data is discarded and no response data is released
+      - node: AdminAPI
+        action: timed-out sessions return 500 internal server error; sessions whose writes committed before timeout return their assembled views normally
+      - node: AdminAuditLog
+        action: becomes the primary throughput bottleneck at sustained high admin concurrency — serialized writes cap the maximum request completion rate
+
+  admin_stale_pagination_cursor:
+    steps:
+      - node: _actors/Admin
+        action: fetches page 1 of the user list and receives a next-page cursor encoding the last returned user ID
+      - node: _actors/Admin
+        action: a UserRecord at the boundary position is deleted from the store between the page 1 response and the page 2 request
+      - node: AdminGuard
+        action: validates SessionToken for the page 2 request — passes
+      - node: AdminRoleRule
+        action: checks admin role on the validated session — passes
+      - node: PaginationRule
+        action: validates the cursor token format and page-size — cursor is well-formed
+      - node: AdminPaginationCursor
+        action: decodes the cursor and resolves it to the deleted record's former position in the store
+      - node: users/UserLookup
+        action: queries UserRecords starting after the decoded position — the deleted record is no longer present and the query naturally advances past the gap
+      - node: users/UserLookup
+        action: returns the next page of UserRecords shifted by one position relative to the original ordering
+      - node: UserListView
+        action: populated with the shifted page result — the UserRecord that occupied the boundary position appears in neither page 1 nor page 2
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the last returned UserRecord in the shifted page
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cursor position, result count, and timestamp — no record of the skipped user
+      - node: AdminAPI
+        action: returns UserListView to admin with no indication that one record was silently omitted from the full traversal
+
+  admin_audit_log_archive_chunked:
+    steps:
+      - node: _actors/Admin
+        action: sends archive-audit-log request with a cutoff date covering years of log entries at 1000x scale
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AuditLogRetentionRule
+        action: validates the cutoff date is beyond the minimum required retention period
+      - node: AdminAuditLog
+        action: counts all entries with timestamps older than the validated cutoff — result is in the millions
+      - node: AdminArchiveBatchRule
+        action: detects the total entry count exceeds the configured per-invocation maximum and caps the current operation at the batch limit
+      - node: AdminAuditLog
+        action: streams only the first batch of entries up to the cap to AdminAuditLogArchive
+      - node: AdminAuditLogArchive
+        action: receives and durably stores the first batch indexed by timestamp range
+      - node: AdminAuditLogArchive
+        action: confirms successful storage of the first batch back to AdminAuditLog
+      - node: AdminAuditLog
+        action: removes only the confirmed first batch from the hot log
+      - node: AuditLogRule
+        action: requires audit entry for this partial archival operation before response is returned
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cutoff date, batch size archived, remaining entry count, and timestamp
+      - node: AdminAPI
+        action: returns partial-success response with count of archived entries, remaining count, and a continuation token — admin must resubmit to process the next batch
+
+  admin_missing_page_size:
+    steps:
+      - node: _actors/Admin
+        action: sends a list request to AdminAPI without including a page-size parameter
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: checks for the required page-size parameter — parameter is absent from the request
+      - node: PaginationRule
+        action: rejects the request before any upstream call — absent page-size would permit an unbounded full-table scan
+      - node: AuditLogWaiverRule
+        action: confirms no data was accessed — missing required parameter rejection is a no-op
+      - node: AdminAPI
+        action: returns 400 bad-request indicating page-size is a required parameter
+
+  admin_search_filter_rejected:
+    steps:
+      - node: _actors/Admin
+        action: sends search-users request to AdminAPI with a malformed or out-of-bounds filter value and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor and page-size in the search request — both are valid
+      - node: AdminSearchFilter
+        action: parses filter parameters and detects a malformed field value — for example an invalid date format or a role value outside the permitted set
+      - node: AdminSearchFilter
+        action: rejects the request before any data fetch is initiated
+      - node: AuditLogWaiverRule
+        action: confirms no data was accessed — filter validation rejection is a no-op
+      - node: AdminAPI
+        action: returns 400 bad-request identifying the invalid filter field and the reason for rejection
+
+  admin_archive_cutoff_too_recent:
+    steps:
+      - node: _actors/Admin
+        action: sends archive-audit-log request with a cutoff date that falls within the minimum required retention window
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AuditLogRetentionRule
+        action: compares the supplied cutoff date against the minimum retention period — cutoff is newer than the permitted boundary
+      - node: AuditLogRetentionRule
+        action: rejects the request — archiving entries within the retention window is forbidden and no archival action is taken
+      - node: AuditLogWaiverRule
+        action: confirms no archival action occurred and no log data was moved or deleted
+      - node: AdminAPI
+        action: returns 400 bad-request with the earliest permitted cutoff date to admin
+
+  admin_list_tasks_for_user_paginated:
+    steps:
+      - node: _actors/Admin
+        action: sends list-tasks-for-user request to AdminAPI with target user ID, SessionToken, cursor, and page-size
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor token is well-formed and page-size does not exceed the configured maximum
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position in the task store scoped to the target user
+      - node: users/UserLookup
+        action: retrieves target UserRecord by ID to confirm the user exists before fetching tasks
+      - node: tasks/TaskList
+        action: queries Task records scoped to the target user from the decoded cursor position up to page-size limit
+      - node: AdminTaskListView
+        action: populated with the page of tasks matched to the target UserRecord by AdminAPI
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the ID of the last returned Task record
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, target user ID, cursor position, page-size, result count, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView and next-page cursor to admin
+
+  admin_batch_enricher_partial_failure_paginated:
+    steps:
+      - node: _actors/Admin
+        action: sends paginated list-all-tasks request to AdminAPI with SessionToken, cursor, and page-size
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: PaginationRule
+        action: validates cursor token and page-size against the configured maximum
+      - node: AdminPaginationCursor
+        action: decodes the cursor to determine the page start position in the Task store
+      - node: tasks/TaskList
+        action: returns the current page of Task records containing a mix of resolvable and unresolvable owner IDs
+      - node: AdminBatchEnricher
+        action: extracts all distinct owner IDs from the page of Task records
+      - node: AdminBatchEnricher
+        action: issues a single bulk query to users/UserLookup with all extracted owner IDs
+      - node: users/UserLookup
+        action: returns UserRecord for each resolvable owner ID and not-found for each deleted or missing owner
+      - node: DanglingTaskRule
+        action: flags each task whose owner ID returned not-found with a deleted-user marker
+      - node: AdminBatchEnricher
+        action: maps each task to its resolved UserRecord or to its deleted-user marker per DanglingTaskRule
+      - node: AdminTaskListView
+        action: populated with all tasks in the page — enriched entries and dangling-owner entries included together
+      - node: AdminPaginationCursor
+        action: encodes next-page cursor from the ID of the last returned Task record
+      - node: AuditLogRule
+        action: requires audit entry before response is sent
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cursor position, page-size, result count, dangling-owner count, and timestamp
+      - node: AdminAPI
+        action: returns AdminTaskListView and next-page cursor to admin — dangling-owner tasks are present with deleted-user markers
+
+  admin_archive_write_failure:
+    steps:
+      - node: _actors/Admin
+        action: sends archive-audit-log request to AdminAPI specifying a valid cutoff date and SessionToken
+      - node: AdminGuard
+        action: validates SessionToken against auth/SessionToken
+      - node: AdminRoleRule
+        action: checks admin role on the validated session
+      - node: AuditLogRetentionRule
+        action: validates the cutoff date is beyond the minimum required retention period — passes
+      - node: AdminAuditLog
+        action: identifies all entries with timestamps older than the validated cutoff date
+      - node: AdminAuditLog
+        action: streams the identified entries to AdminAuditLogArchive for cold storage
+      - node: AdminAuditLogArchive
+        action: encounters a storage error and fails to durably persist the streamed entries
+      - node: AdminAuditLogArchive
+        action: returns error to AdminAuditLog — no confirmation of successful storage is issued
+      - node: AuditLogRetentionRule
+        action: prohibits deletion — no entry may be purged from the hot log without a confirmed archived copy
+      - node: AdminAuditLog
+        action: retains all identified entries in the hot log — no deletion occurs
+      - node: AuditLogRule
+        action: requires audit entry for the attempted archival operation before error response is returned
+      - node: AdminAuditLog
+        action: appends entry recording admin ID, cutoff date, attempted entry count, archive failure reason, and timestamp
+      - node: AdminAPI
+        action: returns 500 internal server error identifying AdminAuditLogArchive as the failing component — no entries were archived or deleted

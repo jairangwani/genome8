@@ -1,0 +1,605 @@
+spec_sections: [2, 3]
+
+nodes:
+  ProfileView:
+    type: interface
+    description: UI page showing the authenticated user their own email, display name, and account status
+
+  UserRecord:
+    type: artifact
+    description: Full user profile including email, display name, account status flag, and created timestamp
+
+  EmailVerificationToken:
+    type: artifact
+    description: Temporary time-limited token bound to a proposed new email address and the requesting user ID; must be presented to confirm an email address change before ProfileUpdateProcess commits the new address to UserRecord
+
+  UserLookup:
+    type: process
+    description: Retrieves a UserRecord by user ID or email address
+
+  UserRecordInitProcess:
+    type: process
+    description: Creates and persists a new UserRecord when a new account is registered, receiving the assigned user ID and email from auth/SignupProcess
+
+  AccountDeletionProcess:
+    type: process
+    description: Handles deletion requests by cascading removal of credentials, sessions, and tasks then purging the UserRecord
+
+  AccountLockProcess:
+    type: process
+    description: Sets the status flag on a UserRecord to locked, preventing further authentication
+
+  AccountUnlockProcess:
+    type: process
+    description: Removes the locked status flag from a UserRecord, restoring authentication access for the account
+
+  AccountEnumerationGuard:
+    type: process
+    description: Normalizes response timing and error messages for email lookup outcomes so timing differences do not reveal whether an email is registered
+
+  ProfileUpdateProcess:
+    type: process
+    description: Applies validated changes to display name or email on a UserRecord after ownership and rule checks pass
+
+  DeletedAccountGuard:
+    type: process
+    description: Rejects all authenticated operations for UserRecords marked as deleted or deletion-in-progress, providing defense-in-depth beyond session invalidation
+
+  UniqueEmailRule:
+    type: rule
+    description: Rejects any new account creation or email change where the email already exists on another UserRecord including deferred-deletion records
+
+  DataRetentionRule:
+    type: rule
+    description: Defines how long data for inactive or deleted accounts is retained before permanent purge
+
+  OwnershipVerificationRule:
+    type: rule
+    description: Rejects profile and deletion requests where the session user id does not match the target user id, preventing IDOR attacks
+
+  AdminRoleCheckRule:
+    type: rule
+    description: Rejects admin-only operations where the session does not carry the admin role flag
+
+  EmailChangeConfirmationRule:
+    type: rule
+    description: Requires out-of-band re-verification before committing an email address change to the UserRecord, preventing silent account takeover via email swap
+
+  RateLimitRule:
+    type: rule
+    description: Caps the number of requests an actor can make to sensitive user endpoints within a rolling time window, blocking bulk enumeration and scraping
+
+journeys:
+  UserRecordCreation:
+    steps:
+      - node: auth/SignupProcess
+        action: completes UserCredential creation and forwards new user ID and email to UserRecordInitProcess
+      - node: UserLookup
+        action: confirms no existing UserRecord is associated with the provided email
+      - node: UserRecordInitProcess
+        action: creates new UserRecord with user ID, email, active status flag, and created timestamp
+      - node: UserRecord
+        action: new record persisted to the store with email, active status, and created timestamp
+      - node: UserRecordInitProcess
+        action: returns new user ID confirmation to auth/SignupProcess
+
+  UserViewProfile:
+    steps:
+      - node: _actors/User
+        action: requests profile page with SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session user id
+      - node: OwnershipVerificationRule
+        action: confirms the requested user id matches the session user id; rejects with 403 if they differ
+      - node: UserLookup
+        action: retrieves UserRecord by user ID extracted from token
+      - node: UserRecord
+        action: loaded record containing email, display name, and account status
+      - node: ProfileView
+        action: renders and returns profile data to user
+
+  UserUpdateProfile:
+    steps:
+      - node: _actors/User
+        action: submits profile update request with display name change and SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session user id
+      - node: OwnershipVerificationRule
+        action: confirms the target user id in the request matches the session user id; rejects with 403 if they differ
+      - node: UserLookup
+        action: retrieves UserRecord by session user id
+      - node: ProfileUpdateProcess
+        action: validates the updated display name field for length and character constraints
+      - node: ProfileUpdateProcess
+        action: applies the validated display name change to the UserRecord
+      - node: ProfileUpdateProcess
+        action: returns updated profile data to user
+
+  UserDeleteAccount:
+    steps:
+      - node: _actors/DeletingUser
+        action: submits account deletion request with SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session user id
+      - node: OwnershipVerificationRule
+        action: confirms the target account id matches the session user id; rejects with 403 if they differ
+      - node: UserLookup
+        action: retrieves UserRecord for the requesting user
+      - node: AccountDeletionProcess
+        action: triggers deletion cascade for tasks/TaskList owned by user
+      - node: AccountDeletionProcess
+        action: invalidates all active auth/SessionToken entries for the user
+      - node: AccountDeletionProcess
+        action: removes auth/UserCredential record for the user
+      - node: DataRetentionRule
+        action: determines whether UserRecord is purged immediately or flagged for deferred deletion
+      - node: AccountDeletionProcess
+        action: applies retention ruling and updates or removes UserRecord
+      - node: AccountDeletionProcess
+        action: returns deletion confirmation to client
+
+  AdminLockUser:
+    steps:
+      - node: _actors/Admin
+        action: submits lock request for a target user with admin SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin; rejects with 403 if the role is not admin
+      - node: UserLookup
+        action: retrieves target UserRecord by user ID
+      - node: AccountLockProcess
+        action: sets account status flag to locked on the UserRecord
+      - node: AccountLockProcess
+        action: invalidates any active auth/SessionToken entries for the locked user
+      - node: AccountLockProcess
+        action: returns updated account status to admin
+
+  AdminUnlockUser:
+    steps:
+      - node: _actors/Admin
+        action: submits unlock request for a locked user with admin SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin; rejects with 403 if the role is not admin
+      - node: UserLookup
+        action: retrieves target UserRecord by user ID
+      - node: UserRecord
+        action: status flag confirms account is currently locked
+      - node: AccountUnlockProcess
+        action: removes the locked status flag from the UserRecord
+      - node: AccountUnlockProcess
+        action: returns updated account status to admin confirming the account is now active
+
+  AdminForcedUserDeletion:
+    steps:
+      - node: _actors/Admin
+        action: submits forced deletion request for a target active user account using admin SessionToken
+      - node: auth/SessionToken
+        action: validates admin session token and extracts session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin; rejects with 403 if the role is not admin
+      - node: UserLookup
+        action: retrieves target UserRecord by user ID
+      - node: AccountDeletionProcess
+        action: triggers deletion cascade for tasks/TaskList owned by the target user
+      - node: AccountDeletionProcess
+        action: invalidates all active auth/SessionToken entries for the target user
+      - node: AccountDeletionProcess
+        action: removes auth/UserCredential record for the target user
+      - node: DataRetentionRule
+        action: determines whether UserRecord is purged immediately or flagged for deferred deletion
+      - node: AccountDeletionProcess
+        action: applies retention ruling and updates or removes UserRecord
+      - node: AccountDeletionProcess
+        action: returns deletion confirmation to admin
+
+  NewAccountEmailUniqueness:
+    steps:
+      - node: _actors/Guest
+        action: submits signup form via auth/SignupForm
+      - node: auth/SignupProcess
+        action: forwards email to uniqueness check
+      - node: UniqueEmailRule
+        action: queries UserRecord store for existing account with same email
+      - node: AccountEnumerationGuard
+        action: normalizes response timing before returning outcome so email existence cannot be inferred from latency
+      - node: UniqueEmailRule
+        action: rejects registration with conflict error if email already exists
+      - node: auth/SignupProcess
+        action: proceeds to create auth/UserCredential only if email is unique
+
+  InactiveAccountExpiry:
+    steps:
+      - node: _actors/InactiveUser
+        action: has not authenticated past the retention threshold
+      - node: DataRetentionRule
+        action: evaluates last-login timestamp on UserRecord against expiry window
+      - node: UserLookup
+        action: retrieves the inactive UserRecord
+      - node: AccountDeletionProcess
+        action: flags UserRecord for purge and removes associated tasks/TaskList
+      - node: AccountDeletionProcess
+        action: removes auth/UserCredential and marks UserRecord as expired
+
+  IDORProfileViewAttempt:
+    steps:
+      - node: _actors/SessionHijacker
+        action: sends profile request with a valid SessionToken but specifies a different user's id in the request path
+      - node: auth/SessionToken
+        action: validates token and extracts session user id belonging to the attacker
+      - node: OwnershipVerificationRule
+        action: compares the attacker's session user id against the requested target user id
+      - node: OwnershipVerificationRule
+        action: detects mismatch and returns a 403 forbidden error without invoking UserLookup
+      - node: ProfileView
+        action: is never reached; no UserRecord data is returned to the attacker
+
+  ProfileFieldTamperingAttempt:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: submits profile update request specifying a different user's account id as the target
+      - node: auth/SessionToken
+        action: validates token and extracts session user id belonging to the attacker
+      - node: OwnershipVerificationRule
+        action: compares the attacker's session user id against the target user id in the request body
+      - node: OwnershipVerificationRule
+        action: detects mismatch and returns a 403 forbidden error without invoking ProfileUpdateProcess
+      - node: ProfileUpdateProcess
+        action: is never reached; target UserRecord is not modified
+
+  EmailChangeAccountTakeover:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: submits email change request specifying a victim's email address as the new value
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session user id
+      - node: OwnershipVerificationRule
+        action: confirms the target user id matches the session user id; passes because attacker targets their own account id
+      - node: UserLookup
+        action: retrieves UserRecord for the requesting user
+      - node: ProfileUpdateProcess
+        action: receives email change payload and forwards the proposed email to uniqueness and confirmation checks
+      - node: UniqueEmailRule
+        action: queries UserRecord store for existing account with the requested new email
+      - node: UniqueEmailRule
+        action: detects the email already belongs to another UserRecord and rejects with conflict error
+      - node: EmailChangeConfirmationRule
+        action: is never reached; change is blocked at uniqueness check before confirmation flow begins
+
+  UnauthorizedAccountDeletion:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: submits deletion request with a valid SessionToken but targets another user's account id
+      - node: auth/SessionToken
+        action: validates token and extracts session user id belonging to the attacker
+      - node: OwnershipVerificationRule
+        action: compares the attacker's session user id against the target account id in the request
+      - node: OwnershipVerificationRule
+        action: detects mismatch and returns a 403 forbidden error without invoking AccountDeletionProcess
+      - node: AccountDeletionProcess
+        action: is never reached; target account remains intact
+
+  NonAdminLockAttempt:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: sends a lock-user request with a valid but non-admin SessionToken
+      - node: auth/SessionToken
+        action: validates token and extracts session role as standard user
+      - node: AdminRoleCheckRule
+        action: checks the role flag in the session against the admin role requirement
+      - node: AdminRoleCheckRule
+        action: detects non-admin role and returns a 403 forbidden error without invoking UserLookup
+      - node: AccountLockProcess
+        action: is never reached; target user account remains unlocked
+
+  EmailEnumerationAttempt:
+    steps:
+      - node: _actors/BotAccount
+        action: submits repeated signup requests with different emails to probe which are already registered
+      - node: auth/SignupProcess
+        action: forwards each email to the uniqueness check
+      - node: UniqueEmailRule
+        action: queries UserRecord store for existing account with submitted email
+      - node: AccountEnumerationGuard
+        action: adds a consistent artificial delay to the response regardless of whether the email was found
+      - node: AccountEnumerationGuard
+        action: returns the same error message and response shape whether or not the email exists
+      - node: _actors/BotAccount
+        action: receives identical responses for all probes, gaining no information about registered emails
+
+  BruteForceUserIDScan:
+    steps:
+      - node: _actors/BotAccount
+        action: sends repeated UserRecord lookup requests using sequentially incremented user IDs with a valid authenticated SessionToken
+      - node: auth/SessionToken
+        action: validates the token on each request; token is legitimate and passes each time
+      - node: RateLimitRule
+        action: counts requests from the session actor against the rolling time window for the UserLookup endpoint
+      - node: RateLimitRule
+        action: detects that the per-actor request threshold has been exceeded and rejects further requests with 429 too many requests
+      - node: UserLookup
+        action: is blocked from further invocations for the session actor until the rate window resets; no additional UserRecord data is returned
+
+  HijackedSessionAccountDeletion:
+    steps:
+      - node: _actors/SessionHijacker
+        action: presents a stolen but cryptographically valid SessionToken belonging to the victim
+      - node: auth/SessionToken
+        action: validates signature and expiry — token is structurally valid and not expired
+      - node: OwnershipVerificationRule
+        action: compares session user id against target account id — both are the victim's id, so they match
+      - node: OwnershipVerificationRule
+        action: passes without detecting the hijack; cannot distinguish the hijacker from the legitimate owner
+      - node: UserLookup
+        action: retrieves the victim's UserRecord
+      - node: AccountDeletionProcess
+        action: cascades through deletion of victim's tasks/TaskList, auth/SessionToken entries, and auth/UserCredential
+      - node: DataRetentionRule
+        action: applies retention ruling to the victim's UserRecord
+      - node: AccountDeletionProcess
+        action: purges or flags victim's UserRecord — account is deleted
+      - node: AccountDeletionProcess
+        action: no users-layer defense stopped the attack; protection depends entirely on upstream token security and short session expiry in auth
+
+  StaleTokenAfterDeletion:
+    steps:
+      - node: _actors/SessionHijacker
+        action: sends a request using a SessionToken that was active before the account was deleted
+      - node: auth/SessionToken
+        action: attempts to look up the token in the session store; token was invalidated during AccountDeletionProcess
+      - node: auth/SessionToken
+        action: detects the token is no longer present in the session store and rejects with 401 unauthorized
+      - node: DeletedAccountGuard
+        action: acts as secondary defense-in-depth check — if token lookup somehow passes, verifies the associated UserRecord carries no deleted flag
+      - node: DeletedAccountGuard
+        action: detects the deleted status flag on the UserRecord and rejects the request with 401 unauthorized
+      - node: UserLookup
+        action: is never reached; no UserRecord data is served to the stale token holder
+
+  LockedUserDeleteAttempt:
+    steps:
+      - node: _actors/LockedUser
+        action: submits account deletion request using a SessionToken obtained before the account was locked
+      - node: auth/SessionToken
+        action: evaluates the presented token against the session store
+      - node: auth/SessionToken
+        action: finds the token was invalidated when AccountLockProcess revoked all sessions at lock time
+      - node: auth/SessionToken
+        action: returns invalidated-session error — token is no longer accepted
+      - node: OwnershipVerificationRule
+        action: is never reached; the request is rejected with 401 before ownership is checked
+      - node: AccountDeletionProcess
+        action: is never invoked; locked user cannot delete their account via a pre-lock token
+
+  DuplicateEmailRegistrationRace:
+    steps:
+      - node: _actors/Guest
+        action: two concurrent registration requests arrive simultaneously carrying the same email address
+      - node: auth/SignupProcess
+        action: both requests independently forward the email to UniqueEmailRule at nearly the same instant
+      - node: UniqueEmailRule
+        action: first request queries UserRecord store — no existing record found, uniqueness check passes
+      - node: UniqueEmailRule
+        action: second request queries UserRecord store before the first has committed — also finds no record, also passes
+      - node: UserRecordInitProcess
+        action: first request writes a new UserRecord with the email to the store and commits
+      - node: UniqueEmailRule
+        action: database unique constraint on the email field rejects the second insert as a duplicate
+      - node: UserRecordInitProcess
+        action: second request receives the unique constraint violation and returns a conflict error to auth/SignupProcess
+      - node: UserRecord
+        action: exactly one UserRecord exists for the email — the race is resolved at the storage layer
+
+  SoftDeletedEmailReregistration:
+    steps:
+      - node: _actors/Guest
+        action: submits signup request using an email address belonging to a UserRecord currently flagged for deferred deletion
+      - node: auth/SignupProcess
+        action: forwards the email to the uniqueness check
+      - node: UniqueEmailRule
+        action: queries UserRecord store including records flagged for deferred deletion for the submitted email
+      - node: UniqueEmailRule
+        action: finds the email still present on a deferred-deletion UserRecord and rejects registration with conflict error
+      - node: DataRetentionRule
+        action: confirms the flagged record has not yet passed the purge deadline and the email address must remain reserved
+      - node: auth/SignupProcess
+        action: returns registration-blocked response to the guest until the deferred deletion purge completes
+
+  DeletionCascadePartialFailure:
+    steps:
+      - node: _actors/DeletingUser
+        action: submits account deletion request with SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session
+      - node: OwnershipVerificationRule
+        action: confirms the target account id matches the session user id
+      - node: UserLookup
+        action: retrieves UserRecord for the requesting user
+      - node: UserRecord
+        action: status flag set to deletion-in-progress before cascade begins
+      - node: AccountDeletionProcess
+        action: attempts to delete tasks/TaskList for the user
+      - node: AccountDeletionProcess
+        action: receives storage error from tasks/TaskList — cascade halts immediately
+      - node: UserRecord
+        action: deletion-in-progress flag cleared — account restored to active status
+      - node: AccountDeletionProcess
+        action: returns 500 internal error to client with deletion-incomplete message
+
+  ConcurrentDeletionRaceCondition:
+    steps:
+      - node: _actors/DeletingUser
+        action: submits two simultaneous deletion requests for the same account using the same SessionToken
+      - node: auth/SessionToken
+        action: validates both tokens independently; both confirm active session for the same user id
+      - node: OwnershipVerificationRule
+        action: both requests pass ownership check as session user id matches the target account id in each
+      - node: UserLookup
+        action: first request retrieves UserRecord and atomically sets the deletion-in-progress flag
+      - node: AccountDeletionProcess
+        action: first request begins cascade deletion of tasks/TaskList
+      - node: UserLookup
+        action: second request retrieves UserRecord and reads the deletion-in-progress flag already set by the first request
+      - node: AccountDeletionProcess
+        action: second request is rejected with 409 conflict — deletion already in progress; no duplicate cascade is started
+      - node: AccountDeletionProcess
+        action: first request completes cascade removal of credentials, sessions, and tasks
+      - node: AccountDeletionProcess
+        action: first request purges or defers UserRecord per DataRetentionRule and returns deletion confirmation
+
+  LockTargetNotFound:
+    steps:
+      - node: _actors/Admin
+        action: submits lock request with a user ID that does not exist
+      - node: auth/SessionToken
+        action: validates admin session token and extracts session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin
+      - node: UserLookup
+        action: queries for UserRecord by the provided user ID
+      - node: UserRecord
+        action: not found — no matching record exists in the store
+      - node: AccountLockProcess
+        action: receives not-found signal from UserLookup and returns 404 to admin
+
+  AccountAlreadyLocked:
+    steps:
+      - node: _actors/Admin
+        action: submits lock request for a user whose account is already locked
+      - node: auth/SessionToken
+        action: validates admin session token and extracts session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin
+      - node: UserLookup
+        action: retrieves UserRecord by user ID
+      - node: UserRecord
+        action: status flag already reads locked
+      - node: AccountLockProcess
+        action: detects account is already locked and treats the request as a no-op
+      - node: AccountLockProcess
+        action: returns idempotent success to admin without modifying UserRecord
+
+  ReactivationPreemptsExpiry:
+    steps:
+      - node: _actors/InactiveUser
+        action: successfully authenticates via auth just as the expiry process begins evaluating the account
+      - node: DataRetentionRule
+        action: reads last-login timestamp from UserRecord to check against expiry window
+      - node: UserRecord
+        action: last-login timestamp is current — account is no longer past the expiry threshold
+      - node: DataRetentionRule
+        action: determines account is active and cancels expiry evaluation for this UserRecord
+      - node: AccountDeletionProcess
+        action: skips deletion entirely — UserRecord is retained with no changes applied
+
+  UserInitiateEmailChange:
+    steps:
+      - node: _actors/User
+        action: submits email change request with the proposed new email address and SessionToken
+      - node: auth/SessionToken
+        action: validates token and confirms active session, extracting session user id
+      - node: OwnershipVerificationRule
+        action: confirms the target user id in the request matches the session user id; rejects with 403 if they differ
+      - node: UserLookup
+        action: retrieves UserRecord by session user id
+      - node: ProfileUpdateProcess
+        action: receives email change payload and validates the proposed new email address format
+      - node: UniqueEmailRule
+        action: queries UserRecord store for any existing account with the proposed new email including deferred-deletion records
+      - node: UniqueEmailRule
+        action: confirms the proposed email is not in use and returns an available signal
+      - node: EmailChangeConfirmationRule
+        action: generates an EmailVerificationToken bound to the proposed new email address and the requesting user id with a short TTL
+      - node: EmailVerificationToken
+        action: token persisted to the store and dispatched out-of-band to the proposed new email address
+      - node: ProfileUpdateProcess
+        action: returns pending-confirmation response to user — email change is staged but not yet committed to UserRecord
+
+  UserConfirmEmailChange:
+    steps:
+      - node: _actors/User
+        action: follows the verification link containing the EmailVerificationToken delivered to the proposed new email address
+      - node: EmailVerificationToken
+        action: token retrieved from the store by the value in the link
+      - node: EmailVerificationToken
+        action: validated — token matches the requesting user id and the proposed new email, and has not expired
+      - node: ProfileUpdateProcess
+        action: receives the confirmed new email address and prepares to commit the change to UserRecord
+      - node: UniqueEmailRule
+        action: performs a final uniqueness check at commit time to guard against a race where the email was claimed between initiation and confirmation
+      - node: UniqueEmailRule
+        action: confirms the email remains available and allows the commit to proceed
+      - node: UserRecord
+        action: email field updated to the confirmed new address; old address is released from this UserRecord
+      - node: EmailVerificationToken
+        action: token deleted from the store after successful use to prevent replay
+      - node: ProfileUpdateProcess
+        action: returns updated profile confirmation to user showing the new email address
+
+  UnlockTargetNotFound:
+    steps:
+      - node: _actors/Admin
+        action: submits unlock request with a user ID that does not exist in the store
+      - node: auth/SessionToken
+        action: validates admin session token and extracts session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin; rejects with 403 if the role is not admin
+      - node: UserLookup
+        action: queries for UserRecord by the provided user ID
+      - node: UserRecord
+        action: not found — no matching record exists in the store
+      - node: AccountUnlockProcess
+        action: receives not-found signal from UserLookup and returns 404 to admin
+
+  AccountAlreadyUnlocked:
+    steps:
+      - node: _actors/Admin
+        action: submits unlock request for a user whose account is already active and not locked
+      - node: auth/SessionToken
+        action: validates admin session token and extracts session role
+      - node: AdminRoleCheckRule
+        action: verifies the session role is admin; rejects with 403 if the role is not admin
+      - node: UserLookup
+        action: retrieves UserRecord by user ID
+      - node: UserRecord
+        action: status flag reads active — account is not currently in a locked state
+      - node: AccountUnlockProcess
+        action: detects account is already active and treats the request as a no-op
+      - node: AccountUnlockProcess
+        action: returns idempotent success to admin without modifying UserRecord
+
+  DeferredDeletionPurge:
+    steps:
+      - node: DataRetentionRule
+        action: scheduled evaluation runs and identifies UserRecords flagged for deferred deletion whose retention window has elapsed
+      - node: UserLookup
+        action: retrieves each deferred-deletion UserRecord identified by the retention evaluation
+      - node: UserRecord
+        action: record confirmed as flagged for deferred deletion with a purge-due timestamp in the past
+      - node: AccountDeletionProcess
+        action: issues final purge of the UserRecord from the store — record is permanently removed
+      - node: UniqueEmailRule
+        action: the email address held by the purged UserRecord is released — the uniqueness constraint no longer blocks re-registration on that address
+      - node: DataRetentionRule
+        action: logs purge completion with user id, original deletion timestamp, and purge timestamp for audit purposes
+
+  ProfileAccessDuringDeletion:
+    steps:
+      - node: _actors/DeletingUser
+        action: sends a concurrent profile view request while AccountDeletionProcess has already set the deletion-in-progress flag on their UserRecord
+      - node: auth/SessionToken
+        action: validates the SessionToken — token is still active because AccountDeletionProcess has not yet reached the session invalidation step of the cascade
+      - node: auth/SessionToken
+        action: returns a valid session; the concurrent deletion has not yet revoked this token
+      - node: OwnershipVerificationRule
+        action: compares session user id against the requested user id — they match; ownership check passes
+      - node: DeletedAccountGuard
+        action: loads the UserRecord status flag before serving any profile data
+      - node: DeletedAccountGuard
+        action: detects the deletion-in-progress flag set by the concurrent AccountDeletionProcess
+      - node: DeletedAccountGuard
+        action: rejects the request with 409 conflict — account deletion is in progress and no further data access is permitted
+      - node: ProfileView
+        action: is never reached; DeletedAccountGuard provides defense-in-depth that closes the window between session invalidation and the start of the cascade

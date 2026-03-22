@@ -1,0 +1,46 @@
+spec_sections: [1]
+
+nodes:
+  Guest:
+    type: actor
+    description: Unauthenticated visitor who can view the signup/login pages and register for an account
+
+  User:
+    type: actor
+    description: Authenticated person who creates, completes, and deletes their own tasks
+
+  Admin:
+    type: actor
+    description: Privileged user who oversees all accounts and tasks across the entire system
+
+  InactiveUser:
+    type: actor
+    description: Registered user who has stopped logging in, relevant for data retention and account expiry decisions
+
+  DeletingUser:
+    type: actor
+    description: User actively requesting deletion of their account and all associated task data
+
+  LockedUser:
+    type: actor
+    description: User whose account has been suspended after failed login attempts or admin action, attempting to regain access
+
+  BotAccount:
+    type: actor
+    description: Automated script that bulk-registers fake accounts to spam or exhaust system resources
+
+  CredentialAttacker:
+    type: actor
+    description: External actor brute-forcing or credential-stuffing the login endpoint to hijack accounts
+
+  HorizontalAbuser:
+    type: actor
+    description: Authenticated user who manipulates task or user IDs to read or modify another user's data (IDOR)
+
+  RogueAdmin:
+    type: actor
+    description: Admin who abuses elevated access to surveil or tamper with other users' private tasks
+
+  SessionHijacker:
+    type: actor
+    description: Attacker who steals or forges a valid session token to impersonate a legitimate user

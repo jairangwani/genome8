@@ -1,0 +1,744 @@
+spec_sections: [1, 2]
+
+nodes:
+  TaskListView:
+    type: interface
+    description: UI displaying the authenticated user's tasks with controls to create, complete, and delete
+
+  TaskForm:
+    type: interface
+    description: Inline form for entering a new task title before submission
+
+  TaskEditForm:
+    type: interface
+    description: Inline edit control that pre-populates the existing task title and accepts an updated value before submission
+
+  TaskAuthGuard:
+    type: process
+    description: Validates the SessionToken on every task request and extracts the user identity
+
+  CreateTaskProcess:
+    type: process
+    description: Accepts validated task input and writes a new Task record scoped to the requesting user
+
+  EditTaskProcess:
+    type: process
+    description: Accepts a validated updated title and overwrites the existing Task record's title in the store after ownership is confirmed
+
+  CompleteTaskProcess:
+    type: process
+    description: Updates a Task record's status to complete after ownership is confirmed
+
+  DeleteTaskProcess:
+    type: process
+    description: Removes a Task record from the store after ownership is confirmed
+
+  ConcurrentMutationGuard:
+    type: process
+    description: Detects when a mutation finds zero rows affected due to concurrent deletion and maps the result to a not-found error
+
+  TaskListCache:
+    type: process
+    description: Caches the TaskList read result per user identity with a short TTL; invalidated immediately on any mutation for that user to prevent stale reads at scale
+
+  TaskInputSanitizer:
+    type: process
+    description: Scans user-supplied task titles for dangerous patterns including HTML tags, script content, and SQL metacharacters; rejects titles containing injection payloads before they reach the store
+
+  Task:
+    type: artifact
+    description: A single task record containing title, completion status, and owner reference
+
+  TaskList:
+    type: artifact
+    description: Ordered collection of Task records belonging to one user
+
+  TaskOwnership:
+    type: rule
+    description: Asserts that the task's owner matches the authenticated user before any mutation
+
+  TaskTitleRequired:
+    type: rule
+    description: Rejects task creation if the submitted title is empty or whitespace only
+
+  IdempotentCompleteRule:
+    type: rule
+    description: Completing an already-complete task is a no-op that returns the current state without issuing a store write
+
+  TaskCountLimitRule:
+    type: rule
+    description: Rejects task creation when the requesting user's Task count meets or exceeds the configured per-user cap, preventing unbounded store growth
+
+  TaskPaginationRule:
+    type: rule
+    description: Enforces a maximum page size on TaskList queries and requires a cursor parameter when the user's task count exceeds the single-page threshold
+
+journeys:
+  UserViewTasks:
+    steps:
+      - node: _actors/User
+        action: requests task list page with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskListCache
+        action: checks for a valid non-expired entry keyed to the user identity
+      - node: TaskListCache
+        action: cache miss — forwards to TaskList for a fresh store query
+      - node: TaskList
+        action: queries all Task records scoped to the user identity
+      - node: TaskListCache
+        action: stores the returned records with a short TTL keyed to the user identity
+      - node: TaskListView
+        action: renders and returns the task list to the user
+
+  UserCreateTask:
+    steps:
+      - node: _actors/User
+        action: submits new task title via TaskForm with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskForm
+        action: forwards submitted title to validation
+      - node: TaskTitleRequired
+        action: rejects request if title is empty or whitespace
+      - node: CreateTaskProcess
+        action: writes new Task record with title and user identity to store
+      - node: Task
+        action: new record committed to store with title, incomplete status, and owner identity
+      - node: TaskListCache
+        action: evicts the stale cached TaskList entry for the user
+      - node: TaskList
+        action: queries updated Task records for the user
+      - node: TaskListView
+        action: renders and returns updated task list to user
+
+  UserEditTask:
+    steps:
+      - node: _actors/User
+        action: activates inline edit on a task and submits an updated title via TaskEditForm with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskEditForm
+        action: forwards the updated title to validation
+      - node: TaskTitleRequired
+        action: confirms updated title is not empty or whitespace only
+      - node: TaskOwnership
+        action: loads Task by ID from store
+      - node: Task
+        action: record retrieved with current title and owner identity
+      - node: TaskOwnership
+        action: asserts owner field matches authenticated user identity
+      - node: EditTaskProcess
+        action: overwrites Task record title with the validated updated value in store
+      - node: Task
+        action: record updated in store with new title; completion status and owner unchanged
+      - node: TaskListCache
+        action: evicts the stale cached TaskList entry for the user
+      - node: TaskList
+        action: queries updated Task records for the user
+      - node: TaskListView
+        action: renders and returns updated task list with the renamed task to user
+
+  UserCompleteTask:
+    steps:
+      - node: _actors/User
+        action: sends complete request with task ID and SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: loads Task by ID from store
+      - node: Task
+        action: record retrieved with owner identity and current completion status
+      - node: TaskOwnership
+        action: asserts owner field matches authenticated user identity
+      - node: CompleteTaskProcess
+        action: updates Task record status to complete in store
+      - node: TaskListCache
+        action: evicts the stale cached TaskList entry for the user
+      - node: TaskList
+        action: queries updated Task records for the user
+      - node: TaskListView
+        action: renders and returns updated task list to user
+
+  UserDeleteTask:
+    steps:
+      - node: _actors/User
+        action: sends delete request with task ID and SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: loads Task by ID from store
+      - node: Task
+        action: record retrieved with owner identity and title
+      - node: TaskOwnership
+        action: asserts owner field matches authenticated user identity
+      - node: DeleteTaskProcess
+        action: removes Task record from store
+      - node: TaskListCache
+        action: evicts the stale cached TaskList entry for the user
+      - node: TaskList
+        action: queries updated Task records for the user
+      - node: TaskListView
+        action: renders and returns updated task list to user
+
+  UnauthenticatedTaskAccess:
+    steps:
+      - node: _actors/Guest
+        action: attempts to access task endpoint without a SessionToken
+      - node: TaskAuthGuard
+        action: finds no SessionToken present in request
+      - node: TaskAuthGuard
+        action: rejects request with 401 unauthorized
+      - node: _actors/Guest
+        action: is redirected to auth/LoginForm
+
+  HorizontalAbuseAttempt:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: sends task mutation request with a manipulated task ID and valid SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is structurally valid and not expired
+      - node: TaskAuthGuard
+        action: extracts attacker's user identity from validated token
+      - node: TaskOwnership
+        action: loads target Task by ID from store
+      - node: Task
+        action: record retrieved with owner identity belonging to a different user
+      - node: TaskOwnership
+        action: detects owner mismatch and rejects request with 403 forbidden
+
+  TaskNotFound:
+    steps:
+      - node: _actors/User
+        action: sends complete or delete request with a task ID that does not exist in the store
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: attempts to load Task by the provided ID
+      - node: Task
+        action: store returns empty result; no record found for the given ID
+      - node: TaskOwnership
+        action: returns 404 not-found error without performing an ownership comparison
+      - node: TaskListView
+        action: renders current task list to user unchanged
+
+  CompleteAlreadyCompleteTask:
+    steps:
+      - node: _actors/User
+        action: sends complete request for a task already marked complete with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: loads Task by ID from store
+      - node: Task
+        action: loaded record reveals completed flag is already true
+      - node: TaskOwnership
+        action: confirms owner matches authenticated user identity
+      - node: IdempotentCompleteRule
+        action: detects already-complete state and signals CompleteTaskProcess to skip the write
+      - node: CompleteTaskProcess
+        action: skips the store write per IdempotentCompleteRule and returns current Task state
+      - node: TaskList
+        action: queries current Task records for the user without any change
+      - node: TaskListView
+        action: renders and returns task list showing the task already in complete state
+
+  CompleteDeleteRace:
+    steps:
+      - node: _actors/User
+        action: sends complete request for a task that is concurrently being deleted by another request
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: loads Task by ID; task exists at this moment and ownership is confirmed
+      - node: Task
+        action: record is present in store at the time of the ownership read
+      - node: TaskOwnership
+        action: confirms owner matches authenticated user identity
+      - node: CompleteTaskProcess
+        action: attempts to update Task record status to complete in store
+      - node: ConcurrentMutationGuard
+        action: detects the store returned zero rows affected because the concurrent delete committed first
+      - node: ConcurrentMutationGuard
+        action: maps the zero-row result to a not-found error and discards the mutation attempt
+      - node: TaskList
+        action: queries current Task records for the user; the deleted task no longer appears
+      - node: TaskListView
+        action: renders current task list to user without the deleted task
+
+  DeleteDeleteRace:
+    steps:
+      - node: _actors/User
+        action: sends a delete request for a task that was concurrently deleted by another session
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: loads Task by ID; task exists at this moment and ownership is confirmed
+      - node: Task
+        action: record is present in store at the time of the ownership read
+      - node: TaskOwnership
+        action: confirms owner matches authenticated user identity
+      - node: DeleteTaskProcess
+        action: attempts to remove Task record from store
+      - node: ConcurrentMutationGuard
+        action: detects the store returned zero rows affected because the concurrent delete committed first
+      - node: ConcurrentMutationGuard
+        action: maps the zero-row result to a not-found error and discards the mutation attempt
+      - node: TaskList
+        action: queries current Task records for the user; the deleted task no longer appears
+      - node: TaskListView
+        action: renders current task list to user without the deleted task
+
+  UserViewTasksPaginated:
+    steps:
+      - node: _actors/User
+        action: requests task list with a page cursor and page size parameter
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskPaginationRule
+        action: evaluates the requested page size against the configured maximum and clamps it if over limit
+      - node: TaskPaginationRule
+        action: validates the cursor value is well-formed and belongs to the requesting user
+      - node: TaskListCache
+        action: checks for a valid non-expired cached entry for this user and cursor position
+      - node: TaskListCache
+        action: cache miss — forwards to TaskList for a fresh store query at the cursor position
+      - node: TaskList
+        action: queries Task records for the user scoped to the cursor position and clamped page size
+      - node: TaskList
+        action: returns the page of Task records along with a next-page cursor value
+      - node: TaskListCache
+        action: stores the page result with a short TTL keyed to the user identity and cursor
+      - node: TaskListView
+        action: renders the paginated task list with next and previous cursor navigation to user
+
+  UserHitsTaskCreationLimit:
+    steps:
+      - node: _actors/User
+        action: submits a new task title when already at the per-user task cap
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskForm
+        action: forwards the submitted title to validation
+      - node: TaskTitleRequired
+        action: confirms title is not empty or whitespace
+      - node: TaskCountLimitRule
+        action: queries current Task count for the user from the store
+      - node: TaskCountLimitRule
+        action: detects count is at or above the configured per-user cap
+      - node: TaskCountLimitRule
+        action: rejects the creation request with a limit-reached error
+      - node: CreateTaskProcess
+        action: is never invoked; no Task record is written to the store
+      - node: TaskListView
+        action: renders current task list unchanged with a limit-reached indicator to user
+
+  TaskListCacheHit:
+    steps:
+      - node: _actors/User
+        action: requests task list page with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskListCache
+        action: checks for a valid cached entry keyed to the user identity
+      - node: TaskListCache
+        action: finds a non-expired TTL entry — cache hit
+      - node: TaskListCache
+        action: returns the cached Task records without issuing any store query
+      - node: TaskListView
+        action: renders and returns the task list from cached data
+
+  TaskListCacheMiss:
+    steps:
+      - node: _actors/User
+        action: requests task list page with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskListCache
+        action: checks for a valid cached entry keyed to the user identity
+      - node: TaskListCache
+        action: finds no entry or an expired TTL — cache miss
+      - node: TaskList
+        action: queries all Task records for the user from the store
+      - node: TaskListCache
+        action: stores the returned Task records with a short TTL keyed to the user identity
+      - node: TaskListView
+        action: renders and returns the task list from freshly queried store data
+
+  TaskListCacheInvalidation:
+    steps:
+      - node: CreateTaskProcess
+        action: commits a new Task record to the store successfully
+      - node: TaskListCache
+        action: receives invalidation signal for the affected user identity
+      - node: TaskListCache
+        action: evicts the stale TaskList entry for that user from the cache
+      - node: TaskListCache
+        action: confirms eviction; the next view request for this user will trigger a cache miss and a fresh store query
+
+  EmptyTitleRejection:
+    steps:
+      - node: _actors/User
+        action: submits task creation request with an empty or whitespace-only title
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskForm
+        action: forwards the empty title to validation
+      - node: TaskTitleRequired
+        action: detects the title is empty or contains only whitespace characters
+      - node: TaskTitleRequired
+        action: rejects the request with a validation error identifying the title requirement
+      - node: TaskForm
+        action: returns the validation error to the user without invoking CreateTaskProcess
+      - node: CreateTaskProcess
+        action: is never invoked; no Task record is written to the store
+
+  ExpiredTokenTaskAccess:
+    steps:
+      - node: _actors/User
+        action: sends a task request carrying a SessionToken that has passed its expiry time
+      - node: TaskAuthGuard
+        action: forwards the SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: evaluates token signature and expiry timestamp — token is expired
+      - node: auth/SessionToken
+        action: returns expired-token error to TaskAuthGuard
+      - node: TaskAuthGuard
+        action: receives expired-token error and rejects the request with 401 unauthorized
+      - node: _actors/User
+        action: is redirected to auth/LoginForm to re-authenticate
+
+  InvalidPaginationCursor:
+    steps:
+      - node: _actors/User
+        action: sends paginated task list request with a malformed or foreign-user cursor value
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskPaginationRule
+        action: evaluates the requested page size — within the configured maximum
+      - node: TaskPaginationRule
+        action: validates the cursor value against expected format and user identity binding
+      - node: TaskPaginationRule
+        action: detects cursor is malformed or bound to a different user identity — rejects with 400 bad request
+      - node: TaskListCache
+        action: is never queried; no Task records are returned
+
+  TaskStoreReadFailure:
+    steps:
+      - node: _actors/User
+        action: requests task list page with valid SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskListCache
+        action: checks for a cached entry — cache miss, forwards to store
+      - node: TaskList
+        action: issues query to store for Task records scoped to the user identity
+      - node: TaskList
+        action: receives storage error from the store — query failed
+      - node: TaskListCache
+        action: does not cache the error result; existing cache entry is not updated
+      - node: TaskListView
+        action: is never rendered; TaskAuthGuard returns 503 service unavailable to the user
+
+  TaskCreateStoreFailed:
+    steps:
+      - node: _actors/User
+        action: submits a valid task title via TaskForm with SessionToken
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskForm
+        action: forwards the title to validation
+      - node: TaskTitleRequired
+        action: confirms title is not empty or whitespace
+      - node: CreateTaskProcess
+        action: attempts to write new Task record to the store
+      - node: CreateTaskProcess
+        action: receives storage error — write failed, no Task record was committed
+      - node: TaskListCache
+        action: is not invalidated because no mutation was successfully committed to the store
+      - node: CreateTaskProcess
+        action: returns 500 internal server error to the user
+      - node: TaskListView
+        action: renders current unchanged task list to the user
+
+  SessionHijackTaskAccess:
+    steps:
+      - node: _actors/SessionHijacker
+        action: presents a stolen SessionToken belonging to a victim user to the task list endpoint
+      - node: TaskAuthGuard
+        action: forwards the stolen SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is cryptographically valid and not expired — the token was stolen, not forged
+      - node: TaskAuthGuard
+        action: extracts the victim's user identity from the validated stolen token
+      - node: TaskListCache
+        action: checks for a cached entry keyed to the victim's user identity
+      - node: TaskListCache
+        action: cache miss — forwards to TaskList for a fresh store query under the victim's identity
+      - node: TaskList
+        action: queries all Task records scoped to the victim's user identity
+      - node: TaskListCache
+        action: stores the victim's Task records in cache keyed to the victim's identity
+      - node: TaskListView
+        action: renders and returns the victim's full task list to the hijacker — tasks module has no mechanism to detect the hijack; defense relies entirely on auth module invalidating the stolen token
+
+  TaskTitleInjectionAttempt:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: submits a task creation request with a title containing a script tag, SQL metacharacters, or template injection payload
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts attacker's user identity from validated token
+      - node: TaskForm
+        action: forwards the submitted title to the validation pipeline
+      - node: TaskTitleRequired
+        action: evaluates whether title is non-empty — the injection payload is non-empty and passes this check
+      - node: TaskInputSanitizer
+        action: scans the title for HTML tags, script content, SQL metacharacters, and template injection sequences
+      - node: TaskInputSanitizer
+        action: detects a dangerous pattern in the submitted title
+      - node: TaskInputSanitizer
+        action: rejects the request with 400 bad request and returns the specific violation to the client
+      - node: CreateTaskProcess
+        action: is never invoked; no Task record is written to the store
+
+  TaskEnumerationAttack:
+    steps:
+      - node: _actors/HorizontalAbuser
+        action: systematically sends task read and mutation requests with sequentially or randomly guessed task IDs across many requests
+      - node: TaskAuthGuard
+        action: validates the attacker's SessionToken on each request — passes each time
+      - node: auth/SessionToken
+        action: confirms token is valid and not expired — passes each time
+      - node: TaskAuthGuard
+        action: extracts the attacker's user identity — succeeds each time
+      - node: TaskOwnership
+        action: loads the target Task by the guessed ID from the store on each request
+      - node: Task
+        action: store returns the record if the ID exists; owner identity belongs to a different user
+      - node: TaskOwnership
+        action: detects owner mismatch and rejects each request with 403 forbidden
+      - node: TaskOwnership
+        action: emits no throttle signal and records no per-attacker penalty for the repeated rejections
+      - node: TaskListView
+        action: is never reached; the attacker sustains full enumeration throughput with no task-layer rate limit applied
+
+  EditDeleteRace:
+    steps:
+      - node: _actors/User
+        action: sends an edit request for a task that is concurrently being deleted by another session
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskOwnership
+        action: loads Task by ID; task exists at this moment and ownership is confirmed
+      - node: Task
+        action: record is present in store at the time of the ownership read
+      - node: TaskOwnership
+        action: confirms owner matches authenticated user identity
+      - node: EditTaskProcess
+        action: attempts to overwrite Task record title in store
+      - node: ConcurrentMutationGuard
+        action: detects the store returned zero rows affected because the concurrent delete committed first
+      - node: ConcurrentMutationGuard
+        action: maps the zero-row result to a not-found error and discards the edit attempt
+      - node: TaskList
+        action: queries current Task records for the user; the deleted task no longer appears
+      - node: TaskListView
+        action: renders current task list to user without the deleted task
+
+  TaskCountLimitCreationRace:
+    steps:
+      - node: _actors/User
+        action: two concurrent task creation requests arrive simultaneously when the user is one task below the per-user cap
+      - node: TaskAuthGuard
+        action: both requests validate their SessionToken independently — both pass
+      - node: auth/SessionToken
+        action: confirms token is valid for both requests
+      - node: TaskAuthGuard
+        action: extracts user identity from both validated tokens
+      - node: TaskForm
+        action: both requests forward their submitted titles to validation independently
+      - node: TaskTitleRequired
+        action: both titles pass the non-empty check independently
+      - node: TaskCountLimitRule
+        action: first request queries the current Task count for the user — count is at cap minus one
+      - node: TaskCountLimitRule
+        action: second request queries the current Task count at nearly the same instant — also returns cap minus one
+      - node: TaskCountLimitRule
+        action: both requests conclude the count is below the cap and allow creation to proceed
+      - node: CreateTaskProcess
+        action: first request writes new Task record to the store successfully
+      - node: CreateTaskProcess
+        action: second request writes new Task record to the store successfully — no unique constraint prevents this
+      - node: Task
+        action: two new records committed; user now holds cap-plus-one tasks in the store
+      - node: TaskListCache
+        action: both requests evict the cached TaskList entry for the user
+      - node: TaskList
+        action: queries updated Task records for the user — returns the over-limit set
+      - node: TaskListView
+        action: renders the full task list including the over-limit record; the count check was not atomic with the write
+
+  CachePopulationRace:
+    steps:
+      - node: _actors/User
+        action: requests task list page from a second session while a task creation is in flight from a first session
+      - node: TaskAuthGuard
+        action: forwards SessionToken to auth module for validation — passes
+      - node: auth/SessionToken
+        action: confirms token is valid, not expired, and not invalidated
+      - node: TaskAuthGuard
+        action: extracts user identity from validated token
+      - node: TaskListCache
+        action: checks for a cached entry — finds none; cache miss
+      - node: TaskList
+        action: issues query to store for all Task records scoped to the user identity — query begins
+      - node: CreateTaskProcess
+        action: commits the new Task record to the store from the concurrent first session
+      - node: TaskListCache
+        action: receives cache eviction signal from the completed create — evicts any existing entry
+      - node: TaskList
+        action: returns the query result to the second session — the result reflects store state before the new task was committed
+      - node: TaskListCache
+        action: stores the stale query result under the user identity with a short TTL — the newly created task is absent from this cache entry
+      - node: TaskListView
+        action: renders the task list from the stale result; the new task is missing until the TTL expires and the next request triggers a fresh store query
+
+  EditEditRace:
+    steps:
+      - node: _actors/User
+        action: two concurrent edit requests for the same task arrive simultaneously from two browser tabs carrying different updated titles
+      - node: TaskAuthGuard
+        action: both requests validate their SessionToken independently — both pass
+      - node: auth/SessionToken
+        action: confirms token is valid for both requests
+      - node: TaskAuthGuard
+        action: extracts user identity from both validated tokens
+      - node: TaskEditForm
+        action: both requests forward their respective updated titles to validation
+      - node: TaskTitleRequired
+        action: both updated titles pass the non-empty check independently
+      - node: TaskOwnership
+        action: both requests load the Task by ID from the store — task is present and ownership confirmed for both
+      - node: Task
+        action: same record retrieved by both requests; no version or lock field is read
+      - node: TaskOwnership
+        action: both requests confirm owner matches authenticated user identity
+      - node: EditTaskProcess
+        action: first request writes its updated title to the Task record in the store
+      - node: EditTaskProcess
+        action: second request writes its updated title to the Task record — silently overwrites the first title
+      - node: Task
+        action: store contains only the second title; the first edit is lost with no error or conflict signal returned to either request
+      - node: TaskListCache
+        action: both requests evict the cached TaskList entry
+      - node: TaskList
+        action: queries the current Task records — returns the task with the second title only
+      - node: TaskListView
+        action: renders the task list showing the winning title; the losing edit receives no indication its write was overwritten
+
+  EditCompleteRace:
+    steps:
+      - node: _actors/User
+        action: sends an edit request for a task's title while another session concurrently sends a complete request for the same task
+      - node: TaskAuthGuard
+        action: both requests validate their SessionToken independently — both pass
+      - node: auth/SessionToken
+        action: confirms token is valid for both requests
+      - node: TaskAuthGuard
+        action: extracts user identity from both validated tokens
+      - node: TaskOwnership
+        action: both requests load the Task by ID from the store — task is present and ownership confirmed for both
+      - node: Task
+        action: same record retrieved by both requests showing incomplete status and current title
+      - node: TaskOwnership
+        action: both requests confirm owner matches authenticated user identity
+      - node: CompleteTaskProcess
+        action: writes completed status to the Task record in the store — updates only the completion field
+      - node: EditTaskProcess
+        action: writes the updated title to the Task record in the store — updates only the title field
+      - node: Task
+        action: record now holds the new title and the completed status; both mutations applied to independent fields without conflict
+      - node: TaskListCache
+        action: both requests evict the cached TaskList entry
+      - node: TaskList
+        action: queries the updated Task records — returns the task with the new title and completed status
+      - node: TaskListView
+        action: renders the task list showing the task as completed with the updated title; correct outcome depends on EditTaskProcess performing a targeted field update rather than a full record overwrite

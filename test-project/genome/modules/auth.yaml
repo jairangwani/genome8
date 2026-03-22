@@ -1,0 +1,601 @@
+spec_sections: [2]
+
+nodes:
+  SignupForm:
+    type: interface
+    description: UI form collecting email and password for new account registration
+
+  LoginForm:
+    type: interface
+    description: UI form collecting credentials for authentication
+
+  SignupProcess:
+    type: process
+    description: Validates registration input, checks for duplicate email, and creates a new account
+
+  LoginProcess:
+    type: process
+    description: Looks up credentials, verifies password, and issues a session token on success
+
+  LogoutProcess:
+    type: process
+    description: Receives logout request and invalidates the current session token
+
+  PasswordHasher:
+    type: process
+    description: Hashes passwords on registration and verifies them on login
+
+  TokenIssuer:
+    type: process
+    description: Generates and signs short-lived session tokens
+
+  TokenSignatureVerifier:
+    type: process
+    description: Validates the cryptographic signature on every incoming token before any session store lookup, rejecting forged or tampered tokens immediately
+
+  RateLimiter:
+    type: process
+    description: Tracks login and signup attempt counts per IP and account, blocking excess requests
+
+  LoginTimingGuard:
+    type: process
+    description: Normalizes response timing and error messages on login so valid and invalid emails produce identical responses, preventing email enumeration via timing side-channels
+
+  TokenValidationCache:
+    type: process
+    description: In-memory cache of recently validated session tokens; reduces session store reads on hot-path validation
+
+  ExpiredTokenCleanupProcess:
+    type: process
+    description: Periodic background job that batch-deletes expired SessionToken records from the session store to prevent unbounded growth
+
+  UserCredential:
+    type: artifact
+    description: Stored record of a user's email and hashed password
+
+  SessionToken:
+    type: artifact
+    description: Short-lived signed token proving an authenticated session
+
+  PasswordPolicy:
+    type: rule
+    description: Enforces minimum password length and complexity requirements
+
+  SessionExpiry:
+    type: rule
+    description: Defines token lifetime and triggers automatic invalidation on expiry
+
+  FormInputValidationRule:
+    type: rule
+    description: Enforces that all form submissions contain a syntactically valid email address and no required fields are absent; shared invariant applied by both LoginForm and SignupForm, preventing duplicated field-level validation logic in each form
+
+journeys:
+  GuestSignup:
+    steps:
+      - node: _actors/Guest
+        action: submits email and password via signup form
+      - node: SignupForm
+        action: validates input format and completeness
+      - node: PasswordPolicy
+        action: checks password meets strength requirements
+      - node: SignupProcess
+        action: queries store to check email is not already registered
+      - node: PasswordHasher
+        action: hashes the plain-text password
+      - node: SignupProcess
+        action: writes new account record to store
+      - node: UserCredential
+        action: new record persisted to store containing the email and hashed password
+      - node: TokenIssuer
+        action: generates and signs a new SessionToken
+      - node: SignupProcess
+        action: returns SessionToken to the client, completing registration
+
+  WeakPasswordRejection:
+    steps:
+      - node: _actors/Guest
+        action: submits registration form with a password that does not meet policy requirements
+      - node: SignupForm
+        action: validates input format and completeness
+      - node: PasswordPolicy
+        action: evaluates the submitted password against minimum length and complexity requirements
+      - node: PasswordPolicy
+        action: detects the password fails one or more requirements and returns a validation error
+      - node: SignupProcess
+        action: returns the PasswordPolicy error to the client with specific requirement guidance
+      - node: PasswordHasher
+        action: is never invoked; UserCredential record is never created
+
+  SignupWithExistingEmail:
+    steps:
+      - node: _actors/Guest
+        action: submits registration form with an email that is already registered
+      - node: SignupForm
+        action: validates input format and completeness
+      - node: PasswordPolicy
+        action: checks password meets strength requirements
+      - node: SignupProcess
+        action: queries store to check email availability
+      - node: SignupProcess
+        action: forwards email to users/UniqueEmailRule for uniqueness verification
+      - node: users/UniqueEmailRule
+        action: queries the UserRecord store and finds an existing account with the same email
+      - node: users/UniqueEmailRule
+        action: returns a conflict signal to SignupProcess
+      - node: SignupProcess
+        action: returns 409 conflict error to client
+      - node: UserCredential
+        action: is never created; PasswordHasher is never invoked
+
+  UserLogin:
+    steps:
+      - node: _actors/User
+        action: submits email and password via login form
+      - node: LoginForm
+        action: validates input format and completeness
+      - node: RateLimiter
+        action: checks attempt count for this IP and email against threshold
+      - node: LoginProcess
+        action: looks up UserCredential by email
+      - node: UserCredential
+        action: record retrieved from store and forwarded to PasswordHasher
+      - node: PasswordHasher
+        action: verifies submitted password against stored hash
+      - node: TokenIssuer
+        action: generates and signs a new SessionToken
+      - node: LoginProcess
+        action: returns SessionToken to the client
+
+  WrongPasswordLogin:
+    steps:
+      - node: _actors/User
+        action: submits email and incorrect password via login form
+      - node: LoginForm
+        action: validates input format and completeness
+      - node: RateLimiter
+        action: checks attempt count for this IP and email — within threshold
+      - node: LoginProcess
+        action: looks up UserCredential by email
+      - node: UserCredential
+        action: record retrieved from store and forwarded to PasswordHasher
+      - node: PasswordHasher
+        action: verifies submitted password against stored hash — hash does not match
+      - node: RateLimiter
+        action: increments failure count for this IP and email combination
+      - node: LoginProcess
+        action: returns 401 invalid credentials to client without revealing which field was wrong
+
+  AdminLogin:
+    steps:
+      - node: _actors/Admin
+        action: submits email and password via login form
+      - node: LoginForm
+        action: validates input format and completeness
+      - node: RateLimiter
+        action: checks attempt count for this IP and email against threshold
+      - node: LoginProcess
+        action: looks up UserCredential by email
+      - node: UserCredential
+        action: record retrieved from store and forwarded to PasswordHasher
+      - node: PasswordHasher
+        action: verifies submitted password against stored hash
+      - node: TokenIssuer
+        action: generates and signs a new SessionToken embedding the admin user identity
+      - node: LoginProcess
+        action: returns SessionToken to the admin client
+
+  UserLogout:
+    steps:
+      - node: _actors/User
+        action: sends logout request with current SessionToken
+      - node: LogoutProcess
+        action: receives and validates the SessionToken
+      - node: TokenValidationCache
+        action: evicts the token entry from the cache immediately on logout
+      - node: LogoutProcess
+        action: marks SessionToken as invalidated in the session store
+      - node: LogoutProcess
+        action: clears session state and returns confirmation to client
+
+  SessionExpired:
+    steps:
+      - node: _actors/User
+        action: makes a request with an expired SessionToken
+      - node: SessionExpiry
+        action: evaluates token age against maximum lifetime
+      - node: LoginProcess
+        action: rejects request and returns 401 unauthorized
+      - node: _actors/User
+        action: is redirected to LoginForm to re-authenticate
+
+  LockedUserLoginAttempt:
+    steps:
+      - node: _actors/LockedUser
+        action: submits credentials via login form
+      - node: LoginForm
+        action: forwards credentials to LoginProcess
+      - node: LoginProcess
+        action: looks up UserCredential by email
+      - node: UserCredential
+        action: record loaded with account status flag showing locked
+      - node: LoginProcess
+        action: reads locked status and returns account-locked error to client
+
+  CredentialAttack:
+    steps:
+      - node: _actors/CredentialAttacker
+        action: submits repeated login attempts with credential list
+      - node: LoginForm
+        action: receives each login request
+      - node: RateLimiter
+        action: detects attempt count exceeding threshold for IP and email
+      - node: RateLimiter
+        action: blocks further attempts and returns 429 too many requests
+      - node: UserCredential
+        action: locked flag set on targeted account record after threshold breached
+      - node: LoginProcess
+        action: persists lock to UserCredential and returns 429 to attacker
+
+  BotRegistration:
+    steps:
+      - node: _actors/BotAccount
+        action: submits bulk signup requests from automated script
+      - node: SignupForm
+        action: receives each registration request
+      - node: RateLimiter
+        action: detects excessive signup attempts from same IP
+      - node: RateLimiter
+        action: blocks further registrations and returns 429 too many requests
+      - node: SignupProcess
+        action: discards blocked requests without writing any records
+
+  CachedTokenValidation:
+    steps:
+      - node: _actors/User
+        action: sends an authenticated request carrying a SessionToken
+      - node: TokenSignatureVerifier
+        action: validates the cryptographic signature on the incoming token
+      - node: TokenValidationCache
+        action: checks in-memory store for a valid non-expired entry matching the token value
+      - node: TokenValidationCache
+        action: cache hit — returns cached user identity to the calling module without querying the session store
+      - node: TokenValidationCache
+        action: cache miss — forwards the token to LoginProcess for a full session store lookup
+      - node: LoginProcess
+        action: queries the session store for the token record
+      - node: SessionToken
+        action: store returns the token record with its expiry timestamp
+      - node: SessionExpiry
+        action: evaluates the token expiry timestamp against the current time
+      - node: TokenValidationCache
+        action: stores the resolved user identity against the token value with a short TTL
+      - node: LoginProcess
+        action: returns the validated user identity to the calling module
+
+  TokenValidationCacheHit:
+    steps:
+      - node: _actors/User
+        action: sends an authenticated request carrying a SessionToken
+      - node: TokenSignatureVerifier
+        action: validates the cryptographic signature on the incoming token — structurally valid
+      - node: TokenValidationCache
+        action: checks in-memory cache and finds a valid non-expired entry matching the token value
+      - node: TokenValidationCache
+        action: returns the cached user identity to the calling module immediately; session store is never queried
+
+  TokenValidationCacheMiss:
+    steps:
+      - node: _actors/User
+        action: sends an authenticated request carrying a SessionToken
+      - node: TokenSignatureVerifier
+        action: validates the cryptographic signature on the incoming token — structurally valid
+      - node: TokenValidationCache
+        action: checks in-memory cache and finds no matching entry — cache miss
+      - node: LoginProcess
+        action: queries the session store for the token record
+      - node: SessionToken
+        action: store returns the token record with its expiry timestamp
+      - node: SessionExpiry
+        action: evaluates the token expiry timestamp against the current time — token is valid
+      - node: TokenValidationCache
+        action: stores the resolved user identity against the token value with a short TTL
+      - node: LoginProcess
+        action: returns the validated user identity to the calling module
+
+  ExpiredTokenCleanup:
+    steps:
+      - node: ExpiredTokenCleanupProcess
+        action: wakes on a configured scheduled interval
+      - node: SessionExpiry
+        action: provides the expiry threshold timestamp for the current cleanup window
+      - node: ExpiredTokenCleanupProcess
+        action: queries the session store for all SessionToken records whose expiry falls before the threshold
+      - node: SessionToken
+        action: store returns the set of expired token records matching the query
+      - node: TokenValidationCache
+        action: evicts any cached entries whose token values appear in the expired set
+      - node: ExpiredTokenCleanupProcess
+        action: issues a single batch delete of all expired SessionToken records from the session store
+      - node: ExpiredTokenCleanupProcess
+        action: logs the deleted token count and cleanup timestamp for operational monitoring
+
+  TokenForgeryAttempt:
+    steps:
+      - node: _actors/SessionHijacker
+        action: submits a request carrying a tampered or externally crafted SessionToken
+      - node: TokenSignatureVerifier
+        action: extracts the signature component from the incoming token
+      - node: TokenSignatureVerifier
+        action: verifies the signature against the server signing key
+      - node: TokenSignatureVerifier
+        action: detects signature mismatch — token was not issued by TokenIssuer
+      - node: TokenSignatureVerifier
+        action: rejects the request immediately with 401 unauthorized
+      - node: SessionToken
+        action: store is never queried — forgery detected before any session lookup occurs
+
+  StaleTokenReuseAfterLogout:
+    steps:
+      - node: _actors/SessionHijacker
+        action: presents a SessionToken that was previously invalidated during a legitimate logout
+      - node: TokenSignatureVerifier
+        action: validates the cryptographic signature — token is structurally valid
+      - node: TokenValidationCache
+        action: checks cache — entry was evicted at logout, cache miss returned
+      - node: LoginProcess
+        action: queries the session store for the token record
+      - node: SessionToken
+        action: store returns the record with invalidated status flag set at logout
+      - node: LoginProcess
+        action: detects invalidated status and returns 401 unauthorized
+      - node: _actors/SessionHijacker
+        action: is denied access despite holding a cryptographically valid token
+
+  LoginTimingAttack:
+    steps:
+      - node: _actors/CredentialAttacker
+        action: submits login requests with varying email addresses to probe which are registered
+      - node: LoginForm
+        action: forwards each request to LoginProcess
+      - node: LoginProcess
+        action: looks up UserCredential by each submitted email
+      - node: UserCredential
+        action: query returns found or not-found depending on whether email is registered
+      - node: LoginTimingGuard
+        action: applies a fixed minimum response duration regardless of lookup outcome
+      - node: LoginTimingGuard
+        action: returns the same generic credentials-invalid message for both found and not-found cases
+      - node: _actors/CredentialAttacker
+        action: receives uniform timing and error messages and cannot determine which emails are registered
+
+  PasswordSprayAttempt:
+    steps:
+      - node: _actors/CredentialAttacker
+        action: submits login attempts using one common password across many different account emails
+      - node: LoginForm
+        action: receives each request targeting a different email address
+      - node: RateLimiter
+        action: tracks attempt count per source IP across all targeted accounts
+      - node: RateLimiter
+        action: detects high request volume from the same IP and blocks the source with 429 too many requests
+      - node: LoginProcess
+        action: is never reached for blocked spray requests
+      - node: UserCredential
+        action: individual account records remain unlocked since no per-account threshold is crossed
+
+  ConcurrentSignupRace:
+    steps:
+      - node: _actors/Guest
+        action: two concurrent signup requests arrive simultaneously carrying the same email address
+      - node: SignupForm
+        action: both requests pass format validation independently
+      - node: PasswordPolicy
+        action: both requests pass password policy check independently
+      - node: SignupProcess
+        action: first request queries the credential store for the email — not found, uniqueness check passes
+      - node: SignupProcess
+        action: second request queries the credential store at nearly the same instant — also not found, also passes
+      - node: PasswordHasher
+        action: both requests hash their respective passwords independently
+      - node: SignupProcess
+        action: first request writes new UserCredential record and commits to the store
+      - node: SignupProcess
+        action: second request attempts to write UserCredential — database unique constraint on email rejects the insert
+      - node: SignupProcess
+        action: second request receives the unique constraint violation and returns 409 conflict to client
+      - node: UserCredential
+        action: exactly one credential record exists for the email; the race is resolved at the storage layer
+
+  LockedAccountCacheRace:
+    steps:
+      - node: _actors/User
+        action: sends a request carrying a SessionToken that is simultaneously being invalidated by an account lock
+      - node: users/AccountLockProcess
+        action: marks the SessionToken as invalidated in the session store and issues a cache eviction signal to TokenValidationCache
+      - node: TokenSignatureVerifier
+        action: validates the cryptographic signature on the in-flight request — structurally valid
+      - node: TokenValidationCache
+        action: checks cache — eviction signal has not yet been processed; returns a cache hit with the cached identity
+      - node: TokenValidationCache
+        action: the in-flight request receives user identity from the stale cache entry before eviction completes
+      - node: users/AccountLockProcess
+        action: cache eviction completes and removes the token entry from TokenValidationCache
+      - node: SessionToken
+        action: session store record now shows invalidated status; all subsequent requests after cache eviction will be rejected
+      - node: LoginProcess
+        action: rejects the next request from the locked user with 401 — at most one request may slip through during the eviction window
+
+  SimultaneousLogout:
+    steps:
+      - node: _actors/User
+        action: sends two concurrent logout requests carrying the same SessionToken from different tabs or devices
+      - node: LogoutProcess
+        action: both requests are received and begin processing independently
+      - node: TokenValidationCache
+        action: first request evicts the token entry from the in-memory cache
+      - node: LogoutProcess
+        action: first request marks the SessionToken as invalidated in the session store
+      - node: TokenValidationCache
+        action: second request attempts to evict the token entry — entry is already absent; eviction is a no-op
+      - node: LogoutProcess
+        action: second request attempts to mark the SessionToken as invalidated — record is already invalidated; update is idempotent
+      - node: LogoutProcess
+        action: both requests return logout confirmation to the client; token state is consistent
+
+  SignupTokenIssuanceFailure:
+    steps:
+      - node: _actors/Guest
+        action: submits email and password via signup form
+      - node: SignupForm
+        action: validates input format and completeness
+      - node: PasswordPolicy
+        action: checks password meets strength requirements
+      - node: SignupProcess
+        action: queries store to check email is not already registered
+      - node: PasswordHasher
+        action: hashes the plain-text password
+      - node: SignupProcess
+        action: writes new UserCredential record to the store
+      - node: UserCredential
+        action: new record persisted to store — credential exists but no session has been established yet
+      - node: TokenIssuer
+        action: attempts to generate and sign a new SessionToken — fails due to signing service error
+      - node: SignupProcess
+        action: receives token issuance failure; UserCredential already committed cannot be rolled back
+      - node: SignupProcess
+        action: returns 500 error to client indicating registration partially succeeded but session could not be established
+      - node: LoginProcess
+        action: on a subsequent login attempt the user can authenticate normally using the committed UserCredential
+
+  MalformedLoginInput:
+    steps:
+      - node: _actors/User
+        action: submits login form with an invalid email format or a missing required field
+      - node: LoginForm
+        action: parses the submitted fields and detects the email format is invalid or a required field is absent
+      - node: FormInputValidationRule
+        action: evaluates the submitted fields and returns a field-level validation error identifying the malformed field
+      - node: LoginForm
+        action: returns the validation error to the client
+      - node: RateLimiter
+        action: is never consulted — request did not reach processing pipeline
+      - node: LoginProcess
+        action: is never invoked; no credential lookup or token operation is performed
+
+  MalformedSignupInput:
+    steps:
+      - node: _actors/Guest
+        action: submits signup form with an invalid email format or a missing required field
+      - node: SignupForm
+        action: parses the submitted fields and detects the email format is invalid or a required field is absent
+      - node: FormInputValidationRule
+        action: evaluates the submitted fields and returns a field-level validation error identifying the malformed field
+      - node: SignupForm
+        action: returns the validation error to the client
+      - node: PasswordPolicy
+        action: is never evaluated — request did not pass form validation
+      - node: SignupProcess
+        action: is never invoked; no credential record or token is created
+
+  LoginTokenIssuanceFailure:
+    steps:
+      - node: _actors/User
+        action: submits valid credentials via login form
+      - node: LoginForm
+        action: validates input format and completeness
+      - node: RateLimiter
+        action: checks attempt count for this IP and email — within threshold
+      - node: LoginProcess
+        action: looks up UserCredential by email
+      - node: UserCredential
+        action: record retrieved from store and forwarded to PasswordHasher
+      - node: PasswordHasher
+        action: verifies submitted password against stored hash — hash matches
+      - node: TokenIssuer
+        action: attempts to generate and sign a new SessionToken — fails due to signing service error
+      - node: LoginProcess
+        action: receives token issuance failure from TokenIssuer
+      - node: LoginProcess
+        action: returns 500 internal server error to the client — credentials were valid but no session could be established
+      - node: UserCredential
+        action: remains unchanged; no partial state is created since no token record was written
+
+  CredentialStoreReadFailure:
+    steps:
+      - node: _actors/User
+        action: submits valid credentials via login form
+      - node: LoginForm
+        action: validates input format and completeness
+      - node: RateLimiter
+        action: checks attempt count for this IP and email — within threshold
+      - node: LoginProcess
+        action: issues query to credential store to look up UserCredential by email
+      - node: UserCredential
+        action: store returns a read error — connection failed or query timed out
+      - node: LoginProcess
+        action: receives the store error and cannot verify credentials or determine account existence
+      - node: LoginProcess
+        action: returns 503 service unavailable to the client without revealing whether the email is registered
+
+  SignupStoreWriteFailure:
+    steps:
+      - node: _actors/Guest
+        action: submits email and password via signup form
+      - node: SignupForm
+        action: validates input format and completeness
+      - node: PasswordPolicy
+        action: checks password meets strength requirements
+      - node: SignupProcess
+        action: queries store to check email is not already registered — email is available
+      - node: PasswordHasher
+        action: hashes the plain-text password successfully
+      - node: SignupProcess
+        action: attempts to write new UserCredential record to the store
+      - node: UserCredential
+        action: store returns a write error — connection failed or disk is unavailable
+      - node: SignupProcess
+        action: receives the store error; no UserCredential record was committed
+      - node: SignupProcess
+        action: returns 500 internal server error to the client — registration failed with no partial state created
+      - node: TokenIssuer
+        action: is never invoked; no SessionToken is issued
+
+  SessionStoreReadFailure:
+    steps:
+      - node: _actors/User
+        action: sends an authenticated request carrying a SessionToken
+      - node: TokenSignatureVerifier
+        action: validates the cryptographic signature on the incoming token — structurally valid
+      - node: TokenValidationCache
+        action: checks in-memory cache for a matching entry — cache miss
+      - node: TokenValidationCache
+        action: forwards the token to LoginProcess for a full session store lookup
+      - node: LoginProcess
+        action: issues query to the session store to retrieve the SessionToken record
+      - node: SessionToken
+        action: store returns a read error — connection failed or query timed out
+      - node: LoginProcess
+        action: receives the store error and cannot confirm token validity or user identity
+      - node: LoginProcess
+        action: returns 503 service unavailable to the client — request is rejected without querying application data
+      - node: TokenValidationCache
+        action: does not cache the error result; the failed lookup leaves no entry in the cache
+
+  LogoutSessionStoreFailure:
+    steps:
+      - node: _actors/User
+        action: sends logout request with current SessionToken
+      - node: LogoutProcess
+        action: receives and validates the SessionToken
+      - node: TokenValidationCache
+        action: evicts the token entry from the in-memory cache — eviction succeeds
+      - node: LogoutProcess
+        action: attempts to write the SessionToken invalidation record to the session store
+      - node: SessionToken
+        action: store returns a write error — connection failed or write timed out
+      - node: LogoutProcess
+        action: receives the store error; cache is now clear but the session store record still shows the token as valid
+      - node: LogoutProcess
+        action: returns 500 internal server error to the client indicating logout could not be fully completed
+      - node: SessionToken
+        action: remains valid in the session store; any request with the token after cache TTL expires will succeed until the store record is eventually invalidated or the token expires naturally

