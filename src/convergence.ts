@@ -375,82 +375,200 @@ Write the file NOW using the Write tool.`);
     }
   }
 
-  // ═══ STEP 4 — Convergence Loop ═══
-  console.log('\n═══ STEP 4: Convergence Loop ═══');
+  // ═══ STEP 4 — Convergence (creation + validation + audit) ═══
+  // Creation is BOUNDED (modules × relevant lenses). Not an infinite loop.
+  // Convergence is CODE (compile). Instant, deterministic.
+  // Audit is TARGETED (fix specific gaps, not "what's missing?").
+  console.log('\n═══ STEP 4: Convergence ═══');
 
-  let round = 0;
-  let noChangeRounds = 0;
-  let previousNodeCount = 0;
-  let previousJourneyCount = 0;
+  // ── 4a: Discover domain-specific lenses ──
+  console.log('\n  ── Step 4a: Discover Lenses ──');
+  const lensResponse = await worker.call(`Given this project, what perspectives should we examine each module from?
 
-  while (true) {
-    const result = doCompile();
-    const stats = result.index._stats;
+For software: happy paths, failures, threats, edge cases, scale, completeness, simplicity, consistency.
+For a hospital: patient safety, compliance, emergencies, staff workflows, billing, privacy.
+For a game: gameplay loops, balance, monetization, cheating, onboarding.
 
-    // Check if anything changed
-    const delta = (stats.total_nodes - previousNodeCount) + (stats.total_journeys - previousJourneyCount);
-    if (delta === 0) {
-      noChangeRounds++;
-    } else {
-      noChangeRounds = 0;
-    }
-    previousNodeCount = stats.total_nodes;
-    previousJourneyCount = stats.total_journeys;
+What perspectives matter for THIS project? Return a simple list.
 
-    console.log(`  Round ${round}: ${stats.total_nodes}n, ${stats.total_journeys}j, ${stats.total_connections}c | delta: ${delta} | quiet: ${noChangeRounds}/3`);
+PROJECT SPEC (first 2000 chars):
+${spec.substring(0, 2000)}
 
-    // Check convergence
-    if (noChangeRounds >= 3) {
-      console.log('\n  Activity stopped for 3 rounds. Running depth check...');
+ORGANIZATION:
+${orgContent}
 
-      const depthResult = await depthCheck(result, spec);
-      if (depthResult.converged) {
-        console.log('  DEPTH CHECK PASSED — ALL 3 LEVELS CONVERGED');
-        break;
-      } else {
-        console.log(`  Depth check found gaps: ${depthResult.gaps.join(', ')}`);
-        console.log('  Continuing convergence...');
-        noChangeRounds = 0;
+Return ONLY a numbered list of perspectives. No explanations.`);
+
+  const lenses = lensResponse.split('\n')
+    .map(l => l.replace(/^\d+[\.\)]\s*/, '').trim())
+    .filter(l => l.length > 3 && l.length < 200);
+  console.log(`  Discovered ${lenses.length} lenses: ${lenses.map(l => l.substring(0, 40)).join(', ')}`);
+
+  // Use defaults if LLM returned garbage
+  const effectiveLenses = lenses.length >= 3 ? lenses : LENSES;
+
+  // ── 4a: Lens relevance matrix ──
+  const allModuleNames = extractModuleNames(orgContent);
+  console.log(`  Building lens relevance matrix (${allModuleNames.length} modules × ${effectiveLenses.length} lenses)...`);
+  const matrixResponse = await worker.call(`Given these modules and perspectives, which perspectives are RELEVANT for each module?
+Not all perspectives apply to all modules. A data store doesn't need "threats." A policy doesn't need "scale."
+
+MODULES: ${allModuleNames.join(', ')}
+
+PERSPECTIVES:
+${effectiveLenses.map((l, i) => `${i + 1}. ${l}`).join('\n')}
+
+For each module, list the NUMBERS of relevant perspectives.
+Format: module_name: 1, 3, 5, 7
+One line per module. Only include relevant numbers.`);
+
+  // Parse matrix
+  const relevanceMatrix = new Map<string, number[]>();
+  for (const line of matrixResponse.split('\n')) {
+    const match = line.match(/^[\s-]*(\w[\w-]*)[\s:]+(.+)/);
+    if (match) {
+      const mod = match[1];
+      const nums = match[2].match(/\d+/g)?.map(n => parseInt(n) - 1).filter(n => n >= 0 && n < effectiveLenses.length) || [];
+      if (allModuleNames.includes(mod) && nums.length > 0) {
+        relevanceMatrix.set(mod, nums);
       }
     }
+  }
 
-    // Pick thinnest module and lens
-    const thinnest = findThinnestModule(result);
-    const lens = LENSES[round % LENSES.length];
+  // Fallback: if matrix parsing failed, use all lenses for all modules
+  for (const mod of allModuleNames) {
+    if (!relevanceMatrix.has(mod)) {
+      relevanceMatrix.set(mod, effectiveLenses.map((_, i) => i));
+    }
+  }
 
-    console.log(`  Focus: ${thinnest} | Lens: ${lens.split('(')[0].trim()}`);
+  const totalPairs = [...relevanceMatrix.values()].reduce((sum, lenses) => sum + lenses.length, 0);
+  console.log(`  Relevance matrix: ${totalPairs} module-lens pairs (vs ${allModuleNames.length * effectiveLenses.length} if all)`);
 
-    const excerpt = generateModuleExcerpt(thinnest, result);
-    const modFilePath = path.join(modulesDir, `${thinnest}.yaml`);
+  // ── 4a: Creation passes (bounded) ──
+  console.log('\n  ── Step 4a: Creation Passes ──');
+  let passCount = 0;
 
-    await worker.call(`Current state of ${thinnest} module:
+  for (const modName of allModuleNames) {
+    const modLenses = relevanceMatrix.get(modName) || [];
+    for (const lensIdx of modLenses) {
+      const lens = effectiveLenses[lensIdx];
+      const result = doCompile();
+      const excerpt = generateModuleExcerpt(modName, result);
+      const modFilePath = path.join(modulesDir, `${modName}.yaml`);
+
+      console.log(`  [${passCount + 1}/${totalPairs}] ${modName} | ${lens.substring(0, 40)}`);
+
+      await worker.call(`Current state of ${modName} module:
 
 ${excerpt}
 
-Lens: ${lens}
+Perspective: ${lens}
 
-From this perspective, what actors, nodes, and journeys are MISSING from ${thinnest}.yaml?
+From this perspective, what nodes and journeys are MISSING from ${modName}.yaml?
 
 1. Read the current file at ${modFilePath}
-2. Add what's missing (actors + nodes + journeys together)
+2. Add what's missing
 3. Be GRANULAR — every system action is a separate step
 4. Don't duplicate what exists (check the excerpt above)
 5. Write the COMPLETE updated file back to ${modFilePath} using the Write tool`);
 
-    round++;
-
-    // Safety: max 100 rounds
-    if (round >= config.maxRounds) {
-      console.log(`  Max rounds (${config.maxRounds}) reached. Stopping.`);
-      break;
+      passCount++;
     }
   }
 
-  // ═══ STEP 5 — Publish ═══
+  console.log(`  Creation complete: ${passCount} passes done.`);
+
+  // ── 4b: Compile convergence (code, instant) ──
+  console.log('\n  ── Step 4b: Compile Convergence ──');
+  let prevErrorCount = Infinity;
+
+  while (true) {
+    const result = doCompile();
+    const errors = result.issues.filter(i => i.severity === 'error');
+    const orphans = Object.entries(result.index.nodes).filter(([, n]) =>
+      n.in_journeys.length === 0 && n.preceded_by.length === 0 && n.followed_by.length === 0
+    );
+
+    console.log(`  Compile: ${result.index._stats.total_nodes}n, ${result.index._stats.total_journeys}j, ${result.index._stats.total_connections}c | ${errors.length} errors, ${orphans.length} orphans`);
+
+    if (errors.length === 0) {
+      console.log('  0 errors — structurally converged.');
+      break;
+    }
+
+    // Safety: if errors increasing, stop
+    if (errors.length >= prevErrorCount) {
+      console.log(`  Errors not decreasing (${prevErrorCount} → ${errors.length}). Stopping fixes.`);
+      break;
+    }
+    prevErrorCount = errors.length;
+
+    // Fix errors (one LLM call per batch)
+    console.log(`  Fixing ${errors.length} errors...`);
+    const errorList = errors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
+    await worker.call(`Fix these compile errors by updating the relevant YAML module files:
+
+${errorList}
+
+Read each affected file, fix the broken references, and write it back using the Write tool.`);
+  }
+
+  // ── 4c: Audit (targeted, stops at 0 gaps) ──
+  console.log('\n  ── Step 4c: Audit ──');
+  let prevGapCount = Infinity;
+
+  while (true) {
+    const auditResult = await depthCheck(doCompile(), spec);
+
+    if (auditResult.converged) {
+      console.log('  AUDIT PASSED — 0 gaps found. CONVERGED.');
+      break;
+    }
+
+    const gapCount = auditResult.gaps.length;
+    console.log(`  Audit found ${gapCount} gaps.`);
+
+    // Safety: if gaps increasing, stop
+    if (gapCount >= prevGapCount) {
+      console.log(`  Gaps not decreasing (${prevGapCount} → ${gapCount}). Accepting current state.`);
+      break;
+    }
+    prevGapCount = gapCount;
+
+    // Fix specific gaps
+    for (const gap of auditResult.gaps) {
+      console.log(`    Fixing: ${gap.substring(0, 100)}...`);
+      await worker.call(`The audit found this specific gap in the project:
+
+${gap}
+
+Fix it by adding the missing journeys or nodes to the appropriate YAML module file.
+Read the file, add what's needed, write it back using the Write tool.`);
+    }
+
+    // Re-compile after fixes
+    doCompile();
+  }
+
+  // ═══ STEP 5 — Publish + Notify ═══
   console.log('\n═══ STEP 5: Publish ═══');
   const finalResult = doCompile();
   const { interface_ } = publishInterface(publishedDir, finalResult.index, path.basename(absProjectDir));
   console.log(`  Published: ${Object.keys(interface_.provides).length} nodes | Hash: ${interface_.version_hash}`);
+
+  // Write event file so dependents can detect the change (event-driven, not polling)
+  const eventsDir = path.join(publishedDir, 'events');
+  if (!fs.existsSync(eventsDir)) fs.mkdirSync(eventsDir, { recursive: true });
+  const eventFile = path.join(eventsDir, `${Date.now()}_${interface_.version_hash.substring(7, 19)}.event`);
+  fs.writeFileSync(eventFile, JSON.stringify({
+    engine: path.basename(absProjectDir),
+    hash: interface_.version_hash,
+    timestamp: new Date().toISOString(),
+    nodes: Object.keys(interface_.provides).length,
+    journeys: finalResult.index._stats.total_journeys,
+  }, null, 2));
+  console.log(`  Event written: ${path.basename(eventFile)}`);
 
   // ═══ STEP 6 — Code + Test Generation ═══
   console.log('\n═══ STEP 6: Code + Test Generation ═══');
@@ -601,128 +719,148 @@ Fix the issues. Write the corrected files using the Write tool.`);
     return;
   }
 
-  // Enter watch loop — check for changes every 60 seconds
-  console.log('\n═══ STEP 7: Watching for Changes ═══');
-  const WATCH_INTERVAL = config.watchIntervalMs;
+  // Event-driven watch — NO POLLING.
+  // Watch dependency event directories with fs.watch.
+  // Zero cost when nothing changes. Only wake when an event file appears.
+  console.log('\n═══ STEP 7: Event-Driven Watch ═══');
+
   const depsPath = path.join(genomeDir, 'dependencies.yaml');
   const syncStatePath = path.join(genomeDir, 'sync-state.json');
-  // Track recently seen dependency hashes to prevent circular oscillation
-  const recentHashes = new Map<string, number>(); // hash → timestamp
-  const OSCILLATION_COOLDOWN = 10 * 60 * 1000; // 10 minutes — ignore same hash within this window
+  const recentHashes = new Map<string, number>();
+  const OSCILLATION_COOLDOWN = 10 * 60 * 1000;
 
-  while (true) {
-    await new Promise(r => setTimeout(r, WATCH_INTERVAL));
-
-    // Check for dependency changes (other engines/projects)
-    const changes = checkDependencies(
-      depsPath,
-      finalResult.index,
-      syncStatePath,
-      (depName) => {
-        // Resolve dependency to its published directory
-        // Check sibling engines first, then parent-level
-        const siblingPath = path.join(absProjectDir, '..', depName, 'genome', 'published');
-        if (fs.existsSync(siblingPath)) return siblingPath;
-        // Check parent's other children
-        const parentEnginesPath = path.join(absProjectDir, '..', '..', 'engines', depName, 'genome', 'published');
-        if (fs.existsSync(parentEnginesPath)) return parentEnginesPath;
-        return null;
-      }
-    );
-
-    // Check if any local module files changed (external edits)
-    const currentCompile = compile(modulesDir);
-    const currentHash = publishInterface(publishedDir, currentCompile.index, path.basename(absProjectDir)).interface_.version_hash;
-    const previousHash = interface_.version_hash;
-
-    if (changes.length > 0) {
-      // Filter out oscillating changes (same hash seen recently)
-      const now = Date.now();
-      const newChanges = changes.filter(c => {
-        const key = `${c.dependency}:${c.current_hash}`;
-        const lastSeen = recentHashes.get(key);
-        if (lastSeen && (now - lastSeen) < OSCILLATION_COOLDOWN) {
-          console.log(`  SKIP: ${c.dependency} hash ${c.current_hash.substring(0, 12)} seen ${Math.round((now - lastSeen) / 60000)}m ago (oscillation cooldown)`);
-          return false;
+  // Resolve dependency event directories to watch
+  const depEventDirs: Array<{ name: string; eventsDir: string }> = [];
+  if (fs.existsSync(depsPath)) {
+    const yaml = await import('js-yaml');
+    const deps = yaml.load(fs.readFileSync(depsPath, 'utf-8')) as any;
+    if (deps?.dependencies) {
+      for (const depName of Object.keys(deps.dependencies)) {
+        // Find sibling or parent engine's events dir
+        for (const candidate of [
+          path.join(absProjectDir, '..', depName, 'genome', 'published', 'events'),
+          path.join(absProjectDir, '..', '..', 'engines', depName, 'genome', 'published', 'events'),
+        ]) {
+          if (fs.existsSync(candidate)) {
+            depEventDirs.push({ name: depName, eventsDir: candidate });
+            break;
+          }
         }
-        recentHashes.set(key, now);
-        return true;
+      }
+    }
+  }
+
+  if (depEventDirs.length === 0) {
+    console.log('  No dependencies to watch. Sleeping permanently.');
+    // Keep process alive but doing nothing
+    await new Promise(() => {}); // Block forever
+    return;
+  }
+
+  console.log(`  Watching ${depEventDirs.length} dependency event dirs:`);
+  for (const dep of depEventDirs) {
+    console.log(`    ${dep.name}: ${dep.eventsDir}`);
+  }
+
+  // Set up fs.watch on each dependency's events directory
+  const handleEvent = async (depName: string, eventFile: string) => {
+    if (!eventFile.endsWith('.event')) return;
+
+    const fullPath = path.join(depEventDirs.find(d => d.name === depName)!.eventsDir, eventFile);
+    if (!fs.existsSync(fullPath)) return;
+
+    try {
+      const event = JSON.parse(fs.readFileSync(fullPath, 'utf-8'));
+      const hashKey = `${depName}:${event.hash}`;
+      const now = Date.now();
+
+      // Oscillation protection
+      const lastSeen = recentHashes.get(hashKey);
+      if (lastSeen && (now - lastSeen) < OSCILLATION_COOLDOWN) {
+        console.log(`  SKIP: ${depName} hash seen recently (oscillation cooldown)`);
+        return;
+      }
+      recentHashes.set(hashKey, now);
+
+      console.log(`\n  EVENT: ${depName} changed (hash: ${event.hash.substring(7, 19)})`);
+
+      // Find affected local modules
+      const currentResult = doCompile();
+      const changes = checkDependencies(depsPath, currentResult.index, syncStatePath, (name) => {
+        const dep = depEventDirs.find(d => d.name === name);
+        return dep ? path.dirname(dep.eventsDir) : null;
       });
 
-      if (newChanges.length === 0) continue; // All changes were oscillation — skip
-
-      console.log(`\n  WAKE: ${newChanges.length} dependency changes detected`);
-      for (const change of newChanges) {
-        console.log(`    ${change.dependency}: ${change.previous_hash.substring(0, 12)} → ${change.current_hash.substring(0, 12)} (affects: ${change.affected_modules.join(', ')})`);
-        markModulesStale(modulesDir, change.affected_modules, `dependency ${change.dependency} changed`);
+      if (changes.length === 0) {
+        console.log('  No local modules affected. Staying asleep.');
+        return;
       }
 
-      // Update state
-      fs.writeFileSync(statePath, JSON.stringify({ status: 'reconverging', reason: 'dependency_change' }, null, 2));
+      // Mark affected modules stale
+      for (const change of changes) {
+        markModulesStale(modulesDir, change.affected_modules, `dependency ${change.dependency} changed`);
+        console.log(`    Stale: ${change.affected_modules.join(', ')}`);
+      }
 
-      // Re-enter convergence loop (Step 4)
-      console.log('  Re-entering convergence loop...');
-      // Reset convergence counters and loop again
-      let reconvergeRound = 0;
-      let reconvergeQuiet = 0;
-      let prevNodes = currentCompile.index._stats.total_nodes;
-      let prevJourneys = currentCompile.index._stats.total_journeys;
+      // TARGETED reconvergence: compile + audit only (skip creation)
+      fs.writeFileSync(statePath, JSON.stringify({ status: 'reconverging', reason: `${depName} changed` }, null, 2));
+      console.log('  Targeted reconvergence (compile + audit)...');
 
+      // Step 4b: fix compile errors
+      let prevErrors = Infinity;
       while (true) {
         const result = doCompile();
-        const stats = result.index._stats;
-        const delta = (stats.total_nodes - prevNodes) + (stats.total_journeys - prevJourneys);
-        if (delta === 0) reconvergeQuiet++; else reconvergeQuiet = 0;
-        prevNodes = stats.total_nodes;
-        prevJourneys = stats.total_journeys;
-
-        console.log(`  Reconverge round ${reconvergeRound}: ${stats.total_nodes}n, ${stats.total_journeys}j, ${stats.total_connections}c | delta: ${delta} | quiet: ${reconvergeQuiet}/3`);
-
-        if (reconvergeQuiet >= 3) break;
-
-        const thinnest = findThinnestModule(result);
-        const lens = LENSES[reconvergeRound % LENSES.length];
-        const excerpt = generateModuleExcerpt(thinnest, result);
-
-        await worker.call(`Current state of ${thinnest} module:
-
-${excerpt}
-
-Lens: ${lens}
-
-A dependency changed. Some modules may be stale. From this lens, what needs updating in ${thinnest}.yaml?
-
-1. Read the current file at ${path.join(modulesDir, `${thinnest}.yaml`)}
-2. Fix stale references, add missing journeys
-3. Write the COMPLETE updated file back using the Write tool`);
-
-        reconvergeRound++;
-        // No round limit. Convergence check (3 quiet rounds) decides when to stop.
+        const errors = result.issues.filter(i => i.severity === 'error');
+        if (errors.length === 0 || errors.length >= prevErrors) break;
+        prevErrors = errors.length;
+        const errorList = errors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
+        await worker.call(`Fix these compile errors:\n${errorList}\nRead affected files, fix refs, write back.`);
       }
 
-      // Re-publish after reconvergence
+      // Step 4c: audit
+      const auditResult = await depthCheck(doCompile(), spec);
+      if (!auditResult.converged) {
+        for (const gap of auditResult.gaps) {
+          await worker.call(`Fix this gap: ${gap}\nAdd missing journeys to the appropriate module file.`);
+        }
+      }
+
+      // Re-publish + write event for downstream ripple
       const reconvergedResult = doCompile();
       const { interface_: newInterface } = publishInterface(publishedDir, reconvergedResult.index, path.basename(absProjectDir));
-      console.log(`  Re-published: ${Object.keys(newInterface.provides).length} nodes | Hash: ${newInterface.version_hash}`);
+      const newEventFile = path.join(eventsDir, `${Date.now()}_${newInterface.version_hash.substring(7, 19)}.event`);
+      fs.writeFileSync(newEventFile, JSON.stringify({
+        engine: path.basename(absProjectDir),
+        hash: newInterface.version_hash,
+        timestamp: new Date().toISOString(),
+        triggered_by: depName,
+      }, null, 2));
+
+      console.log(`  Reconverged. Hash: ${newInterface.version_hash.substring(7, 19)}. Event written.`);
       fs.writeFileSync(statePath, JSON.stringify({
         status: 'sleeping',
         converged_at: new Date().toISOString(),
         stats: reconvergedResult.index._stats,
         interface_hash: newInterface.version_hash,
       }, null, 2));
-
-      console.log('  Back to sleep. Watching for changes...');
-    } else if (currentHash !== previousHash) {
-      console.log(`\n  LOCAL CHANGE detected (hash: ${previousHash.substring(0, 12)} → ${currentHash.substring(0, 12)})`);
-      console.log('  Re-publishing...');
-      fs.writeFileSync(statePath, JSON.stringify({
-        status: 'sleeping',
-        converged_at: new Date().toISOString(),
-        stats: currentCompile.index._stats,
-        interface_hash: currentHash,
-      }, null, 2));
+    } catch (err: any) {
+      console.error(`  Event handling error: ${err.message}`);
     }
+  };
+
+  // Watch each dependency's events directory
+  for (const dep of depEventDirs) {
+    fs.watch(dep.eventsDir, (eventType, filename) => {
+      if (filename && eventType === 'rename') {
+        // 'rename' fires when a new file is created
+        handleEvent(dep.name, filename);
+      }
+    });
   }
+
+  // Keep process alive — fs.watch callbacks handle everything
+  console.log('  Sleeping. Will wake on dependency events only.');
+  await new Promise(() => {}); // Block forever — fs.watch handles events
 }
 
 // ── Helpers ──
