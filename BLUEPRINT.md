@@ -590,12 +590,17 @@ HUMAN RUNS: genome converge /path/to/project
 
   ── Step 4a: Creation Passes (bounded) ──
 
-  CODE: lenses = [happy, failure, threat, edge, scale, completeness, simplicity, consistency]
+  First: ask LLM what perspectives matter for THIS project (1 call):
+    LLM CALL: "Given this project's domain, what perspectives should we examine
+      each module from? Software might need: happy paths, failures, threats,
+      scale. A hospital might need: patient safety, compliance, emergencies.
+      Return a list of perspectives relevant to THIS project."
+    → produces domain-specific lens list (not hardcoded)
 
-  First: ask LLM which lenses are relevant for each module (1 call, matrix output):
-    LLM CALL: "Given these modules and lenses, which lenses are relevant for each?
-      A storage module doesn't need threats. A rule doesn't need scale.
-      Return a matrix of module → relevant lenses."
+  Then: ask LLM which lenses are relevant per module (1 call, matrix output):
+    LLM CALL: "Given these modules and these lenses, which matter for each?
+      A data store doesn't need 'threats.' A policy doesn't need 'scale.'
+      Return a module → relevant lenses matrix."
 
   Then: iterate only relevant pairs:
     For each module (in dependency order):
@@ -606,7 +611,7 @@ HUMAN RUNS: genome converge /path/to/project
           From this perspective, what's missing? Add nodes + journeys."
         CODE: compile() → check for new errors
 
-  Total calls: ~60-80 (not all 128, since irrelevant pairs are skipped).
+  Total calls: depends on the project. No hardcoded number.
   After this: every module examined from every RELEVANT angle. Creation DONE.
 
   ── Step 4b: Compile Convergence (code, instant) ──
@@ -620,7 +625,8 @@ HUMAN RUNS: genome converge /path/to/project
     For each error:
       LLM CALL: "Fix this specific error: {error.message}"
     CODE: compile() again
-    Repeat until 0 errors (max 10 fix cycles)
+    Repeat until 0 errors.
+    Safety: if error count INCREASES between cycles → stop, report (something is wrong).
 
   If orphans > 0:
     Not all orphans are problems. Data stores, config artifacts, and rules may be
