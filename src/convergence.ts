@@ -22,6 +22,8 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
+import { platform } from 'node:os';
 import { compile } from './compile.js';
 import { generateExcerpt } from './excerpt.js';
 import { publishInterface } from './publish.js';
@@ -164,6 +166,7 @@ function doCompile(): CompileResult {
 async function run() {
   const spec = fs.readFileSync(specPath, 'utf-8');
   console.log(`\n=== GENOME CONVERGENCE: ${absProjectDir} ===`);
+  writePidFile(); // Track this process for clean shutdown
   console.log(`Spec: ${spec.length} chars, ${spec.split('\n').length} lines\n`);
 
   // ═══ STEP 1 — Organization ═══
@@ -1155,6 +1158,11 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
     });
 
     children.push({ name: engine.name, proc });
+    // Register in global process tree for clean shutdown
+    if (proc.pid) {
+      childProcesses.push({ name: engine.name, pid: proc.pid, proc });
+      writePidFile();
+    }
   }
 
   console.log(`\n  Waiting for ${children.length} children to converge...`);
@@ -1348,17 +1356,55 @@ Write the file using the Write tool NOW.`);
   console.log('Done.');
 }
 
-// ── Cleanup on exit ──
+// ── Process Tree Management ──
+// Tracks ALL processes this convergence spawned (worker + children).
+// PID file lets `genome stop` kill everything cleanly.
+
+const childProcesses: Array<{ name: string; pid: number; proc: any }> = [];
+const pidFilePath = path.join(genomeDir, 'pids.json');
+
+function writePidFile() {
+  const pids = {
+    self: process.pid,
+    worker: worker.isAlive() ? 'active' : 'none',
+    children: childProcesses.map(c => ({ name: c.name, pid: c.pid })),
+    started: new Date().toISOString(),
+  };
+  fs.writeFileSync(pidFilePath, JSON.stringify(pids, null, 2));
+}
+
+function cleanupAll() {
+  console.log('\nShutting down all processes...');
+  // Kill worker
+  worker.kill();
+  // Kill all child processes
+  for (const child of childProcesses) {
+    try {
+      if (platform() === 'win32') {
+        execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: 'pipe', windowsHide: true });
+      } else {
+        process.kill(child.pid, 'SIGTERM');
+      }
+      console.log(`  Killed ${child.name} (pid: ${child.pid})`);
+    } catch { /* already dead */ }
+  }
+  // Remove PID file
+  try { fs.unlinkSync(pidFilePath); } catch { /* doesn't exist */ }
+}
 
 process.on('SIGINT', () => {
-  console.log('\nInterrupted. Killing worker...');
-  worker.kill();
+  cleanupAll();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-  worker.kill();
+  cleanupAll();
   process.exit(0);
+});
+
+process.on('exit', () => {
+  // Best-effort cleanup on any exit
+  try { fs.unlinkSync(pidFilePath); } catch { /* ok */ }
 });
 
 // ── Run ──

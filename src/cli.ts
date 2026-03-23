@@ -28,7 +28,76 @@ if (!command || !modulesDir) {
   console.log('  genome status <modules-dir>');
   console.log('  genome publish <modules-dir> [engine-name]');
   console.log('  genome test-gen <modules-dir> <test-dir>');
+  console.log('  genome stop <project-dir>             — kill all convergence processes');
+  console.log('  genome ps <project-dir>               — show running convergence processes');
   process.exit(1);
+}
+
+// ── Stop command (no compile needed) ──
+if (command === 'stop') {
+  const pidFile = path.join(modulesDir, 'genome', 'pids.json');
+  if (!fs.existsSync(pidFile)) {
+    // Try as project dir directly
+    const altPidFile = path.join(modulesDir, 'pids.json');
+    if (!fs.existsSync(altPidFile)) {
+      console.log('No convergence processes found (no pids.json).');
+      process.exit(0);
+    }
+  }
+  const pidPath = fs.existsSync(path.join(modulesDir, 'genome', 'pids.json'))
+    ? path.join(modulesDir, 'genome', 'pids.json')
+    : path.join(modulesDir, 'pids.json');
+  const pids = JSON.parse(fs.readFileSync(pidPath, 'utf-8'));
+  console.log(`Killing convergence process tree (self: ${pids.self})...`);
+  // Kill children first, then self
+  for (const child of pids.children || []) {
+    try {
+      const { execSync: exec } = await import('node:child_process');
+      if (process.platform === 'win32') {
+        exec(`taskkill /T /F /PID ${child.pid}`, { stdio: 'pipe' });
+      } else {
+        process.kill(child.pid, 'SIGTERM');
+      }
+      console.log(`  Killed ${child.name} (pid: ${child.pid})`);
+    } catch { console.log(`  ${child.name} (pid: ${child.pid}) already dead`); }
+  }
+  try {
+    if (process.platform === 'win32') {
+      const { execSync: exec } = await import('node:child_process');
+      exec(`taskkill /T /F /PID ${pids.self}`, { stdio: 'pipe' });
+    } else {
+      process.kill(pids.self, 'SIGTERM');
+    }
+    console.log(`  Killed main process (pid: ${pids.self})`);
+  } catch { console.log(`  Main process already dead`); }
+  fs.unlinkSync(pidPath);
+  console.log('All convergence processes stopped.');
+  process.exit(0);
+}
+
+// ── Process status command (no compile needed) ──
+if (command === 'ps') {
+  const pidPath = fs.existsSync(path.join(modulesDir, 'genome', 'pids.json'))
+    ? path.join(modulesDir, 'genome', 'pids.json')
+    : path.join(modulesDir, 'pids.json');
+  if (!fs.existsSync(pidPath)) {
+    console.log('No convergence processes running (no pids.json).');
+    process.exit(0);
+  }
+  const pids = JSON.parse(fs.readFileSync(pidPath, 'utf-8'));
+  console.log(`Convergence running since: ${pids.started}`);
+  console.log(`  Main: pid ${pids.self}, worker: ${pids.worker}`);
+  for (const child of pids.children || []) {
+    console.log(`  Child: ${child.name} (pid: ${child.pid})`);
+  }
+  // Also check convergence state
+  const stateFile = path.join(path.dirname(pidPath), 'convergence-state.json');
+  if (fs.existsSync(stateFile)) {
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+    console.log(`  Status: ${state.status}`);
+    if (state.stats) console.log(`  Graph: ${state.stats.total_nodes}n, ${state.stats.total_journeys}j, ${state.stats.total_connections}c`);
+  }
+  process.exit(0);
 }
 
 const result = compile(modulesDir);
