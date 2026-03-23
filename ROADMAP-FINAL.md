@@ -75,9 +75,10 @@
 
 ### Pass 2: Complete Step 6
 
-- [ ] **I1**: After generating code skeletons, LLM fills implementations
-  - For each skeleton file: read it, send to LLM with journey context, write back
 - [x] **I1-I4**: Step 6 complete (code fill + test fill + run tests + fix failures loop)
+- [x] **Step 4 redesign**: bounded creation + compile convergence + targeted audit (replaces infinite delta loop)
+- [x] **Event-driven Step 7**: fs.watch + event files (replaces 60s polling)
+- [x] **Domain-specific lenses**: LLM discovers perspectives per project (replaces hardcoded 8)
   - LLM fills code skeletons with journey context
   - LLM fills test assertions
   - Runs vitest, captures failures
