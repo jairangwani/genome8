@@ -295,15 +295,17 @@ Each round reads ALL previous findings, looks from a NEW angle, adds what was mi
 
 No hardcoded round count. Lenses rotate until 3 consecutive rounds find nothing new, then 3 auditors verify depth from independent angles. CONTEXT IS DEEP. A single pass finds the obvious. Round 20 finds the edge case that crashes production. Round 35 finds the contradiction between two teams.
 
-### Three-level convergence
+### Convergence = creation + validation + audit
 
-| Level | What | How |
-|-------|------|-----|
-| Structural | 0 errors, 0 orphans, 0 duplicates | Engine (code) |
-| Activity | No new context added for 3 rounds | Engine (code) |
-| Depth | 3 audit sub-agents from 3 angles find nothing new | Agents (LLM) |
+| Phase | What | Who | Bounded? |
+|-------|------|-----|----------|
+| Creation | Every module examined from every lens | LLM | Yes: modules × lenses |
+| Validation | 0 errors, 0 orphans, all modules connected | CODE (compile) | Instant |
+| Audit | 3 auditors check spec/actor/cross-module coverage | LLM | Yes: 3 calls × max 3 cycles |
 
-ALL THREE pass → context is complete for now.
+Creation is bounded (not infinite). Validation is code (not LLM). Audit is targeted (fix specific gaps, not "what's missing?").
+
+Boxes sleep after convergence. Wake ONLY when a dependency changes (ripple).
 
 ---
 

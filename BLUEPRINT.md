@@ -578,58 +578,89 @@ HUMAN RUNS: genome converge /path/to/project
     CODE: compile() → check errors → if errors, ask LLM to fix → compile again
     CODE: next module (it sees everything before it in the excerpt)
 
-═══ STEP 4 — Convergence loop (1 LLM call per round) ═══
+═══ STEP 4 — Convergence (creation + validation + audit) ═══
+
+  KEY INSIGHT: Creation and convergence are different things.
+  - CREATION = "what nodes and journeys should exist?" → LLM (bounded)
+  - CONVERGENCE = "is everything properly connected?" → CODE (compile, instant)
+  - AUDIT = "is coverage adequate?" → LLM (targeted, 3 calls)
+
+  An LLM will always invent more edge cases. Asking "what's missing?" in a loop
+  never converges. Instead: create systematically, validate with code, audit for gaps.
+
+  ── Step 4a: Creation Passes (bounded) ──
 
   CODE: lenses = [happy, failure, threat, edge, scale, completeness, simplicity, consistency]
-  CODE: round = 0, previousStats = null
 
-  while true:
-    CODE: stats = compile()
-    CODE: thinnest = module with fewest journeys relative to spec_sections count
-    CODE: lens = lenses[round % lenses.length]
-    CODE: excerpt = generateExcerpt(thinnest)
+  First: ask LLM which lenses are relevant for each module (1 call, matrix output):
+    LLM CALL: "Given these modules and lenses, which lenses are relevant for each?
+      A storage module doesn't need threats. A rule doesn't need scale.
+      Return a matrix of module → relevant lenses."
 
-    LLM CALL: "Current state (excerpt for {thinnest} module):
-      {excerpt}
+  Then: iterate only relevant pairs:
+    For each module (in dependency order):
+      For each RELEVANT lens (from matrix):
+        CODE: excerpt = generateExcerpt(module)
+        LLM CALL: "Current state of {module}: {excerpt}
+          Lens: {lens}
+          From this perspective, what's missing? Add nodes + journeys."
+        CODE: compile() → check for new errors
 
-      Lens: {lens}
+  Total calls: ~60-80 (not all 128, since irrelevant pairs are skipped).
+  After this: every module examined from every RELEVANT angle. Creation DONE.
 
-      From the {lens} perspective: what actors, nodes, and journeys are MISSING?
-      Add them to {thinnest}.yaml.
-      Actors + nodes + journeys can all be added in the same pass.
-      Be GRANULAR — every system action is a step."
+  ── Step 4b: Compile Convergence (code, instant) ──
 
-    CODE: newStats = compile()
-    CODE: delta = newStats.nodes - stats.nodes + newStats.journeys - stats.journeys
+  CODE: result = compile()
+  CODE: errors = dangling refs, duplicate nodes, YAML parse failures
+  CODE: orphans = nodes not in any journey
+  CODE: isolated = modules with no cross-module connections
 
-    if delta == 0 for 3 consecutive rounds:
-      → DEPTH CHECK (see below)
+  If errors > 0:
+    For each error:
+      LLM CALL: "Fix this specific error: {error.message}"
+    CODE: compile() again
+    Repeat until 0 errors (max 10 fix cycles)
 
-    round++
+  If orphans > 0:
+    Not all orphans are problems. Data stores, config artifacts, and rules may be
+    REFERENCED by other nodes but not have their own journey. Only fix orphans that
+    are truly disconnected (not referenced anywhere).
+    For each truly orphaned node:
+      LLM CALL: "This node {name} is not in any journey and not referenced. Add a journey or remove it."
+    CODE: compile() again
 
-═══ STEP 4b — Depth check (3 LLM calls) ═══
-
-  When activity stops, verify coverage is actually complete:
+  ── Step 4c: Audit (3 targeted LLM calls) ──
 
   LLM CALL (Auditor 1 — spec coverage):
-    "Read the spec. Read all module files.
-     For EACH spec section: count bullets vs journeys.
-     Which sections have thin coverage? Which bullets have no journey?"
+    "For EACH spec section: how many journeys cover it?
+     List SPECIFIC gaps: which sections have thin coverage?"
 
   LLM CALL (Auditor 2 — actor coverage):
-    "Read _actors.yaml and all module files.
-     For EACH actor: how many journeys involve them?
-     For EACH threat actor: attack journey AND defense journey exist?
-     Which actors have 0 journeys?"
+    "For EACH actor: how many journeys involve them?
+     List SPECIFIC gaps: which actors have 0 journeys?"
 
   LLM CALL (Auditor 3 — cross-module coverage):
-    "Read compiled stats and all module files.
-     For EACH module: cross-module connection count?
-     Which module pairs SHOULD connect but don't?
-     Any isolated modules?"
+    "Which module pairs SHOULD connect but don't?
+     List SPECIFIC missing connections."
 
-  CODE: if all 3 auditors return nothing → CONVERGED
-  CODE: if any find gaps → feed gaps into next convergence round → continue loop
+  If auditors find gaps:
+    For each specific gap:
+      LLM CALL: "Add this specific journey: {gap description}"
+    CODE: compile() → back to 4b → re-audit
+
+  Audit stops when: 0 gaps found by all 3 auditors.
+  Safety: if cycle N finds same or MORE gaps than cycle N-1, stop and report.
+  (Diminishing gaps = healthy. Increasing gaps = something is wrong.)
+
+  If no gaps → CONVERGED.
+
+  WHY THIS WORKS:
+  - Creation is bounded (modules × lenses). No infinite loop.
+  - Convergence is CODE (compile). Instant, deterministic.
+  - Audit is targeted (fix SPECIFIC gaps, not "what's missing?").
+  - No delta tracking. No quiet rounds. No wasteful re-examination.
+  - Boxes sleep after convergence. Wake ONLY on ripple (dependency change).
 
 ═══ STEP 5 — Publish ═══
 
@@ -669,21 +700,23 @@ HUMAN RUNS: genome converge /path/to/project
 
 | Decision | Who | Why |
 |----------|-----|-----|
-| Which module to work on | CODE | Sort by journey count — mechanical |
-| Which lens to use | CODE | Rotate through list — mechanical |
+| Module × lens iteration order | CODE | Systematic, bounded — mechanical |
 | When to compile | CODE | After every write — mechanical |
-| Whether to continue or stop | CODE | 3-level convergence check — mechanical |
+| Whether graph is converged | CODE | compile(): 0 errors, 0 orphans — mechanical |
 | What excerpt to show | CODE | excerpt.ts — mechanical |
-| When to do depth check | CODE | Activity stopped for 3 rounds — mechanical |
+| When to audit | CODE | After creation passes + compile convergence — mechanical |
+| When to sleep/wake | CODE | Hash watching — mechanical |
 | | | |
 | What actors exist | LLM | Requires reading spec, understanding domain |
-| What journeys are missing | LLM | Requires creative thinking about flows |
-| What nodes to create | LLM | Requires understanding what the journey needs |
-| Whether coverage is adequate | LLM | Requires reading spec + modules + judging gaps |
+| What to add from a specific lens | LLM | Requires creative thinking about flows |
+| How to fix a specific error | LLM | Requires understanding the broken ref |
+| Whether spec coverage is adequate | LLM | Requires reading spec + modules + judging gaps |
 | How to implement code | LLM | Requires writing actual code |
 | How to fix a failing test | LLM | Requires debugging |
 
-**CODE orchestrates. LLM creates. The LLM never decides WHEN to act — the code does. The LLM only decides WHAT to create when asked.**
+**CODE orchestrates. LLM creates. CODE decides WHEN and HOW MANY TIMES to call LLM (bounded). LLM decides WHAT to create when asked (creative).**
+
+**The key rule: never ask an LLM an open-ended question in a loop.** "What's missing?" is open-ended — LLMs always find something. Instead: "Look at {module} from {lens}" (bounded creation) or "Fix this specific error" (targeted fix) or "Is spec section X covered?" (targeted audit).
 
 ### For hierarchy (big projects) ✅ UPDATED
 
@@ -762,8 +795,11 @@ Step 7 (after convergence):
      b. If hash changed:
         - Log which dependency changed and what modules are affected
         - markModulesStale() — adds _stale: true to affected YAML files
-        - Re-enter convergence loop (Step 4) with stale modules
+        - SKIP Step 4a (creation passes) — modules already have content
+        - Run Step 4b (compile convergence) — fix broken refs from the change
+        - Run Step 4c (audit) — verify coverage still adequate
         - Re-publish when reconverged
+        - This is TARGETED reconvergence, not full rebuild
      c. If local files changed (external edit):
         - Re-compile, re-publish with new hash
      d. If nothing changed: continue sleeping
@@ -1144,3 +1180,5 @@ TOTAL: 39 tests across 11 files. All passing.
 | Generic fallback module names | `extractModuleNames()` fell back to `['identity', 'gateway', 'storage']` when no backtick names found. Every child engine built the same generic modules. | Removed fallback. Exit with error if org has no backtick names. Child org now written with proper `\`backtick-names\`` so extraction works. |
 | Actor bubbling was a stub | Code found new actors in children but never merged or redistributed. Just logged and moved on. | Parent now calls LLM to merge all actors from all children, writes merged file, redistributes to all children. |
 | runner.ts incompatible | runner.ts used `--print` mode and spawned Lead agents. Completely incompatible with convergence.ts stream-json protocol. | Deprecated runner.ts. convergence.ts handles its own lifecycle (Step 7 sleep/watch/reconverge). |
+| Open-ended LLM loop never converges | Asking "what's missing?" in a loop never stops — LLMs are creative, always invent more edge cases. Delta never hits 0. Burned credits indefinitely on diminishing-value additions. | Separate CREATION (bounded: modules × lenses) from CONVERGENCE (code: compile check) from AUDIT (targeted: fix specific gaps). Never ask LLM open-ended questions in a loop. |
+| Convergence is CODE, not LLM | Tried using delta tracking (LLM output changes) to detect convergence. Failed — LLM always changes something. | Compile-based convergence: 0 errors + 0 orphans + 0 isolated modules = converged. Code decides, instantly. Audit (LLM) only checks spec coverage AFTER code says graph is structurally sound. |
