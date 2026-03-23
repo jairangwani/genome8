@@ -781,47 +781,94 @@ Each fresh call has clean context — no anchoring to previous decisions, no sta
 
 ---
 
-## 7. Lifecycle — Sleep / Watch / Reconverge (Step 7) ✅ BUILT
+## 7. Lifecycle — Event-Driven Sleep / Wake / Reconverge (Step 7)
 
 ### What it does
 
-convergence.ts manages its own lifecycle. No separate runner.ts needed. After convergence (Steps 1-6), it enters a watch loop:
+convergence.ts manages its own lifecycle. After convergence (Steps 1-6), it SLEEPS.
+It wakes ONLY when notified of a change — not by polling.
 
 ```
-converge → publish → sleep → watch dependencies every 60s → detect change → wake → reconverge → publish → sleep → ...
+converge → publish → notify dependents → sleep
+              ↑                              │
+              └──── wake on event ←──────────┘
 ```
 
-### How it works (built into convergence.ts)
+### Event-driven (not polling)
+
+**Old design (polling):** Each box reads dependency hashes every 60 seconds.
+1000 boxes = 1000 file reads per minute even when NOTHING changed. Wasteful.
+
+**New design (event-driven):** When a box publishes a new interface, it writes
+a change event file. Only boxes that depend on it see the event. Zero cost
+when nothing changes.
+
+```
+Box A reconverges → publishes new interface.yaml
+  → writes change event: published/events/{timestamp}_{hash}.event
+  → event contains: { engine, previous_hash, current_hash, changed_nodes }
+
+Box B (depends on A) has a file watcher on A's events directory:
+  → new .event file appears → Box B reads it
+  → markModulesStale() on affected modules
+  → TARGETED reconvergence (compile + audit, skip creation)
+  → Box B publishes → writes its own event → ripple continues
+
+Box C (does NOT depend on A):
+  → never sees A's event → stays asleep → zero cost
+```
+
+### How it works in convergence.ts
 
 ```
 Step 7 (after convergence):
   1. Write convergence-state.json: { status: "sleeping", stats, interface_hash }
-  2. Enter watch loop (every 60 seconds):
-     a. checkDependencies() — reads dependencies.yaml, compares sibling hashes
-     b. If hash changed:
-        - Log which dependency changed and what modules are affected
-        - markModulesStale() — adds _stale: true to affected YAML files
-        - SKIP Step 4a (creation passes) — modules already have content
-        - Run Step 4b (compile convergence) — fix broken refs from the change
-        - Run Step 4c (audit) — verify coverage still adequate
-        - Re-publish when reconverged
-        - This is TARGETED reconvergence, not full rebuild
-     c. If local files changed (external edit):
-        - Re-compile, re-publish with new hash
-     d. If nothing changed: continue sleeping
+  2. Notify dependents: write event file in published/events/
+  3. Watch for incoming events (file watcher on dependency event dirs):
+     a. Event received from dependency:
+        - Read event: which nodes changed?
+        - markModulesStale() on modules that reference changed nodes
+        - TARGETED reconvergence:
+          - SKIP Step 4a (creation) — modules have content
+          - Run Step 4b (compile convergence) — fix broken refs
+          - Run Step 4c (audit) — verify coverage
+        - Re-publish → write outgoing event → ripple continues
+     b. Local file change (human edit):
+        - Re-compile, re-publish, write event
+     c. No events: stay asleep. Zero cost. Zero LLM calls.
 ```
+
+### At scale (1000 boxes)
+
+```
+All 1000 boxes sleeping. Zero LLM calls. Zero file reads.
+
+Box #347 changes:
+  → writes event
+  → 3 dependent boxes wake up (not 1000)
+  → each does ~5 LLM calls (targeted fixes)
+  → each publishes → writes events → maybe 2 more boxes wake
+  → ripple stops when no more dependents are affected
+
+Total cost: ~25 LLM calls. The other 995 boxes: zero cost.
+```
+
+### File watcher vs polling
+
+File watchers (fs.watch) are OS-level — the kernel notifies your process when
+a file changes. No CPU cost while waiting. Works on every OS.
+
+For cross-network boxes (different machines), use a simple pub/sub:
+- Local: fs.watch on sibling event directories
+- Network: lightweight message (hash + engine name) via existing P2P layer
+- Both: zero cost when nothing changes
 
 ### When to use --once
 
-For testing or one-shot builds, pass `--once` to exit after first convergence instead of entering the watch loop:
+For testing or one-shot builds, pass `--once` to exit after first convergence:
 ```
 npx tsx src/convergence.ts /path/to/project --once
 ```
-
-### runner.ts (DEPRECATED)
-
-The old runner.ts used `--print` mode and Lead agents — incompatible with convergence.ts.
-It has been deprecated. convergence.ts handles everything itself.
 
 ---
 
@@ -981,23 +1028,47 @@ The parent convergence.ts:
 
 ---
 
-## 12. Cross-Engine Sync ✅ MECHANISM DESIGNED, 📋 CODE NOT BUILT
+## 12. Cross-Engine Sync — Event-Driven Ripple
 
 ### Three levels of sync
 
-**Level 1: Within one engine** ✅ TESTED
+**Level 1: Within one engine** ✅ BUILT
 Node changes → engine recompiles → connections update → excerpt shows changes.
+All mechanical. No LLM calls.
 
-**Level 2: Direct dependencies** 📋 PLANNED
+**Level 2: Direct dependencies — EVENT-DRIVEN** ✅ DESIGNED
 ```
-Box A compiles → interface.yaml updates (new hash)
-Box B depends on A → B's runner detects hash change
-→ B's convergence.ts wakes → marks affected modules stale → reconverges → sleeps
-→ B's interface updates → cascade continues to any box depending on B
+Box A reconverges → publishes new interface.yaml (hash changes)
+  → writes event file: published/events/{timestamp}.event
+  → event: { engine: "A", old_hash, new_hash, changed_nodes }
+
+Box B depends on A:
+  → file watcher detects event in A's events dir
+  → reads event → marks affected modules stale
+  → TARGETED reconvergence (compile + audit, no creation)
+  → publishes new interface → writes its own event
+  → ripple continues to B's dependents
+
+Box C (no dependency on A):
+  → no file watcher on A → never sees event → zero cost
 ```
 
-**Level 3: Parent catches cross-cutting conflicts** 📋 PLANNED
-Parent convergence.ts watches ALL children's interfaces. Detects conflicts between children that don't directly depend on each other. Signals affected child to reconverge.
+No polling. No periodic checks. Events propagate only to affected boxes.
+Cost = proportional to changes, not to total boxes.
+
+**Level 3: Parent catches cross-cutting conflicts** ✅ DESIGNED
+Parent watches children's event directories. If two children change in ways
+that conflict (both modify a shared interface contract), parent detects and
+signals affected children to reconverge against each other's new interfaces.
+
+### At network scale
+
+For boxes on different machines:
+- **Local (same filesystem):** fs.watch on sibling event directories
+- **Network (different machines):** lightweight pub/sub message via P2P layer
+  - Message: { engine, hash, changed_nodes } — tiny payload
+  - Subscribers: only boxes listed in the engine's dependents
+  - Protocol: same as local, different transport
 
 ### Dependency removal
 
@@ -1188,3 +1259,5 @@ TOTAL: 39 tests across 11 files. All passing.
 | runner.ts incompatible | runner.ts used `--print` mode and spawned Lead agents. Completely incompatible with convergence.ts stream-json protocol. | Deprecated runner.ts. convergence.ts handles its own lifecycle (Step 7 sleep/watch/reconverge). |
 | Open-ended LLM loop never converges | Asking "what's missing?" in a loop never stops — LLMs are creative, always invent more edge cases. Delta never hits 0. Burned credits indefinitely on diminishing-value additions. | Separate CREATION (bounded: modules × lenses) from CONVERGENCE (code: compile check) from AUDIT (targeted: fix specific gaps). Never ask LLM open-ended questions in a loop. |
 | Convergence is CODE, not LLM | Tried using delta tracking (LLM output changes) to detect convergence. Failed — LLM always changes something. | Compile-based convergence: 0 errors + 0 orphans + 0 isolated modules = converged. Code decides, instantly. Audit (LLM) only checks spec coverage AFTER code says graph is structurally sound. |
+| Polling wastes resources at scale | Each box polled dependency hashes every 60 seconds. 1000 boxes = 1000 reads/minute even when nothing changed. | Event-driven: box publishes change → writes event file → only dependents see it. Zero cost when nothing changes. fs.watch locally, pub/sub across network. |
+| Hardcoded lenses are domain-specific | 8 hardcoded software lenses (happy paths, threats, scale...) don't apply to hospitals, legal, government. | LLM decides lenses based on project domain (1 call). LLM decides which lenses apply to which modules (1 call, matrix). No hardcoded perspectives. |

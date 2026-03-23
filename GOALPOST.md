@@ -305,7 +305,9 @@ No hardcoded round count. Lenses rotate until 3 consecutive rounds find nothing 
 
 Creation is bounded (not infinite). Validation is code (not LLM). Audit is targeted (fix specific gaps, not "what's missing?").
 
-Boxes sleep after convergence. Wake ONLY when a dependency changes (ripple).
+Boxes sleep after convergence. Wake ONLY when a dependency changes (event-driven ripple).
+No polling. No periodic checks. When a box publishes a change, it notifies dependents directly.
+1000 boxes sleeping = zero cost. One box changes = only its dependents wake up.
 
 ---
 
