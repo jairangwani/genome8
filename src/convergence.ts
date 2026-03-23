@@ -307,8 +307,26 @@ Use the Write tool to write the file NOW.`);
   }
 
   // ═══ STEP 2b — Hierarchy Decision (after actors, before modules) ═══
-  // Now that we have shared actors, decide whether to split.
-  // If split: children get the SAME _actors.yaml. No duplicate actor problem.
+  // The split decision is PERSISTED. If engines/ directory exists with children,
+  // the split already happened. Don't re-decide — resume children.
+  const enginesDir = path.join(absProjectDir, 'engines');
+  if (fs.existsSync(enginesDir)) {
+    const existingEngines = fs.readdirSync(enginesDir).filter(d =>
+      fs.statSync(path.join(enginesDir, d)).isDirectory()
+    );
+    if (existingEngines.length > 0) {
+      console.log(`\n  HIERARCHY: Split already exists (${existingEngines.length} engines: ${existingEngines.join(', ')})`);
+      console.log('  Resuming children — not re-splitting.');
+      const engines = existingEngines.map(name => ({
+        name,
+        specSections: '', // Not needed for resume — children have their own org
+      }));
+      await runAsParent(engines, spec, orgContent);
+      return;
+    }
+  }
+
+  // No existing split — ask LLM if we should split.
   const shouldSplit = await checkIfShouldSplit(orgContent, spec);
   if (shouldSplit.split) {
     console.log(`\n  HIERARCHY: Splitting into ${shouldSplit.engines.length} child engines (depth ${currentDepth})`);
@@ -1039,16 +1057,24 @@ async function runAsParent(engines: Array<{ name: string; specSections: string }
     }
   }
 
-  // Write ALL scoped specs in ONE LLM call (not 7 separate calls)
-  const specFileList = engines.map(e => ({
-    path: path.join(absProjectDir, 'engines', e.name, 'genome', 'spec.md'),
-    name: e.name,
-    modules: e.specSections,
-  }));
+  // Check if children already have data (resume, not recreate)
+  const allChildrenExist = engines.every(e => {
+    const childSpec = path.join(absProjectDir, 'engines', e.name, 'genome', 'spec.md');
+    const childActors = path.join(absProjectDir, 'engines', e.name, 'genome', 'modules', '_actors.yaml');
+    return fs.existsSync(childSpec) && fs.existsSync(childActors);
+  });
 
-  // Write scoped specs using CODE — parse spec by ## headings, match to module keywords.
-  // No LLM call needed. Fast and reliable.
-  console.log(`  Writing scoped specs for ${engines.length} engines...`);
+  if (allChildrenExist) {
+    console.log('  Children already have specs + actors. Skipping setup, spawning directly.');
+  } else {
+    // Write scoped specs + copy actors (first time only)
+    const specFileList = engines.map(e => ({
+      path: path.join(absProjectDir, 'engines', e.name, 'genome', 'spec.md'),
+      name: e.name,
+      modules: e.specSections,
+    }));
+
+    console.log(`  Writing scoped specs for ${engines.length} engines...`);
 
   // Parse spec into sections
   const specSections: Array<{ heading: string; content: string }> = [];
@@ -1129,6 +1155,7 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
 
     console.log(`  Created child engine: ${engine.name} (${engine.specSections})`);
   }
+  } // end of if (!allChildrenExist) else block
 
   // Spawn child convergence.ts processes
   const { spawn: spawnChild } = await import('node:child_process');
