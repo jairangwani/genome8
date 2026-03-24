@@ -817,7 +817,7 @@ Box A reconverges → publishes new interface.yaml
 Box B (depends on A) has a file watcher on A's events directory:
   → new .event file appears → Box B reads it
   → markModulesStale() on affected modules
-  → TARGETED reconvergence (compile + audit, skip creation)
+  → TARGETED reconvergence (compile + audit + regenerate code/tests, skip creation)
   → Box B publishes → writes its own event → ripple continues
 
 Box C (does NOT depend on A):
@@ -838,6 +838,8 @@ Step 7 (after convergence):
           - SKIP Step 4a (creation) — modules have content
           - Run Step 4b (compile convergence) — fix broken refs
           - Run Step 4c (audit) — verify coverage
+          - Regenerate code + tests for affected modules (plan changed → code follows)
+          - Run tests — if failures, LLM fixes
         - Re-publish → write outgoing event → ripple continues
      b. Local file change (human edit):
         - Re-compile, re-publish, write event

@@ -846,8 +846,29 @@ Fix the issues. Write the corrected files using the Write tool.`);
         }
       }
 
-      // Re-publish + write event for downstream ripple
+      // Re-generate code + tests for affected modules (plan changed → code must follow)
       const reconvergedResult = doCompile();
+      console.log('  Regenerating code + tests for changed modules...');
+      const reconCodeResult = generateCodeSkeletons(reconvergedResult.index, absProjectDir);
+      if (reconCodeResult.generated.length > 0) {
+        for (const filePath of reconCodeResult.generated) {
+          if (!fs.existsSync(filePath)) continue;
+          const skeleton = fs.readFileSync(filePath, 'utf-8');
+          const fileName = path.basename(filePath);
+          await worker.call(`Update this code to match the current journey graph. The plan changed — this code may need new methods or updated logic.\n\nCURRENT CODE:\n${skeleton}\n\nWrite the updated file to: ${filePath}`);
+        }
+      }
+      const reconTestDir = path.join(absProjectDir, 'test');
+      const reconTestFiles = generateTests(reconvergedResult.index, reconTestDir);
+      if (reconTestFiles.length > 0) {
+        for (const testPath of reconTestFiles) {
+          if (!fs.existsSync(testPath)) continue;
+          const testContent = fs.readFileSync(testPath, 'utf-8');
+          await worker.call(`Update this test to match the current journey graph. New steps may need new assertions.\n\nCURRENT TEST:\n${testContent}\n\nWrite the updated file to: ${testPath}`);
+        }
+      }
+
+      // Re-publish + write event for downstream ripple
       const { interface_: newInterface } = publishInterface(publishedDir, reconvergedResult.index, path.basename(absProjectDir));
       const newEventFile = path.join(eventsDir, `${Date.now()}_${newInterface.version_hash.substring(7, 19)}.event`);
       fs.writeFileSync(newEventFile, JSON.stringify({

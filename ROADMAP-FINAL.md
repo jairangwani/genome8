@@ -190,7 +190,7 @@
 - [ ] pando20: parent validates cross-engine refs against child interfaces
 - [ ] pando20: actor merge + redistribute works
 - [ ] pando20: Step 6 code gen runs on at least one engine
-- [ ] Step 6 end-to-end: graph → code skeletons → LLM fills → tests run → pass
+- [x] Step 6 end-to-end: graph → code skeletons → LLM fills → tests run → PASS (network/economy: failed attempt 1, LLM fixed, passed attempt 2)
 
 ### Phase 5c: Bottom-Up Tests (code drives plan changes)
 
