@@ -186,10 +186,10 @@
 ### Phase 5b: End-to-End + Bottom-Up Tests
 
 - [x] pando20: ALL 5 engines publish interfaces (infra 82n, trust 170n, economy 127n, tooling 121n, agents 207n = 707 total)
-- [ ] pando20: parent creates cross-engine journeys
-- [ ] pando20: parent validates cross-engine refs against child interfaces
-- [ ] pando20: actor merge + redistribute works
-- [ ] pando20: Step 6 code gen runs on at least one engine
+- [x] pando20: parent creates cross-engine journeys — BOTH parents published 40 cross-engine nodes each ✅
+- [x] pando20: parent validates cross-engine refs against child interfaces — all children YES ✅
+- [x] pando20: actor merge + redistribute works — 0 errors at both parent levels ✅
+- [x] pando20: Step 6 code gen runs — economy tests PASSED, trust/agents tests failed 3/3 (stub code, expected per Gap 8)
 - [x] Step 6 end-to-end: graph → code skeletons → LLM fills → tests run → PASS (network/economy: failed attempt 1, LLM fixed, passed attempt 2)
 
 ### Phase 5c: Bottom-Up Tests (code drives plan changes)
