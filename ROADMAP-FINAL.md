@@ -178,10 +178,22 @@
 - [x] Run full test suite: 44/44 pass
 - [x] Type check: 0 errors
 - [x] Run todo app: converged (88 nodes, 0 errors) ✅
-- [ ] Run Pando: hierarchy + convergence + publish — 🔄 pando19 RESUMED with persistence fix, bounded convergence, domain lenses
+- [x] Run Pando: hierarchy + convergence + publish — pando20: network/infra CONVERGED + PUBLISHED (82 nodes, 114 journeys, 262 connections, 0 errors). First engine ever to complete full pipeline on Pando. 4 more engines in progress.
 - [x] No TODOs, no stubs in genome code (only in generated skeleton output — intentional)
 - [x] BLUEPRINT matches code — verified via agent audit
 - [x] GOALPOST matches BLUEPRINT — fixed lens count mismatch (was "50 rounds/10 perspectives", now "8 lenses/unlimited rounds")
+
+### Phase 5b: End-to-End + Bottom-Up Tests
+
+- [ ] pando20: ALL 5 engines publish interfaces
+- [ ] pando20: parent creates cross-engine journeys
+- [ ] pando20: parent validates cross-engine refs against child interfaces
+- [ ] pando20: actor merge + redistribute works
+- [ ] pando20: Step 6 code gen runs on at least one engine
+- [ ] Bottom-up: manually edit a module YAML → verify reconvergence triggers
+- [ ] Event ripple: change one engine's interface → verify dependent engine wakes
+- [ ] Step 6 end-to-end: graph → code skeletons → LLM fills → tests run → pass
+- [ ] Full cycle: spec → graph → code → tests → publish → sleep → change → wake → reconverge
 
 ---
 
