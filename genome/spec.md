@@ -112,3 +112,18 @@ convergence.ts converged → codegen.ts generates TypeScript skeletons → LLMWo
 - **Same box at every level.** convergence.ts is the same code at parent, child, grandchild.
 - **Shared actors.** Parent discovers, children inherit. No duplicates.
 - **External refs are warnings in children, errors in parent.** Parent validates after children converge.
+- **Nothing exists in isolation.** Every node connects through journeys. No standalone documents.
+- **The graph IS the documentation.** Goals are rule nodes. Architecture is process nodes. Roadmap is process nodes with status. Tests come from journeys. Code comes from nodes.
+- **Only human input: spec.md.** Everything else auto-generated, auto-connected, auto-synced.
+
+## 7. The Grand Vision
+
+Genome replaces all documentation with a living context graph.
+
+Before genome: separate files for goals, architecture, roadmap, tests, code. They drift apart. Humans spend hours keeping them in sync. They fail.
+
+After genome: ONE graph. Goals are rule nodes connected to the journeys they govern. Architecture is process nodes connected to the code that implements them. Tests are generated from journeys. Code is generated from nodes. When a goal changes, the journeys change, the tests change, the code changes. Automatically.
+
+The only thing a human writes is spec.md — "here's what I want." Genome does the rest.
+
+This applies to genome itself. Genome's own goals, architecture, and roadmap are nodes in genome's own context graph. Genome manages genome. The protocol is self-sustaining.

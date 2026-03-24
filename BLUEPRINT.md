@@ -1,8 +1,8 @@
 # Genome8 — Blueprint
 
-> The complete HOW. Read GOALPOST.md for WHY.
-> Everything an agent needs to build, run, and maintain genome.
-> ✅ = tested/proven. 📋 = planned/needs testing.
+> **This document will be replaced by genome's own context graph (Phase 7).**
+> When genome manages itself, the graph IS the documentation.
+> Until then, this is the complete HOW. Read GOALPOST.md for WHY.
 
 ---
 
@@ -12,11 +12,13 @@ This blueprint contains everything needed to:
 1. Build the genome engine (compile, excerpt, publish, sync, testgen, codegen, convergence)
 2. Run a project (convergence.ts — the code orchestrator that calls LLM workers)
 3. Manage hierarchy (same convergence.ts at every level, different scope)
-4. Sync across engines and projects (published interfaces + hash watching)
+4. Sync across engines and projects (event-driven ripple via published interfaces)
 5. Generate code and tests from the journey graph
-6. Maintain genome itself (agents can modify engine code)
+6. Maintain genome itself (genome runs on itself — Phase 7)
 
-**The key insight:** convergence.ts (CODE) orchestrates the loop — compile, pick module, pick lens, generate excerpt, check convergence. LLM is called as a WORKER for creative tasks only — "what's missing?" The LLM never decides when to act. The code does.
+**The grand vision:** The only human-written file is `spec.md`. Everything else — goals, architecture, roadmap, tests, code — exists as nodes and journeys in the context graph. Nothing is a standalone document. Everything connects to something that connects to something else. One living organism.
+
+**The key insight:** convergence.ts (CODE) orchestrates. LLM is called as a WORKER for creative tasks only. CODE decides when, how many times, and what to ask. LLM decides what to create when asked. Never open-ended questions in a loop.
 
 An agent reading this document should understand: what genome is, how it works, what's code vs what's LLM, and how to build/run everything.
 

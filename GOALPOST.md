@@ -25,16 +25,28 @@ Every tool today solves a slice: Jira tracks tasks. npm tracks packages. Terrafo
 
 **Solve the context problem. For anything. At any scale. Forever.**
 
-Genome is a protocol that captures context as a graph of nodes + journeys. An engine compiles all connections from journey steps. Any agent (human or AI) working on any part gets exactly the context they need. When anything changes, everything connected to it knows.
+Genome is a protocol that captures ALL context as a living, connected graph. Not documents. Not notes. Not separate files that drift apart. ONE graph where everything connects to everything else through journeys.
+
+**The only human input is spec.md** — plain English describing what the system should be. Everything else is auto-generated, auto-connected, auto-synced:
+
+- **Goals** are rule nodes in the graph (connected to the journeys they govern)
+- **Architecture** is process + interface nodes (connected to the code that implements them)
+- **Roadmap** is process nodes with status (connected to the goals they serve)
+- **Tests** are generated from journeys (connected to the code they verify)
+- **Code** is generated from nodes (connected to the tests that validate it)
+- **Documentation** doesn't exist — the graph IS the documentation
+
+Nothing exists in isolation. Every node connects to something. Every journey crosses boundaries. When one thing changes, everything connected to it knows — automatically, through compiled connections and event-driven ripple.
 
 It doesn't matter if it's:
 - A codebase with 1 million lines
 - An organization with 10,000 people
-- A book connected to a technology project connected to a car game
+- A hospital, a legal firm, a supply chain, a government
 - A network of 1,000 projects across different teams
 - One person's todo app
+- **Genome itself** — the protocol manages its own context
 
-If it follows the genome protocol, context is tracked, compiled, and always in sync.
+If it follows the genome protocol, everything is connected, everything is in sync, and no context is ever lost.
 
 ---
 
