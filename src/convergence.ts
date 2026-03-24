@@ -1007,29 +1007,34 @@ async function checkIfShouldSplit(orgContent: string, spec: string): Promise<{ s
 
   const response = await worker.call(`You are deciding whether this engine should be split into SEPARATE child engines.
 
-THIS ENGINE: "${engineName}" at depth ${currentDepth}
-MODULES IN THIS ENGINE: ${moduleNames.join(', ')}
+THIS ENGINE: "${engineName}" at hierarchy depth ${currentDepth}
+YOUR MODULES (assigned by parent): ${moduleNames.join(', ')}
+TOTAL MODULE COUNT: ${moduleNames.length}
 
-DECISION CRITERIA — split ONLY if:
-- The modules represent truly independent subsystems (could be separate packages/services)
-- Each resulting child engine would have MULTIPLE modules (not just 1)
-- Each child engine name must be DIFFERENT from the parent name "${engineName}"
-- Splitting adds value: each child has enough scope to justify its own convergence cycle
+${currentDepth > 0 ? `You are ALREADY a child engine. Your parent decided these ${moduleNames.length} modules belong together.
+Only split if you have clear independent GROUPS within your modules. Your parent already scoped you — respect that decision.` : ''}
+
+SPLIT ONLY if:
+- Your modules form 2-3 clearly independent GROUPS (not one group per module)
+- Each group has its own data, lifecycle, and API boundary
+- Each child engine must have DIFFERENT name from "${engineName}"
+- Each child must contain MULTIPLE of YOUR modules (not inventing new ones)
 
 DO NOT split if:
-- This engine already has a focused scope (the parent already scoped it)
-- Splitting would create children with only 1 module each (pointless overhead)
-- The modules are tightly coupled and share data/APIs
-- A child would just recreate the same scope as the parent (recursive splitting)
+- You have fewer than 6 modules (already focused enough)
+- Your modules are tightly coupled
+- Splitting would just create one engine per module (pointless)
+- You would recreate the same scope under a different name
 
 ORGANIZATION:
 ${orgContent}
 
-Answer in this EXACT format (text only, do NOT write any files):
+Answer SPLIT: no (or yes with ENGINE lines).
+FORMAT:
 SPLIT: yes (or no)
 REASON: one line why
-ENGINE: name1 — modules: mod1, mod2, mod3
-ENGINE: name2 — modules: mod4, mod5`);
+ENGINE: group-name — modules: mod1, mod2, mod3
+ENGINE: group-name — modules: mod4, mod5`);
 
   if (!response.toLowerCase().includes('split: yes')) {
     return { split: false, engines: [] };
@@ -1044,12 +1049,19 @@ ENGINE: name2 — modules: mod4, mod5`);
       const childModules = match[2].trim().split(',').map(m => m.trim()).filter(m => m);
       // Guard: reject children with same name as parent (recursive splitting)
       if (childName === engineName) {
-        console.log(`  REJECTED: child "${childName}" has same name as parent. Skipping.`);
+        console.log(`  REJECTED: child "${childName}" has same name as parent.`);
         continue;
       }
       // Guard: reject children with only 1 module (pointless split)
       if (childModules.length <= 1) {
-        console.log(`  REJECTED: child "${childName}" has only ${childModules.length} module(s). Not worth splitting.`);
+        console.log(`  REJECTED: child "${childName}" has only ${childModules.length} module(s).`);
+        continue;
+      }
+      // Guard: reject children whose modules aren't from the parent's module list
+      // (prevents LLM from inventing new modules during split)
+      const invalidModules = childModules.filter(m => !moduleNames.includes(m));
+      if (invalidModules.length > 0) {
+        console.log(`  REJECTED: child "${childName}" has modules not in parent: ${invalidModules.join(', ')}`);
         continue;
       }
       engines.push({ name: childName, specSections: match[2].trim() });
