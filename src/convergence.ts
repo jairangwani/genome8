@@ -999,35 +999,37 @@ Report ONLY missing connections. If all well-connected, respond with exactly: AL
 // ── Hierarchy ──
 
 async function checkIfShouldSplit(orgContent: string, spec: string): Promise<{ split: boolean; engines: Array<{ name: string; specSections: string }> }> {
-  // No hardcoded threshold. The LLM decides based on architectural independence.
-  // A module that could be its own package/service/standalone tool = its own engine.
-  console.log(`  Asking LLM if project should be split into independent engines...`);
+  // The LLM decides based on architectural independence.
+  // Context: tell the LLM what level we're at so it doesn't recursively split the same thing.
+  const engineName = path.basename(absProjectDir);
+  const moduleNames = extractModuleNames(orgContent);
+  console.log(`  Asking LLM if ${engineName} (depth ${currentDepth}, ${moduleNames.length} modules) should split...`);
 
-  const response = await worker.call(`Read this organization and spec. Decide: should this project be split into SEPARATE engines (independent boxes that each converge on their own)?
+  const response = await worker.call(`You are deciding whether this engine should be split into SEPARATE child engines.
 
-DECISION CRITERIA — split if a part:
-- Could be its own npm package, microservice, or standalone tool
-- Has its own data, its own API, its own lifecycle
-- Could be imported by OTHER projects in the future
-- Could live, grow, and be maintained independently
+THIS ENGINE: "${engineName}" at depth ${currentDepth}
+MODULES IN THIS ENGINE: ${moduleNames.join(', ')}
+
+DECISION CRITERIA — split ONLY if:
+- The modules represent truly independent subsystems (could be separate packages/services)
+- Each resulting child engine would have MULTIPLE modules (not just 1)
+- Each child engine name must be DIFFERENT from the parent name "${engineName}"
+- Splitting adds value: each child has enough scope to justify its own convergence cycle
 
 DO NOT split if:
-- The project is simple (< 5 major concerns)
-- Everything is tightly coupled and shares one data model
-- Splitting would create more overhead than value
+- This engine already has a focused scope (the parent already scoped it)
+- Splitting would create children with only 1 module each (pointless overhead)
+- The modules are tightly coupled and share data/APIs
+- A child would just recreate the same scope as the parent (recursive splitting)
 
 ORGANIZATION:
 ${orgContent}
-
-SPEC:
-${spec}
 
 Answer in this EXACT format (text only, do NOT write any files):
 SPLIT: yes (or no)
 REASON: one line why
 ENGINE: name1 — modules: mod1, mod2, mod3
-ENGINE: name2 — modules: mod4, mod5
-ENGINE: name3 — modules: mod6, mod7, mod8`);
+ENGINE: name2 — modules: mod4, mod5`);
 
   if (!response.toLowerCase().includes('split: yes')) {
     return { split: false, engines: [] };
@@ -1038,7 +1040,19 @@ ENGINE: name3 — modules: mod6, mod7, mod8`);
   for (const line of engineLines) {
     const match = line.match(/ENGINE:\s*(\S+)\s*—\s*modules:\s*(.*)/i);
     if (match) {
-      engines.push({ name: match[1], specSections: match[2].trim() });
+      const childName = match[1];
+      const childModules = match[2].trim().split(',').map(m => m.trim()).filter(m => m);
+      // Guard: reject children with same name as parent (recursive splitting)
+      if (childName === engineName) {
+        console.log(`  REJECTED: child "${childName}" has same name as parent. Skipping.`);
+        continue;
+      }
+      // Guard: reject children with only 1 module (pointless split)
+      if (childModules.length <= 1) {
+        console.log(`  REJECTED: child "${childName}" has only ${childModules.length} module(s). Not worth splitting.`);
+        continue;
+      }
+      engines.push({ name: childName, specSections: match[2].trim() });
     }
   }
 

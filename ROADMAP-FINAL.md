@@ -178,7 +178,7 @@
 - [x] Run full test suite: 44/44 pass
 - [x] Type check: 0 errors
 - [x] Run todo app: converged (88 nodes, 0 errors) ✅
-- [ ] Run Pando: hierarchy + convergence + publish — 🔄 TWO TESTS RUNNING (v7 single-engine + pando18 hierarchy)
+- [ ] Run Pando: hierarchy + convergence + publish — 🔄 pando19 RESUMED with persistence fix, bounded convergence, domain lenses
 - [x] No TODOs, no stubs in genome code (only in generated skeleton output — intentional)
 - [x] BLUEPRINT matches code — verified via agent audit
 - [x] GOALPOST matches BLUEPRINT — fixed lens count mismatch (was "50 rounds/10 perspectives", now "8 lenses/unlimited rounds")
