@@ -223,6 +223,38 @@ This is the ultimate test: genome replaces ALL its own documentation with a livi
 
 ---
 
+## Known Gaps (honest, to fix in future)
+
+### Gap 1: No negotiation between engines
+When engine A changes something that breaks engine B's design, the system just tries to make B work with the new reality. It can't push back and say "hey A, can you make 2FA optional instead of required?" Real teams negotiate. The system doesn't.
+**Future fix:** Parent engine mediates — reads both children's constraints, proposes a compromise, both reconverge.
+
+### Gap 2: No cross-engine integration tests
+Each engine tests in isolation. The journey graph says "identity/LoginService → ledger/WalletStore" but no test actually calls identity's code THEN ledger's code in sequence. Cross-engine connections are validated at the PLAN level (compile) but not at the CODE level.
+**Future fix:** Parent generates integration tests from its cross-engine journeys. Tests actually call child engine code in sequence.
+
+### Gap 3: No runtime behavior detection
+The system tests at compile/unit level. If identity adds 500ms latency that breaks gateway's 200ms timeout, that's a runtime issue invisible to the graph. Performance, memory, and timing issues aren't captured as nodes or journeys.
+**Future fix:** Runtime telemetry feeds back into the graph. Performance budgets as rule nodes. Actual latency measurements update the journey metadata.
+
+### Gap 4: No semantic change detection
+If identity changes "JWT tokens are now 5 minutes instead of 15 minutes", the journey still says "issues JWT." The semantic meaning changed but the node name didn't. Dependents don't know the contract changed.
+**Future fix:** Node properties capture semantic contracts (e.g., `token_ttl: 15m`). When properties change, interface hash changes, dependents reconverge.
+
+### Gap 5: No human review gates
+The system is fully autonomous. A critical change (removing a security check, changing an economic rule) should require human approval before propagating. Currently there's no way to pause a ripple and ask a human "is this okay?"
+**Future fix:** Rule nodes can require human approval. Reconvergence pauses, writes a review request, waits for approval before continuing.
+
+### Gap 6: Code skeletons require `files:` field on nodes
+Step 6 only generates code for nodes that have a `files:` field. Most nodes from the planning phase don't have this field yet (131 skipped in agents engine). The LLM needs to be told to add `files:` during creation.
+**Future fix:** After convergence, a pass adds `files:` to all process nodes that should have implementations.
+
+### Gap 7: Test execution environment
+Generated tests import from relative paths that may not exist. Tests assume vitest is installed in the project. The project may not have a package.json or node_modules. Step 6 assumes a TypeScript project but genome should be language-agnostic.
+**Future fix:** Project scaffolding step before test execution. Language-agnostic test generation.
+
+---
+
 ## Rules (remind yourself every 5 minutes)
 
 1. No hacks. Fix root causes.
