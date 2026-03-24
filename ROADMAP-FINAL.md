@@ -185,15 +185,22 @@
 
 ### Phase 5b: End-to-End + Bottom-Up Tests
 
-- [ ] pando20: ALL 5 engines publish interfaces
+- [x] pando20: ALL 5 engines publish interfaces (infra 82n, trust 170n, economy 127n, tooling 121n, agents 207n = 707 total)
 - [ ] pando20: parent creates cross-engine journeys
 - [ ] pando20: parent validates cross-engine refs against child interfaces
 - [ ] pando20: actor merge + redistribute works
 - [ ] pando20: Step 6 code gen runs on at least one engine
-- [ ] Bottom-up: manually edit a module YAML → verify reconvergence triggers
-- [ ] Event ripple: change one engine's interface → verify dependent engine wakes
 - [ ] Step 6 end-to-end: graph → code skeletons → LLM fills → tests run → pass
-- [ ] Full cycle: spec → graph → code → tests → publish → sleep → change → wake → reconverge
+
+### Phase 5c: Bottom-Up Tests (code drives plan changes)
+
+- [ ] Test 1: Edit module YAML directly (add a node) → restart convergence → verify compile detects new node → audit checks if it needs journeys → reconverges
+- [ ] Test 2: Edit generated code (add a function that doesn't match journey) → verify mismatch detected → journey updated to match code
+- [ ] Test 3: A developer adds a NEW module YAML file → convergence picks it up → compiles it → integrates into graph → publishes updated interface
+- [ ] Test 4: Delete a node from module YAML → compile detects broken journey refs → fixes or removes affected journeys → re-publishes
+- [ ] Test 5: Change in child engine → event file written → parent detects → parent's cross-engine journeys updated → parent re-publishes
+- [ ] Test 6: Change in sibling engine → dependent sibling wakes via fs.watch → targeted reconvergence → re-publishes → ripple continues
+- [ ] Full cycle: developer edits code → plan updates → tests regenerate → everything reconverges → all interfaces in sync
 
 ---
 
