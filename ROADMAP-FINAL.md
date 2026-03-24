@@ -249,6 +249,10 @@ The system is fully autonomous. A critical change (removing a security check, ch
 Step 6 only generates code for nodes that have a `files:` field. Most nodes from the planning phase don't have this field yet (131 skipped in agents engine). The LLM needs to be told to add `files:` during creation.
 **Future fix:** After convergence, a pass adds `files:` to all process nodes that should have implementations.
 
+### Gap 8: Test assertion filling is wasteful during planning phase
+Step 6 fills 868 test files with assertions against stub code. The LLM writes both the stub AND the assertion to match — that's testing scaffolding, not real software. Test SKELETONS have value (they define what code should do). Filling assertions has value only when REAL code exists.
+**Future fix:** During initial build, generate test skeletons but skip assertion filling. Mark as `// SKELETON — fill when implementing`. Fill assertions when a developer writes real code for that module. Saves hundreds of Opus calls per build.
+
 ### Gap 7: Test execution environment
 Generated tests import from relative paths that may not exist. Tests assume vitest is installed in the project. The project may not have a package.json or node_modules. Step 6 assumes a TypeScript project but genome should be language-agnostic.
 **Future fix:** Project scaffolding step before test execution. Language-agnostic test generation.
