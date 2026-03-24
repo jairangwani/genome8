@@ -206,14 +206,20 @@
 
 ## Phase 7: Genome Manages Itself (after Phase 6)
 
-- [ ] Write `genome8/genome/spec.md` — genome's own spec (derived from BLUEPRINT.md)
+- [x] Write `genome8/genome/spec.md` — genome's own spec (derived from BLUEPRINT.md)
 - [ ] Run `convergence.ts` on genome8 itself — genome builds its own context graph
 - [ ] Verify: genome's actors, processes, interfaces, rules are all captured as nodes
 - [ ] Verify: journeys describe how compilation, convergence, publishing, hierarchy work
+- [ ] Goals become RULE nodes (SolveContextProblem, BuildPando, etc.)
+- [ ] Roadmap becomes PROCESS nodes with status (done/in-progress/planned)
+- [ ] Architecture becomes PROCESS + INTERFACE nodes (CompileEngine, StreamJsonProtocol, etc.)
 - [ ] Deprecate BLUEPRINT.md — the living graph IS the documentation
+- [ ] Deprecate GOALPOST.md — goals are rule nodes in the graph
+- [ ] Deprecate ROADMAP-FINAL.md — progress tracked as node status in the graph
+- [ ] Only human file remaining: genome/spec.md (plain English entry point)
 - [ ] Any future change to genome code → reconvergence of genome's own graph
 
-This is the ultimate test: genome understanding and managing its own complexity.
+This is the ultimate test: genome replaces ALL its own documentation with a living, self-updating context graph. No separate docs. Everything connected. Everything in sync.
 
 ---
 
