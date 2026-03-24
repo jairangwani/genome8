@@ -194,7 +194,7 @@
 
 ### Phase 5c: Bottom-Up Tests (code drives plan changes)
 
-- [ ] Test 1: Edit module YAML directly (add a node) → restart convergence → verify compile detects new node → audit checks if it needs journeys → reconverges
+- [x] Test 1: Edit module YAML directly (added BiometricAuth node) → convergence detected 171 nodes (was 170), 1 orphan warning. Creation passes run to add journeys. WORKS.
 - [ ] Test 2: Edit generated code (add a function that doesn't match journey) → verify mismatch detected → journey updated to match code
 - [ ] Test 3: A developer adds a NEW module YAML file → convergence picks it up → compiles it → integrates into graph → publishes updated interface
 - [ ] Test 4: Delete a node from module YAML → compile detects broken journey refs → fixes or removes affected journeys → re-publishes
