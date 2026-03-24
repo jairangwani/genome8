@@ -442,8 +442,8 @@ This is the COMPLETE pipeline. convergence.ts IS the orchestrator (code). It cal
 ### The core insight: 80% code, 20% LLM ✅ PROVEN
 
 When we tested genome, the orchestration was done by a human (Claude Code session) manually. It worked because:
-- CODE decisions: compile, pick thinnest module, rotate lens, generate excerpt, check convergence
-- LLM decisions: "given this excerpt and this lens, what actors/nodes/journeys are missing?"
+- CODE decisions: compile, iterate modules × relevant lenses, check compile convergence, run audit
+- LLM decisions: "given this excerpt and this lens, what's missing?" + "is coverage adequate?"
 
 When we tried replacing the human orchestrator with a single LLM agent (Lead), it failed 5 times because:
 - The LLM skipped compilation between writes
@@ -736,7 +736,11 @@ The pipeline order for hierarchy:
 
 **Actors are shared.** The parent discovers actors ONCE. All children get the SAME `_actors.yaml`. "User" is one actor everywhere. No duplicates.
 
-**Split decision is LLM-based.** No hardcoded thresholds. The LLM decides based on: "could this part be its own package/service/standalone tool?" A 3-module todo app stays flat. A 15-module platform splits into 3 engines.
+**Split decision is LLM-based with code guards.** The LLM decides based on architectural independence. Children are told "your parent already scoped you — respect that." Code guards prevent:
+- Recursive splitting (child same name as parent)
+- Pointless splitting (child with only 1 module)
+- Invented modules (child modules must be subset of parent's)
+- The split decision is PERSISTED (engines/ directory). Restart = resume, not re-split.
 
 ```
 convergence.ts (parent/Director):
@@ -949,14 +953,15 @@ The convergence pipeline uses this technique throughout: fresh LLM calls from di
 ## 10. What Code Does vs What LLM Does ✅ CLEARLY DEFINED
 
 **convergence.ts (CODE — the orchestrator):**
-- Runs the pipeline loop (Steps 1-6)
+- Runs the pipeline (Steps 1-7)
 - Calls compile() between every write
-- Picks thinnest module (sort by journey count)
-- Picks next lens (rotate through list)
-- Generates excerpt for each worker
-- Checks convergence (3 levels from compile output)
-- Spawns fresh LLM calls for creative work
-- Enforces the process (can't skip steps, can't stop early)
+- Discovers domain-specific lenses per project (LLM, 1 call)
+- Builds lens relevance matrix per module (LLM, 1 call)
+- Iterates modules × relevant lenses (bounded creation)
+- Checks convergence via compile (0 errors = converged, instant)
+- Runs targeted audit (3 auditors, fix specific gaps)
+- Smart hierarchy: context-aware split decisions, no recursive splitting
+- Event-driven sleep/wake (fs.watch, zero cost at rest)
 
 **Fresh LLM calls (WORKERS — called by convergence.ts):**
 - "What actors exist?" (creative — reads spec, understands domain)
