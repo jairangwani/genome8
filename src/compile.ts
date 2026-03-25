@@ -59,15 +59,20 @@ export function compile(modulesDir: string): CompileResult {
 }
 
 /**
- * Validates that all journey steps have meaningful action descriptions.
- * Flags steps with empty or generic actions like "does something".
+ * Validates that every journey step has a meaningful action description.
+ * Flags steps with empty or too-short actions (fewer than 5 characters).
  */
-export function validateActionQuality(result: CompileResult): string[] {
-  const issues: string[] = [];
+export function validateActionQuality(result: CompileResult): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
   for (const [name, journey] of Object.entries(result.index.journeys)) {
     for (const step of journey.steps) {
-      if (!step.action || step.action.length < 5) {
-        issues.push(`Journey "${name}" step ${step.step_number}: action too short or empty`);
+      if (!step.action || step.action.trim().length < 5) {
+        issues.push({
+          severity: 'warning',
+          module: journey.module,
+          journey: name,
+          message: `Journey "${name}" step ${step.step_number}: action is empty or too short (must be at least 5 characters)`,
+        });
       }
     }
   }
