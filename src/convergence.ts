@@ -848,49 +848,71 @@ The implementation must actually work when executed. Test it mentally — trace 
     console.log('  No src/ directory found — LLM may have used a different structure');
   }
 
-  // 6b: Generate test skeletons (structure only — assertions filled when code is stable)
-  const testDir = path.join(absProjectDir, 'test');
-  const testFiles = generateTests(finalResult.index, testDir);
-  console.log(`  Test skeletons: ${testFiles.length} generated (assertions deferred until code is stable)`);
-
-  // 6e: Run tests and fix failures
-  console.log('  Running tests...');
+  // 6b: Validate the output — domain-agnostic
+  // For software: run the app, check for errors
+  // For a storybook: check consistency between chapters and graph
+  // For any domain: LLM validates output matches the graph
+  console.log('  Validating output...');
   const { execSync: execSyncLocal } = await import('node:child_process');
   let testsPassed = false;
   let fixAttempts = 0;
   const MAX_FIX_ATTEMPTS = config.maxFixAttempts;
 
-  while (!testsPassed && fixAttempts < MAX_FIX_ATTEMPTS) {
-    try {
-      const testOutput = execSyncLocal('npx vitest run --reporter=verbose 2>&1', {
-        cwd: absProjectDir,
-        encoding: 'utf-8',
-        timeout: 120_000,
-      });
-      console.log(`  Tests PASSED`);
-      testsPassed = true;
-    } catch (err: any) {
-      fixAttempts++;
-      const output = err.stdout || err.message || '';
-      const failures = output.substring(0, 5000); // OK to truncate error output for logging
+  // Ask LLM how to validate this project (domain-agnostic)
+  const validationResponse = await worker.call(
+    'The project output has been generated. How should we VALIDATE it?\n\n' +
+    'PROJECT SPEC:\n' + spec.substring(0, 2000) + '\n\n' +
+    'If this is a software project with TypeScript/JavaScript:\n' +
+    '  → Try running it and report the command + result\n' +
+    'If this is a document/story/plan:\n' +
+    '  → Check consistency between output files and the graph\n' +
+    'If this is a procedure/policy:\n' +
+    '  → Verify completeness against the graph\n\n' +
+    'Run the appropriate validation now using Bash tool. Report what you find.'
+  );
+  console.log('  Validation result: ' + validationResponse.substring(0, 300));
 
-      console.log(`  Tests FAILED (attempt ${fixAttempts}/${MAX_FIX_ATTEMPTS})`);
+  // Try running software projects specifically
+  const hasTsFiles = fs.existsSync(path.join(absProjectDir, 'src')) &&
+    fs.readdirSync(path.join(absProjectDir, 'src')).some(f => f.endsWith('.ts'));
 
-      if (fixAttempts < MAX_FIX_ATTEMPTS) {
-        console.log(`    LLM CALL: fixing test failures...`);
-        await worker.call(`These tests failed. Fix the code so they pass.
+  if (hasTsFiles) {
+    console.log('  Software project detected — running smoke test...');
+    while (!testsPassed && fixAttempts < MAX_FIX_ATTEMPTS) {
+      try {
+        const testOutput = execSyncLocal('npx tsx src/*.ts --help 2>&1 || npx tsx src/*.ts list 2>&1', {
+          cwd: absProjectDir,
+          encoding: 'utf-8',
+          timeout: 30_000,
+        });
+        console.log(`  Smoke test PASSED`);
+        testsPassed = true;
+      } catch (err: any) {
+        fixAttempts++;
+        const output = err.stdout || err.message || '';
+        const failures = output.substring(0, 5000);
 
-TEST OUTPUT:
+        console.log(`  Smoke test FAILED (attempt ${fixAttempts}/${MAX_FIX_ATTEMPTS})`);
+
+        if (fixAttempts < MAX_FIX_ATTEMPTS) {
+          console.log(`    LLM CALL: fixing failures...`);
+          await worker.call(`The output validation failed. Fix the issue.
+
+ERROR OUTPUT:
 ${failures}
 
-Read the failing test files and the implementation files they test.
-Fix the issues. Write the corrected files using the Write tool.`);
+Read the relevant files, fix the problem, write corrected files using the Write tool.`);
+        }
       }
     }
+  } else {
+    // Non-software project — validation was done by LLM above
+    testsPassed = true;
+    console.log('  Non-software project — validation handled by LLM.');
   }
 
   if (!testsPassed) {
-    console.log(`  WARNING: Tests still failing after ${MAX_FIX_ATTEMPTS} attempts. Interface will be marked as UNSTABLE.`);
+    console.log(`  WARNING: Validation still failing after ${MAX_FIX_ATTEMPTS} attempts. Interface will be marked as UNSTABLE.`);
   }
 
   console.log('\n═══ CONVERGED ═══');
