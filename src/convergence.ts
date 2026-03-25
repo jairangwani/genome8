@@ -150,6 +150,30 @@ JOURNEY STEP FORMAT IS MANDATORY:
   sessionResetChars: config.sessionResetChars,
 });
 
+// ── Retry on LLM Timeout ──
+// Wraps worker.call() with retry logic: up to 3 retries with exponential backoff (5s, 15s, 45s).
+// Only retries on timeout errors — other errors propagate immediately.
+
+async function retryOnLLMTimeout(prompt: string, maxRetries = 3): Promise<string> {
+  const backoffSeconds = [5, 15, 45];
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await worker.call(prompt);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isTimeout = message.includes('timeout') || message.includes('Timeout');
+      if (!isTimeout || attempt >= maxRetries) {
+        throw err;
+      }
+      const delaySec = backoffSeconds[attempt] ?? backoffSeconds[backoffSeconds.length - 1];
+      console.log(`  ⏳ LLM call timed out (attempt ${attempt + 1}/${maxRetries + 1}). Retrying in ${delaySec}s...`);
+      await new Promise(resolve => setTimeout(resolve, delaySec * 1000));
+    }
+  }
+  // Unreachable — loop always returns or throws — but satisfies TypeScript.
+  throw new Error('retryOnLLMTimeout: exhausted retries');
+}
+
 // ── Compile Helper ──
 
 function doCompile(): CompileResult {

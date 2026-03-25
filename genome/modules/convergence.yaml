@@ -5,6 +5,11 @@ nodes:
     type: process
     description: reads spec.md from disk as the sole human input to the convergence pipeline
     files: ["src/convergence.ts"]
+  RetryOnLLMTimeout:
+    type: process
+    description: when an LLM call times out, automatically retries up to 3 times with exponential backoff before failing
+    files: ["src/convergence.ts"]
+
   WriteOrganization:
     type: process
     description: delegates to LLM to analyze the spec and write ORGANIZATION.md with modules, dependencies, and independence

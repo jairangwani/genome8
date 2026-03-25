@@ -235,11 +235,10 @@ Use genome as the test subject. Real code. Real changes. Real ripple. No stubs.
 - [x] PASSED: code change → graph update → test generation ✅
 
 ### Test 2: Plan change → code updates
-- [ ] Add new node to convergence.yaml manually (e.g., RetryOnLLMTimeout)
-- [ ] Node has files: ["src/convergence.ts"] but function doesn't exist in code
-- [ ] Run Step 4d → detects drift (graph says X, code doesn't have X)
-- [ ] LLM writes the implementation in convergence.ts
-- [ ] Verify: code matches graph
+- [x] Added RetryOnLLMTimeout node to convergence.yaml (graph says it should exist)
+- [x] Code didn't have it → DRIFT detected
+- [x] LLM read convergence.ts, wrote retry function with exponential backoff
+- [x] DRIFT RESOLVED: graph drove code implementation ✅
 
 ### Test 3: Multi-module ripple within genome
 - [ ] Change compile module (add new validation rule)
