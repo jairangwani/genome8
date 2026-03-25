@@ -663,23 +663,29 @@ HUMAN RUNS: genome converge /path/to/project
 
   If no gaps → CONVERGED.
 
-  ── Step 4d: Code-to-Graph Sync (bottom-up) ──
+  ── Step 4d: Output-to-Graph Sync (bottom-up) ──
 
-  If actual code files exist in the project, reconcile them with the graph.
-  This is how CODE drives PLAN changes — the real bottom-up flow.
+  If project output files exist (code, chapters, policies, procedures — anything),
+  reconcile them with the graph. This is how OUTPUT drives PLAN changes.
+  Not just code → graph. Any output → graph. Domain-agnostic.
+
+  Scans all project directories (except genome/, node_modules/, .git/).
+  For a software project: finds .ts, .py, .go files.
+  For a storybook: finds chapter files, character sheets.
+  For a hospital: finds procedure documents, compliance checklists.
 
   Two checks:
-  1. UNTRACKED FILES: code exists but no node references it
-     → LLM reads the code, adds nodes + journeys to the graph
-     → The plan updates to match what the code actually does
+  1. UNTRACKED FILES: output exists but no node references it
+     → LLM reads the file, adds nodes + journeys to the graph
+     → The plan updates to match what the output actually contains
 
-  2. TRACKED FILES: node has files: field pointing to code
-     → LLM compares code vs journey description
-     → If code does MORE than journey says → add missing journeys
-     → If code does LESS than journey says → flag as unimplemented
+  2. TRACKED FILES: node has files: field pointing to output
+     → LLM compares output vs journey description
+     → If output does MORE than journey says → add missing journeys
+     → If output does LESS than journey says → flag as incomplete
 
-  This closes the loop: spec → graph → code → graph. Both directions sync.
-  Without this, the plan drifts from reality — the exact problem genome solves.
+  This closes the loop: spec → graph → output → graph. Both directions sync.
+  Works for any domain. The plan never drifts from reality.
 
   WHY THIS WORKS:
   - Creation is bounded (modules × lenses). No infinite loop.

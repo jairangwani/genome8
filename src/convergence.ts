@@ -590,15 +590,24 @@ Read the file, add what's needed, write it back using the Write tool.`);
     }
   }
 
-  // Also scan for code files that exist but aren't in the graph
-  const srcDir = path.join(absProjectDir, 'src');
-  if (fs.existsSync(srcDir)) {
-    const srcFiles = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
-    for (const file of srcFiles) {
-      const fullPath = path.join(srcDir, file);
-      const isTracked = codeFiles.some(cf => cf.file === fullPath);
-      if (!isTracked) {
-        codeFiles.push({ node: '', file: fullPath }); // Untracked code file
+  // Also scan for OUTPUT files that exist but aren't in the graph.
+  // Not just code — any project output: chapters, policies, designs, procedures.
+  // Scans all directories except genome/ (that's the graph itself) and node_modules/.
+  const scanDirs = fs.readdirSync(absProjectDir).filter(d => {
+    const full = path.join(absProjectDir, d);
+    return fs.statSync(full).isDirectory() && !['genome', 'node_modules', '.git', 'dist', 'engines'].includes(d);
+  });
+
+  for (const dir of scanDirs) {
+    const dirPath = path.join(absProjectDir, dir);
+    const files = fs.readdirSync(dirPath).filter(f => !f.startsWith('.'));
+    for (const file of files) {
+      const fullPath = path.join(dirPath, file);
+      if (fs.statSync(fullPath).isFile()) {
+        const isTracked = codeFiles.some(cf => cf.file === fullPath);
+        if (!isTracked) {
+          codeFiles.push({ node: '', file: fullPath }); // Untracked output file
+        }
       }
     }
   }
@@ -627,7 +636,8 @@ Read the file, add what's needed, write it back using the Write tool.`);
 
       const allModuleFiles = fs.readdirSync(modulesDir).filter(f => f.endsWith('.yaml') && f !== '_actors.yaml');
 
-      await worker.call(`These code files exist in the project but are NOT tracked in the graph (no node has a files: field pointing to them).
+      await worker.call(`These project output files exist but are NOT tracked in the graph.
+They could be code, chapters, policies, designs, procedures — any project output.
 
 UNTRACKED FILES:
 ${untrackedSummary}
@@ -635,9 +645,9 @@ ${untrackedSummary}
 EXISTING MODULES: ${allModuleFiles.join(', ')}
 
 For each untracked file:
-1. Does it implement something already described in a node? → Add files: [path] to that node
-2. Does it implement something NOT in the graph? → Add a new node + journey for it
-3. Is it irrelevant (config, boilerplate)? → Skip
+1. Does it implement/describe something already in a node? → Add files: [path] to that node
+2. Does it contain something NOT in the graph? → Add a new node + journey for it
+3. Is it irrelevant (config, build artifacts)? → Skip
 
 Update the appropriate YAML module files using the Write tool.`);
 

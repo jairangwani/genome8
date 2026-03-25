@@ -37,6 +37,18 @@ nodes:
   PromoteExternalRefsToErrors:
     type: process
     description: converts unresolved external refs from warnings to errors at the parent level where all children are visible
+  ContinueWithoutSplit:
+    type: process
+    description: bypasses the entire hierarchy pipeline and proceeds directly to bounded module creation when the LLM decides not to split
+  MonitorChildConvergence:
+    type: process
+    description: polls each child engine's published output directory to track whether it has completed convergence or is still running
+  MergeChildGraphsIntoParent:
+    type: process
+    description: incorporates all child interface nodes and journeys into the parent's compiled index as resolved external references
+  GenerateChildOrganization:
+    type: process
+    description: creates a scoped ORGANIZATION.md for each child listing only the modules assigned to that child's group
   ChildDirectory:
     type: artifact
     description: a directory containing scoped spec.md, shared _actors.yaml, and modules/ for one child engine
@@ -49,6 +61,12 @@ nodes:
   ChildInterfaceCollection:
     type: artifact
     description: the collected interface.yaml files from all children, used for cross-engine validation
+  ChildConvergenceStatus:
+    type: artifact
+    description: tracks the current state of each child engine — running, converged, or failed — used by the parent to determine when all children are done
+  ChildOrganizationFile:
+    type: artifact
+    description: a child-specific ORGANIZATION.md listing only the modules assigned to that child engine
   SameCodeEveryLevel:
     type: rule
     description: convergence.ts is the exact same code at parent, child, and grandchild levels — no level-specific logic
@@ -87,6 +105,10 @@ journeys:
         action: writes a scoped spec.md with only the relevant sections for this child
       - node: ScopedSpecFile
         action: stores the scoped spec in the child directory
+      - node: GenerateChildOrganization
+        action: writes a scoped ORGANIZATION.md listing only this child's assigned modules
+      - node: ChildOrganizationFile
+        action: stores the scoped organization in the child directory
       - node: DistributeSharedActors
         action: copies _actors.yaml from the parent into the child directory
       - node: SharedActorsNoduplicates
@@ -95,6 +117,8 @@ journeys:
         action: repeats directory creation for each additional child engine
       - node: GenerateScopedSpec
         action: repeats scoped spec generation for each additional child
+      - node: GenerateChildOrganization
+        action: repeats scoped organization generation for each additional child
       - node: DistributeSharedActors
         action: repeats actor distribution for each additional child
 
@@ -112,6 +136,10 @@ journeys:
         action: launches convergence.ts for each additional child directory
       - node: _actors/ChildEngine
         action: each child converges independently with its scoped spec and inherited actors
+      - node: MonitorChildConvergence
+        action: polls each child's output directory for published interface presence
+      - node: ChildConvergenceStatus
+        action: records each child's current state as running or converged
       - node: WaitForAllChildren
         action: parent blocks until every child process has completed and exited
       - node: _actors/ChildEngine
@@ -141,8 +169,10 @@ journeys:
         action: creates parent-level journeys linking nodes across children's interfaces
       - node: CrossEngineJourneySet
         action: stores the cross-engine journeys in the parent's graph
+      - node: MergeChildGraphsIntoParent
+        action: incorporates child interface nodes and journeys into the parent compiled index
       - node: graph/CompiledIndex
-        action: incorporates cross-engine journeys into the parent's compiled index
+        action: the parent compiled index now contains both parent-level and child-level nodes
 
   PublishParentAfterHierarchy:
     steps:
@@ -166,3 +196,122 @@ journeys:
         action: writes event file signaling the parent has published
       - node: publish/EventFile
         action: the parent event file is visible to upstream dependents
+
+  ContinueWithoutSplit:
+    steps:
+      - node: convergence/HierarchyDecision
+        action: invokes the hierarchy decision step in the convergence pipeline
+      - node: AnalyzeModuleIndependence
+        action: reads ORGANIZATION.md independence analysis for the LLM
+      - node: _actors/LLMWorker
+        action: evaluates module groups and determines splitting is not beneficial
+      - node: DecideSplit
+        action: produces a no-split result indicating all modules stay in the current engine
+      - node: ContinueWithoutSplit
+        action: bypasses child engine preparation and proceeds to the next convergence phase
+      - node: convergence/ConvergenceState
+        action: records the no-split decision and advances to bounded module creation
+      - node: convergence/BoundedCreationLoop
+        action: begins creating modules directly in the current engine without hierarchy
+
+  MonitorChildConvergenceProgress:
+    steps:
+      - node: _actors/ParentEngine
+        action: has spawned all child engines and needs to track their progress
+      - node: MonitorChildConvergence
+        action: checks the first child's output directory for a published interface file
+      - node: ChildConvergenceStatus
+        action: records the first child's state as running or converged
+      - node: MonitorChildConvergence
+        action: checks each subsequent child's output directory
+      - node: ChildConvergenceStatus
+        action: updates each child's state in the status tracker
+      - node: WaitForAllChildren
+        action: continues blocking while any child status remains running
+      - node: MonitorChildConvergence
+        action: re-polls children that have not yet converged
+      - node: ChildConvergenceStatus
+        action: detects all children have transitioned to converged state
+      - node: _actors/ParentEngine
+        action: proceeds to collect child interfaces now that all children are done
+
+  MergeChildGraphs:
+    steps:
+      - node: _actors/ParentEngine
+        action: cross-engine validation has passed and cross-engine journeys are created
+      - node: ChildInterfaceCollection
+        action: provides all child interface files with their exported nodes and journeys
+      - node: CollectChildInterfaces
+        action: parses each child interface into structured node and journey data
+      - node: MergeChildGraphsIntoParent
+        action: adds each child's exported nodes to the parent's node registry
+      - node: MergeChildGraphsIntoParent
+        action: adds each child's exported journeys to the parent's journey registry
+      - node: CrossEngineJourneySet
+        action: provides the parent-level cross-engine journeys for inclusion
+      - node: graph/CompiledIndex
+        action: stores the merged parent graph containing parent nodes, child nodes, and cross-engine journeys
+      - node: _actors/Compiler
+        action: runs final validation on the merged parent graph
+      - node: compilation/CompilationResult
+        action: confirms the merged graph has zero errors and zero orphans
+
+  EndToEndHierarchySplit:
+    steps:
+      - node: convergence/HierarchyDecision
+        action: triggers the hierarchy decision step in the convergence pipeline
+      - node: AnalyzeModuleIndependence
+        action: reads independence analysis from ORGANIZATION.md
+      - node: DecideSplit
+        action: produces a split decision with child groupings
+      - node: AssignModulesToChildren
+        action: maps modules to child engine groups
+      - node: CreateChildDirectory
+        action: creates directory structures for all child engines
+      - node: GenerateScopedSpec
+        action: writes scoped spec.md for each child
+      - node: GenerateChildOrganization
+        action: writes scoped ORGANIZATION.md for each child
+      - node: DistributeSharedActors
+        action: copies _actors.yaml into each child directory
+      - node: SpawnChildEngine
+        action: launches convergence.ts for each child
+      - node: MonitorChildConvergence
+        action: tracks child convergence progress until all complete
+      - node: WaitForAllChildren
+        action: blocks until all children have published interfaces
+      - node: CollectChildInterfaces
+        action: reads all child interface.yaml files
+      - node: ValidateCrossEngineRefs
+        action: validates cross-engine references across sibling interfaces
+      - node: PromoteExternalRefsToErrors
+        action: converts unresolved external refs to errors
+      - node: CreateCrossEngineJourneys
+        action: creates parent-level journeys connecting child nodes
+      - node: MergeChildGraphsIntoParent
+        action: incorporates all child graphs into the parent compiled index
+      - node: publish/ComputeInterfaceHash
+        action: computes SHA256 hash for the parent's combined interface
+      - node: publish/GenerateInterfaceYaml
+        action: writes the parent's interface.yaml
+      - node: publish/WriteEventFile
+        action: writes event file signaling the parent has published
+
+  PrepareChildOrganization:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the split decision with module-to-child assignments
+      - node: AssignModulesToChildren
+        action: determines which modules belong to each child group
+      - node: organization/ModuleList
+        action: provides the full list of modules from the parent ORGANIZATION.md
+      - node: GenerateChildOrganization
+        action: filters the parent module list to only modules assigned to the first child
+      - node: ChildOrganizationFile
+        action: stores the first child's scoped ORGANIZATION.md in its directory
+      - node: GenerateChildOrganization
+        action: repeats organization generation for each additional child
+      - node: ChildOrganizationFile
+        action: stores each additional child's scoped ORGANIZATION.md
+      - node: SameCodeEveryLevel
+        action: confirms children will use their scoped organization the same way the parent uses its full one
