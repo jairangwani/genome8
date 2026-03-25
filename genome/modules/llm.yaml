@@ -1,0 +1,587 @@
+spec_sections: [3]
+
+nodes:
+  SpawnWorkerProcess:
+    type: process
+    description: launches a persistent Claude Code subprocess that stays alive for the duration of the convergence pipeline
+  InjectSystemPrompt:
+    type: process
+    description: sends the genome worker system prompt to the freshly spawned worker, establishing its role, YAML format rules, and operational constraints
+  SendTask:
+    type: process
+    description: sends a structured task to the worker process via stream-json protocol with prompt, context, and expected output
+  ReceiveResult:
+    type: process
+    description: reads the worker's streamed response, parsing the stream-json output into structured result data
+  BuildTaskContext:
+    type: process
+    description: assembles task-specific context from excerpt output, compiled state snapshot, and cross-module relationship data before packaging into the payload
+  ValidateWorkerOutput:
+    type: process
+    description: confirms the worker produced expected output by checking that files exist on disk, content is valid YAML or TypeScript, and task requirements are met
+  WriteFile:
+    type: process
+    description: worker uses its native Write tool to create or overwrite a file on disk
+  ReadFile:
+    type: process
+    description: worker uses its native Read tool to read file contents from disk
+  EditFile:
+    type: process
+    description: worker uses its native Edit tool to make targeted edits to an existing file
+  RunBash:
+    type: process
+    description: worker uses its native Bash tool to execute shell commands
+  HandleCompaction:
+    type: process
+    description: Claude automatically compacts prior messages as the conversation approaches context limits
+  ShutdownWorker:
+    type: process
+    description: terminates the persistent worker process after all tasks are complete or on pipeline abort
+  DetectProcessExit:
+    type: process
+    description: monitors the worker subprocess and detects unexpected termination via non-zero exit code or signal
+  DetectStreamInterruption:
+    type: process
+    description: detects when stream-json data stops mid-response indicating a broken pipe or process death
+  DetectTaskTimeout:
+    type: process
+    description: fires when a task exceeds the maximum expected duration without producing a complete response
+  HandleToolCallFailure:
+    type: process
+    description: captures when a worker native tool call returns an error and records the tool name, arguments, and error message
+  DrainPartialOutput:
+    type: process
+    description: reads any files written to disk and partial stream data the worker produced before the failure occurred
+  CleanupFailedSession:
+    type: process
+    description: tears down the broken worker session and closes the stream-json channel so a clean respawn can proceed
+  ScopeWritesToAllowedPaths:
+    type: process
+    description: validates every Write tool call targets only the allowed path for the current task, rejecting path traversal or out-of-scope writes
+  ScopeReadsToProjectDir:
+    type: process
+    description: validates every Read tool call targets only files within the project directory, blocking reads of credentials, env files, or system files
+  FilterBashCommands:
+    type: process
+    description: inspects every Bash tool call and blocks dangerous commands including network access, process spawning, file deletion, and permission changes
+  DetectPromptInjection:
+    type: process
+    description: scans task context for prompt injection patterns before sending to the worker, flagging content that attempts to override system prompt instructions
+  ValidateOutputScope:
+    type: process
+    description: after task completion verifies the worker only modified the assigned target file and no other files in the project were changed
+  DetectToolCallLoop:
+    type: process
+    description: monitors tool call count and pattern during task execution, terminating the worker if it enters a repetitive unbounded loop
+  EnforceFileSizeLimit:
+    type: process
+    description: rejects Write tool calls that would create files exceeding the maximum allowed size, preventing disk exhaustion
+  TruncatePayloadToFit:
+    type: process
+    description: truncates lower-priority context sections when the assembled task payload exceeds the maximum message size, preserving critical instructions and target module context
+  TrackCompactionCount:
+    type: process
+    description: counts compaction events for the current worker and signals when the degradation threshold is reached, indicating the worker should be replaced
+  ProactiveWorkerReplacement:
+    type: process
+    description: shuts down the current worker and spawns a fresh instance when compaction count exceeds the quality threshold, before output quality visibly degrades
+  ReinjectSystemPromptAfterCompaction:
+    type: process
+    description: re-sends critical system prompt instructions to the worker after heavy compaction to prevent instruction drift from compressed context
+  PrioritizeContextByRelevance:
+    type: process
+    description: when the compiled index contains many modules, selects only the modules and connections most relevant to the current task for payload inclusion
+  StreamJsonProtocol:
+    type: interface
+    description: the stream-json communication protocol between convergence.ts and the Claude Code worker process
+  NativeToolSet:
+    type: interface
+    description: the set of native tools (Read, Write, Edit, Bash) available to the worker for file and shell operations
+  WorkerSession:
+    type: artifact
+    description: the persistent Claude Code process state including conversation history and compacted context
+  TaskPayload:
+    type: artifact
+    description: the structured input sent to the worker containing prompt, relevant context, and output expectations
+  TaskResult:
+    type: artifact
+    description: the structured output returned by the worker containing created content and tool call results
+  SystemPrompt:
+    type: artifact
+    description: the instruction template sent at initialization that defines the worker's genome role, YAML format rules, node types, step format, and operational constraints
+  CrashReport:
+    type: artifact
+    description: structured failure record containing exit code, last task payload, partial output collected, error details, and tool call history at time of failure
+  CompactionCounter:
+    type: artifact
+    description: tracks the number of compaction events, estimated context quality level, and total task count for the current worker session
+  AlwaysOpus:
+    type: rule
+    description: the worker always uses Opus model with 1M context window, no model selection or fallback
+  NoSessionManagement:
+    type: rule
+    description: convergence.ts does not manage sessions — Claude handles its own context compaction transparently
+  NoPrintMode:
+    type: rule
+    description: worker uses interactive mode with native tools, never --print mode which lacks tool access
+  WorkerCreatesCodeOrchestrates:
+    type: rule
+    description: the worker only creates content when asked — it never decides when to act, code orchestrates all decisions
+  SingleWorkerConstraint:
+    type: rule
+    description: only one worker process may exist at a time, cleanup must fully complete before any respawn can begin
+  AllowedWritePaths:
+    type: rule
+    description: worker may only write to genome/modules/ during creation and enrichment, genome/generated/ during codegen, and genome/tests/ during testgen — all other paths are rejected
+  NoBashNetworkAccess:
+    type: rule
+    description: worker Bash tool calls must never use network commands (curl, wget, nc, ssh) or spawn background processes or delete files outside the output directory
+  SingleFilePerTask:
+    type: rule
+    description: each task assigns the worker exactly one target file to create or edit, any write to a different path is treated as a scope violation
+  PayloadSizeBudget:
+    type: rule
+    description: task payloads must not exceed the maximum message size and context is truncated by priority to meet the budget, preserving system prompt and target module above all else
+  ReplaceAfterNCompactions:
+    type: rule
+    description: worker is proactively replaced after N compaction events to maintain output quality rather than waiting for observable degradation
+
+journeys:
+  SpawnAndInitializeWorker:
+    steps:
+      - node: convergence/ConvergenceCLI
+        action: triggers the convergence pipeline which needs an LLM worker
+      - node: SpawnWorkerProcess
+        action: launches a new Claude Code subprocess as a persistent worker
+      - node: AlwaysOpus
+        action: ensures the process is started with Opus model and 1M context
+      - node: NoPrintMode
+        action: ensures the process is in interactive mode with native tool access
+      - node: StreamJsonProtocol
+        action: establishes stream-json communication channel with the subprocess
+      - node: NativeToolSet
+        action: confirms the worker has access to Read, Write, Edit, and Bash tools
+      - node: SystemPrompt
+        action: provides the genome worker instruction template with YAML format rules and constraints
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the worker as its initial message before any tasks
+      - node: CompactionCounter
+        action: initializes the compaction counter to zero for the fresh worker session
+      - node: WorkerSession
+        action: initializes the persistent session state with the system prompt as foundational context
+
+  SendTaskToWorker:
+    steps:
+      - node: _actors/LLMWorker
+        action: is idle and waiting for the next task from the orchestrator
+      - node: excerpt/ExcerptOutput
+        action: provides the focused context document for the target module
+      - node: graph/CompiledIndex
+        action: provides the current compiled state for cross-module reference context
+      - node: BuildTaskContext
+        action: assembles task-specific context from excerpt, compiled state, and module relationships
+      - node: TaskPayload
+        action: packages the assembled context with prompt and output expectations into structured input
+      - node: SendTask
+        action: sends the task payload to the worker via stream-json protocol
+      - node: StreamJsonProtocol
+        action: transmits the structured task to the Claude Code process
+      - node: WorkerCreatesCodeOrchestrates
+        action: ensures the task is a specific bounded request, not an open-ended question
+      - node: _actors/LLMWorker
+        action: receives the task and begins processing
+
+  WorkerExecutesWithTools:
+    steps:
+      - node: _actors/LLMWorker
+        action: analyzes the task and determines which native tools to use
+      - node: NativeToolSet
+        action: provides access to Read, Write, Edit, and Bash tools
+      - node: ReadFile
+        action: worker reads existing files needed for context
+      - node: WriteFile
+        action: worker creates new files such as module YAML or generated code
+      - node: EditFile
+        action: worker makes targeted edits to existing files for fixes or updates
+      - node: RunBash
+        action: worker executes shell commands for compilation or test running
+      - node: TaskResult
+        action: collects all tool outputs and created content into a structured result
+
+  ReceiveWorkerResult:
+    steps:
+      - node: _actors/LLMWorker
+        action: completes the task and streams the result back
+      - node: StreamJsonProtocol
+        action: carries the streamed response from the worker process
+      - node: ReceiveResult
+        action: parses the stream-json output into structured result data
+      - node: TaskResult
+        action: stores the parsed result for the orchestrator to consume
+
+  ValidateAndAcceptResult:
+    steps:
+      - node: TaskResult
+        action: provides the raw result from the worker for validation
+      - node: ValidateWorkerOutput
+        action: checks that expected output files exist on disk
+      - node: ValidateWorkerOutput
+        action: verifies file content is valid YAML or TypeScript depending on the task type
+      - node: ValidateWorkerOutput
+        action: confirms the output addresses the specific task requirements
+      - node: convergence/ConvergenceState
+        action: records the validated result and advances the pipeline to the next step
+
+  WorkerCreatesModuleFile:
+    steps:
+      - node: _actors/LLMWorker
+        action: receives a module creation task with excerpt context and module name
+      - node: NativeToolSet
+        action: provides tool access for the creation workflow
+      - node: ReadFile
+        action: worker reads the excerpt output to understand what the module should contain
+      - node: ReadFile
+        action: worker reads existing related modules to understand cross-module reference targets
+      - node: graph/NodeTypeSchema
+        action: constrains the worker to use only the 5 valid node types
+      - node: graph/StepFormatRule
+        action: constrains the worker to use node-plus-action step format, never flat strings
+      - node: WriteFile
+        action: worker writes the complete module YAML file with spec_sections, nodes, and journeys
+      - node: TaskResult
+        action: captures the file path and content written as the task output
+
+  WorkerEnrichesFromPerspective:
+    steps:
+      - node: _actors/LLMWorker
+        action: receives a perspective enrichment task with the current module state and perspective name
+      - node: NativeToolSet
+        action: provides tool access for the enrichment workflow
+      - node: ReadFile
+        action: worker reads the current module YAML file to understand existing nodes and journeys
+      - node: ReadFile
+        action: worker reads the compiled state excerpt to understand cross-module connections
+      - node: ReadFile
+        action: worker reads related modules to identify valid cross-module reference targets
+      - node: graph/NodeTypeSchema
+        action: constrains new nodes to valid types
+      - node: graph/StepFormatRule
+        action: constrains new steps to node-plus-action format
+      - node: WriteFile
+        action: worker writes the complete updated module file with new nodes and journeys added
+      - node: TaskResult
+        action: captures the updated file path and summary of additions as the task output
+
+  HandleContextCompaction:
+    steps:
+      - node: WorkerSession
+        action: approaches the context limit after many tasks
+      - node: NoSessionManagement
+        action: confirms convergence.ts does not intervene in session management
+      - node: HandleCompaction
+        action: Claude automatically compresses prior messages to free context space
+      - node: TrackCompactionCount
+        action: increments the compaction counter and records the event
+      - node: CompactionCounter
+        action: stores the updated compaction count and estimated quality level
+      - node: WorkerSession
+        action: continues with compacted context, preserving essential information
+      - node: _actors/LLMWorker
+        action: resumes accepting tasks with no interruption to the pipeline
+
+  ShutdownWorkerProcess:
+    steps:
+      - node: convergence/ConvergenceState
+        action: indicates all pipeline steps are complete or pipeline is aborting
+      - node: ShutdownWorker
+        action: sends termination signal to the persistent worker process
+      - node: WorkerSession
+        action: is discarded as the process terminates
+      - node: StreamJsonProtocol
+        action: closes the communication channel
+
+  DetectAndReportProcessCrash:
+    steps:
+      - node: _actors/LLMWorker
+        action: is executing a task when the subprocess terminates unexpectedly
+      - node: DetectProcessExit
+        action: detects the non-zero exit code or termination signal from the subprocess
+      - node: TaskPayload
+        action: provides the last task that was in progress when the crash occurred
+      - node: DrainPartialOutput
+        action: scans disk for any files the worker wrote before crashing
+      - node: CrashReport
+        action: records the exit code, last task, partial output, and error details
+      - node: CleanupFailedSession
+        action: tears down the dead worker session and releases resources
+      - node: StreamJsonProtocol
+        action: closes the broken communication channel
+      - node: convergence/DetectWorkerFailure
+        action: receives the crash report and initiates orchestration-level recovery
+
+  DetectAndReportStreamFailure:
+    steps:
+      - node: _actors/LLMWorker
+        action: is streaming a response when the stream-json channel breaks
+      - node: StreamJsonProtocol
+        action: produces a broken pipe or unexpected EOF during data transfer
+      - node: DetectStreamInterruption
+        action: detects the incomplete stream and flags the communication failure
+      - node: DrainPartialOutput
+        action: reads whatever partial stream data was received before the break
+      - node: TaskPayload
+        action: provides the task that was being processed when the stream broke
+      - node: CrashReport
+        action: records the stream failure with partial data and last task context
+      - node: CleanupFailedSession
+        action: closes the broken channel and discards the corrupted session state
+      - node: convergence/DetectWorkerFailure
+        action: receives the stream failure report for recovery decision
+
+  DetectAndReportTimeout:
+    steps:
+      - node: _actors/LLMWorker
+        action: has been processing a task for longer than the maximum expected duration
+      - node: DetectTaskTimeout
+        action: fires the timeout after the deadline passes with no complete response
+      - node: DetectProcessExit
+        action: checks whether the worker subprocess is still alive or has silently exited
+      - node: DrainPartialOutput
+        action: collects any files written and partial stream data produced so far
+      - node: TaskPayload
+        action: provides the timed-out task for inclusion in the report
+      - node: CrashReport
+        action: records the timeout with duration, partial output, and process status
+      - node: ShutdownWorker
+        action: forcefully terminates the hanging worker process
+      - node: CleanupFailedSession
+        action: tears down the timed-out session and communication channel
+      - node: convergence/DetectWorkerFailure
+        action: receives the timeout report and decides whether to respawn or abort
+
+  HandleFailedToolCall:
+    steps:
+      - node: _actors/LLMWorker
+        action: invokes a native tool that returns an error instead of a result
+      - node: NativeToolSet
+        action: reports the tool call failure with the tool name and error message
+      - node: HandleToolCallFailure
+        action: captures the error details including tool name, arguments, and failure reason
+      - node: _actors/LLMWorker
+        action: receives the error and decides whether to retry with different arguments or report failure
+      - node: TaskResult
+        action: includes the tool call failure as part of the task output for the orchestrator
+
+  RecoverPartialWorkAfterCrash:
+    steps:
+      - node: CrashReport
+        action: provides the details of the crash including which task was in progress
+      - node: TaskPayload
+        action: identifies what files the task was expected to produce
+      - node: DrainPartialOutput
+        action: scans the expected output paths for any files the worker wrote before crashing
+      - node: ValidateWorkerOutput
+        action: checks whether any recovered files are complete and valid
+      - node: TaskResult
+        action: packages any valid partial work as a recoverable result
+      - node: convergence/ConvergenceState
+        action: receives the partial result and decides whether to use it or discard and retry
+
+  CleanupAndPrepareForRespawn:
+    steps:
+      - node: CrashReport
+        action: confirms a worker failure has been recorded and reported
+      - node: SingleWorkerConstraint
+        action: enforces that the old worker must be fully cleaned up before spawning a new one
+      - node: CleanupFailedSession
+        action: verifies the failed session is fully torn down
+      - node: WorkerSession
+        action: confirms the old session state has been discarded
+      - node: StreamJsonProtocol
+        action: confirms the old communication channel is fully closed
+      - node: convergence/RespawnWorker
+        action: receives the ready signal and initiates spawning of a fresh worker process
+
+  BlockPathTraversalWrite:
+    steps:
+      - node: _actors/LLMWorker
+        action: issues a Write tool call targeting a path outside the allowed directory
+      - node: WriteFile
+        action: receives the write request with the target file path
+      - node: AllowedWritePaths
+        action: defines the permitted write paths for the current task type
+      - node: ScopeWritesToAllowedPaths
+        action: compares the target path against allowed paths and detects the path traversal
+      - node: ScopeWritesToAllowedPaths
+        action: rejects the write and returns a permission denied error to the worker
+      - node: HandleToolCallFailure
+        action: records the blocked write attempt with the violating path
+      - node: _actors/PrivilegeEscalator
+        action: is thwarted by the path scoping check
+
+  BlockSensitiveFileRead:
+    steps:
+      - node: _actors/LLMWorker
+        action: issues a Read tool call targeting a file outside the project directory
+      - node: ReadFile
+        action: receives the read request with the target file path
+      - node: ScopeReadsToProjectDir
+        action: checks the target path against the project directory boundary
+      - node: ScopeReadsToProjectDir
+        action: detects the out-of-scope read and rejects it with a permission denied error
+      - node: HandleToolCallFailure
+        action: records the blocked read attempt with the violating path
+      - node: _actors/PrivilegeEscalator
+        action: is prevented from accessing sensitive files outside the project
+
+  BlockDangerousBashCommand:
+    steps:
+      - node: _actors/LLMWorker
+        action: issues a Bash tool call containing a dangerous command
+      - node: RunBash
+        action: receives the bash command string for execution
+      - node: NoBashNetworkAccess
+        action: defines the blocked command patterns including network and destructive operations
+      - node: FilterBashCommands
+        action: parses the command string and matches against blocked patterns
+      - node: FilterBashCommands
+        action: detects the dangerous command and rejects execution
+      - node: HandleToolCallFailure
+        action: records the blocked command with the specific violation reason
+      - node: _actors/PrivilegeEscalator
+        action: is prevented from executing network or destructive commands
+
+  SanitizeContextBeforeSend:
+    steps:
+      - node: excerpt/ExcerptOutput
+        action: provides context that may contain user-controlled spec content
+      - node: DetectPromptInjection
+        action: scans the excerpt for patterns that attempt to override system prompt instructions
+      - node: DetectPromptInjection
+        action: scans for embedded directives like ignore previous instructions or role reassignment
+      - node: BuildTaskContext
+        action: receives the sanitized context with injection attempts flagged or removed
+      - node: TaskPayload
+        action: packages the clean context into the task payload
+      - node: SystemPrompt
+        action: remains authoritative as the worker's primary instruction set, unaffected by context content
+
+  DetectAndStopToolLoop:
+    steps:
+      - node: _actors/LLMWorker
+        action: enters a repetitive pattern of tool calls without making progress
+      - node: NativeToolSet
+        action: receives the repeated tool calls from the worker
+      - node: DetectToolCallLoop
+        action: counts tool calls and detects the repetitive pattern exceeding the threshold
+      - node: DetectToolCallLoop
+        action: triggers an intervention to stop the runaway worker
+      - node: ShutdownWorker
+        action: terminates the looping worker process to stop resource consumption
+      - node: CrashReport
+        action: records the tool loop with call count, pattern, and last task context
+      - node: convergence/DetectWorkerFailure
+        action: receives the loop report for respawn and task retry decision
+
+  ValidateNoOutOfScopeChanges:
+    steps:
+      - node: TaskResult
+        action: provides the completed task result for scope validation
+      - node: SingleFilePerTask
+        action: identifies the single target file this task was authorized to modify
+      - node: ValidateOutputScope
+        action: checks git status or file modification times for changes beyond the target file
+      - node: ValidateOutputScope
+        action: detects that the worker modified files it was not assigned
+      - node: ValidateOutputScope
+        action: flags the out-of-scope changes as a tampering violation
+      - node: EnforceFileSizeLimit
+        action: also checks that the written file does not exceed maximum allowed size
+      - node: convergence/ConvergenceState
+        action: receives the scope violation and rejects the task result, reverting unauthorized changes
+
+  TruncateOversizedPayload:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the full compiled state which may be very large for specs with many modules
+      - node: excerpt/ExcerptOutput
+        action: provides the excerpt context for the target module
+      - node: BuildTaskContext
+        action: assembles the full context from all sources
+      - node: PayloadSizeBudget
+        action: defines the maximum allowed payload size for a single task message
+      - node: PrioritizeContextByRelevance
+        action: ranks context sections by relevance to the current task, placing target module and direct dependencies highest
+      - node: PrioritizeContextByRelevance
+        action: demotes distant modules and unrelated cross-module connections to lowest priority
+      - node: TruncatePayloadToFit
+        action: removes lowest-priority sections until the payload fits within the size budget
+      - node: TaskPayload
+        action: stores the right-sized payload with critical context preserved and excess trimmed
+      - node: SendTask
+        action: sends the trimmed payload to the worker within message size limits
+
+  ProactivelyReplaceStaleWorker:
+    steps:
+      - node: CompactionCounter
+        action: indicates the current worker has undergone many compactions
+      - node: ReplaceAfterNCompactions
+        action: defines the maximum compaction count before proactive replacement
+      - node: TrackCompactionCount
+        action: compares the current count against the threshold and triggers replacement
+      - node: convergence/ConvergenceState
+        action: records which task the pipeline was about to send next before the replacement
+      - node: ShutdownWorker
+        action: gracefully terminates the stale worker process
+      - node: CleanupFailedSession
+        action: tears down the old session and communication channel
+      - node: SingleWorkerConstraint
+        action: enforces that cleanup is complete before spawning the replacement
+      - node: SpawnWorkerProcess
+        action: launches a fresh Claude Code subprocess with a clean context window
+      - node: SystemPrompt
+        action: provides the system prompt for the fresh worker
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the fresh worker
+      - node: CompactionCounter
+        action: resets to zero for the new worker session
+      - node: WorkerSession
+        action: initializes a fresh session state ready to resume the pipeline
+
+  ReinjectAfterHeavyCompaction:
+    steps:
+      - node: HandleCompaction
+        action: completes a compaction event on the worker session
+      - node: TrackCompactionCount
+        action: increments the counter and checks if it crossed a reinforcement threshold
+      - node: CompactionCounter
+        action: provides the current count indicating heavy compaction has occurred
+      - node: ReplaceAfterNCompactions
+        action: checks if the count warrants full replacement or just reinforcement
+      - node: SystemPrompt
+        action: provides the critical instruction sections that may have been compressed
+      - node: ReinjectSystemPromptAfterCompaction
+        action: re-sends the YAML format rules, node type constraints, and step format requirements to the worker
+      - node: _actors/LLMWorker
+        action: receives the reinforced instructions and acknowledges them before the next task
+      - node: WorkerSession
+        action: incorporates the reinjected instructions as fresh high-priority context
+
+  HandleLargeGraphContextAssembly:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the current task target for a graph with many modules
+      - node: graph/CompiledIndex
+        action: provides the full compiled index containing all modules, nodes, and connections
+      - node: graph/ConnectionSet
+        action: provides the full edge set for determining which modules are directly connected to the target
+      - node: PrioritizeContextByRelevance
+        action: identifies the target module and its direct cross-module dependencies as highest priority
+      - node: PrioritizeContextByRelevance
+        action: identifies second-degree connections as medium priority
+      - node: PrioritizeContextByRelevance
+        action: classifies all remaining modules as low priority, eligible for exclusion
+      - node: BuildTaskContext
+        action: assembles context using only high and medium priority modules
+      - node: TaskPayload
+        action: stores the focused payload containing relevant context without distant module noise

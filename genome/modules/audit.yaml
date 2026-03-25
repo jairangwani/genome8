@@ -1,0 +1,172 @@
+spec_sections: [3, 5]
+
+nodes:
+  CheckSpecCoverage:
+    type: process
+    description: auditor 1 compares spec sections against the graph to find sections not represented by any node or journey
+  CheckActorCoverage:
+    type: process
+    description: auditor 2 checks that every actor in _actors.yaml participates in at least one journey across all modules
+  CheckCrossModuleCoverage:
+    type: process
+    description: auditor 3 verifies that every module has at least one cross-module connection and no module is an island
+  GenerateAuditPrompt:
+    type: process
+    description: builds a focused prompt for each auditor containing the compiled graph excerpt and the specific coverage angle to check
+  CollectAuditFindings:
+    type: process
+    description: gathers findings from all 3 auditors into a single list of coverage gaps with locations and descriptions
+  PrioritizeGaps:
+    type: process
+    description: ranks the collected gaps by severity so the most critical coverage issues are fixed first
+  GenerateFixPrompt:
+    type: process
+    description: builds a targeted fix prompt for each gap specifying exactly which module to edit and what coverage to add
+  ApplyFix:
+    type: process
+    description: delegates to LLM to edit the specific module YAML file to close the identified coverage gap
+  VerifyFixCompiles:
+    type: process
+    description: runs compile.ts after each fix to ensure the edit did not introduce new errors
+  VerifyGapClosed:
+    type: process
+    description: re-runs the specific auditor that found the gap to confirm the fix actually closed it
+  DeclareConverged:
+    type: process
+    description: marks the graph as CONVERGED after all 3 auditors report zero gaps and compilation shows zero errors
+  AuditFindingsList:
+    type: artifact
+    description: the collected list of coverage gaps from all 3 auditors with gap type, location, and description
+  SpecCoverageReport:
+    type: artifact
+    description: auditor 1's report listing which spec sections are covered and which have no representation in the graph
+  ActorCoverageReport:
+    type: artifact
+    description: auditor 2's report listing which actors participate in journeys and which are orphaned
+  CrossModuleCoverageReport:
+    type: artifact
+    description: auditor 3's report listing which modules have cross-module connections and which are isolated
+  ExactlyThreeAuditors:
+    type: rule
+    description: depth audit always uses exactly 3 auditors checking spec coverage, actor coverage, and cross-module coverage
+  TargetedFixesOnly:
+    type: rule
+    description: audit gaps are fixed with targeted edits to specific modules, never by re-running the full creation pipeline
+  AuditAfterZeroErrors:
+    type: rule
+    description: audit only runs after compile.ts reports 0 errors and 0 orphans — never on a broken graph
+
+journeys:
+  DepthAudit:
+    steps:
+      - node: convergence/CompileCheck
+        action: confirms compilation passed with 0 errors and 0 orphans
+      - node: compilation/CompilationResult
+        action: provides the clean compilation result
+      - node: AuditAfterZeroErrors
+        action: verifies the graph is error-free before starting audit
+      - node: convergence/TargetedAudit
+        action: triggers the depth audit with 3 auditors
+      - node: ExactlyThreeAuditors
+        action: enforces that all 3 coverage angles will be checked
+      - node: GenerateAuditPrompt
+        action: builds the spec coverage prompt for auditor 1
+      - node: excerpt/ExcerptOutput
+        action: provides focused context for the auditor to review
+      - node: _actors/Auditor
+        action: checks spec coverage — which spec sections are represented in the graph
+      - node: CheckSpecCoverage
+        action: compares spec sections against nodes and journeys in the compiled graph
+      - node: SpecCoverageReport
+        action: records which sections are covered and which have gaps
+      - node: GenerateAuditPrompt
+        action: builds the actor coverage prompt for auditor 2
+      - node: _actors/Auditor
+        action: checks actor coverage — which actors participate in journeys
+      - node: CheckActorCoverage
+        action: compares _actors.yaml entries against journey step references
+      - node: ActorCoverageReport
+        action: records which actors are connected and which are orphaned
+      - node: GenerateAuditPrompt
+        action: builds the cross-module coverage prompt for auditor 3
+      - node: _actors/Auditor
+        action: checks cross-module coverage — which modules connect to others
+      - node: CheckCrossModuleCoverage
+        action: checks each module for at least one cross-module connection
+      - node: CrossModuleCoverageReport
+        action: records which modules are connected and which are isolated
+      - node: CollectAuditFindings
+        action: gathers all findings from the 3 reports into a single gap list
+      - node: AuditFindingsList
+        action: stores the complete list of coverage gaps
+
+  FixAuditGaps:
+    steps:
+      - node: AuditFindingsList
+        action: provides the list of coverage gaps to fix
+      - node: PrioritizeGaps
+        action: ranks gaps by severity to fix the most critical first
+      - node: TargetedFixesOnly
+        action: enforces that fixes are targeted edits, not full re-creation
+      - node: GenerateFixPrompt
+        action: builds a specific fix prompt for the highest priority gap
+      - node: _actors/LLMWorker
+        action: receives the fix prompt with the exact module and gap to address
+      - node: ApplyFix
+        action: edits the target module YAML to close the coverage gap
+      - node: VerifyFixCompiles
+        action: runs compile.ts on the edited module
+      - node: _actors/Compiler
+        action: validates the edited module has 0 errors
+      - node: compilation/CompilationResult
+        action: confirms the fix did not break compilation
+      - node: VerifyGapClosed
+        action: re-runs the specific auditor on the fixed area
+      - node: _actors/Auditor
+        action: confirms the specific gap is now closed
+      - node: convergence/ConvergenceState
+        action: updates with the fix result — either more gaps remain or all are closed
+
+  AuditFixReauditCycle:
+    steps:
+      - node: convergence/ConvergenceState
+        action: indicates gaps remain after a fix round
+      - node: convergence/RecompileAfterFix
+        action: runs full compilation after all fixes in this round
+      - node: _actors/Compiler
+        action: validates the full graph after fixes
+      - node: compilation/CompilationResult
+        action: confirms 0 errors after the fix round
+      - node: convergence/ReauditAfterFix
+        action: triggers a re-audit to check for remaining gaps
+      - node: GenerateAuditPrompt
+        action: rebuilds audit prompts for all 3 angles
+      - node: _actors/Auditor
+        action: re-checks spec coverage after fixes
+      - node: CheckSpecCoverage
+        action: re-examines spec sections against the updated graph
+      - node: _actors/Auditor
+        action: re-checks actor coverage after fixes
+      - node: CheckActorCoverage
+        action: re-examines actor references in the updated graph
+      - node: _actors/Auditor
+        action: re-checks cross-module coverage after fixes
+      - node: CheckCrossModuleCoverage
+        action: re-examines module connections in the updated graph
+      - node: CollectAuditFindings
+        action: gathers findings from the re-audit
+      - node: AuditFindingsList
+        action: stores the updated gap list — may be empty
+
+  DeclareConvergence:
+    steps:
+      - node: AuditFindingsList
+        action: provides an empty gap list indicating all coverage angles are satisfied
+      - node: compilation/CompilationResult
+        action: confirms 0 errors and 0 orphans in the final compilation
+      - node: DeclareConverged
+        action: marks the graph as CONVERGED — all creation, compilation, and audit complete
+      - node: convergence/ConvergenceState
+        action: records CONVERGED status, ready for publish and codegen
+      - node: convergence/TriggerPublish
+        action: proceeds to publish the converged interface

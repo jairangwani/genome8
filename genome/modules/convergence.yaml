@@ -1,0 +1,838 @@
+spec_sections: [3, 5, 6]
+
+nodes:
+  ReadSpec:
+    type: process
+    description: reads spec.md from disk as the sole human input to the convergence pipeline
+  WriteOrganization:
+    type: process
+    description: delegates to LLM to analyze the spec and write ORGANIZATION.md with modules, dependencies, and independence
+  DiscoverActors:
+    type: process
+    description: delegates to LLM to discover actors from 3 angles (activities, threats, lifecycle) and write _actors.yaml
+  HierarchyDecision:
+    type: process
+    description: delegates to LLM to decide whether the module set should split into child engines based on independence analysis
+  ModuleCreation:
+    type: process
+    description: iterates over modules from ORGANIZATION.md, making one LLM call per module with compile between each
+  BoundedCreationLoop:
+    type: process
+    description: creates modules in build-order rounds, compiling after each to catch errors before the next module
+  CompileCheck:
+    type: process
+    description: invokes compile.ts after each module creation and after all modules to verify 0 errors and 0 orphans
+  TargetedAudit:
+    type: process
+    description: dispatches 3 auditors to check spec coverage, actor coverage, and cross-module coverage after compilation passes
+  AuditGapFix:
+    type: process
+    description: takes audit findings and makes targeted LLM calls to fix specific coverage gaps without re-creating from scratch
+  RecompileAfterFix:
+    type: process
+    description: runs compile.ts again after audit fixes to verify the fixes did not introduce new errors
+  ReauditAfterFix:
+    type: process
+    description: runs targeted audit again after successful recompile to verify gaps are closed
+  TriggerPublish:
+    type: process
+    description: invokes publish.ts to generate interface.yaml and changelog.yaml after convergence is confirmed
+  TriggerCodegen:
+    type: process
+    description: invokes codegen.ts to generate TypeScript skeletons from the converged graph
+  TriggerTestgen:
+    type: process
+    description: invokes testgen.ts to generate test skeletons from journey steps
+  ExecuteTests:
+    type: process
+    description: executes generated tests and collects pass/fail results
+  FixTestFailures:
+    type: process
+    description: delegates to LLM to fix failing tests and re-runs until all pass
+  EnterSleepMode:
+    type: process
+    description: sets up fs.watch on event files and enters zero-cost sleep until a change event arrives
+  WakeOnEvent:
+    type: process
+    description: wakes from sleep when fs.watch detects an event file change from a dependency
+  TargetedReconvergence:
+    type: process
+    description: runs compile + audit on only the stale modules identified by sync, skipping full creation
+  MapPerspectives:
+    type: process
+    description: identifies which perspectives are relevant to each module based on its content domain and assigns the bounded set of lenses
+  ExamineFromPerspective:
+    type: process
+    description: delegates to LLM to examine a single module from a single perspective and add missing nodes and journeys
+  RetryModuleCreation:
+    type: process
+    description: retries module creation by passing the compilation error report to the LLM so it can fix the specific problems in its output
+  RollbackFailedFix:
+    type: process
+    description: reverts a module file to its pre-fix state when an audit fix introduced new compilation errors
+  ResumePipeline:
+    type: process
+    description: reads ConvergenceState on startup to find the last completed pipeline step and resumes execution from that point
+  DetectWorkerFailure:
+    type: process
+    description: detects when the LLM worker process has crashed or become unresponsive during a task
+  RespawnWorker:
+    type: process
+    description: terminates the failed worker process and spawns a fresh one with the same task context
+  ValidateCreationCompleteness:
+    type: process
+    description: checks that every module listed in ORGANIZATION.md exists as a YAML file on disk after the creation pipeline finishes
+  ValidatePerspectiveCompleteness:
+    type: process
+    description: checks that every module-perspective pair in the mapping was examined during the enrichment pipeline
+  ValidateActorCompleteness:
+    type: process
+    description: checks that all 3 actor discovery angles produced results and the merged _actors.yaml covers activities, threats, and lifecycle
+  PipelineInvariantCheck:
+    type: process
+    description: verifies that all pipeline phases completed in the correct order before allowing convergence to be declared
+  HandleWorkerCompaction:
+    type: process
+    description: orchestrates context compaction in the LLM worker during long creation or enrichment loops so the pipeline continues without losing progress
+  SplitIntoChildEngines:
+    type: process
+    description: distributes modules to child engines and spawns independent convergence pipelines when hierarchy decides to split
+  CollectChildResults:
+    type: process
+    description: waits for all child engines to converge and collects their published interfaces for parent-level cross-engine validation
+  DetectSelfModification:
+    type: process
+    description: detects when reconvergence would modify modules that describe the currently running pipeline such as convergence, compilation, or graph
+  StageGeneratedCode:
+    type: process
+    description: writes codegen output to a staging directory instead of overwriting the running code, so the active pipeline is not modified mid-run
+  SwapGeneratedCode:
+    type: process
+    description: atomically replaces the running code with the staged generated code after all tests pass on the staged version
+  ValidateSelfConsistency:
+    type: process
+    description: checks that self-referential modules accurately describe the behavior of the running code they were generated from
+  SpecFile:
+    type: artifact
+    description: the spec.md file written by the ProjectOwner as the sole human input
+  ConvergenceState:
+    type: artifact
+    description: tracks current pipeline step, completed modules, audit results, and convergence status
+  StagingDirectory:
+    type: artifact
+    description: temporary directory holding generated code that will replace the running code after tests pass
+  ConvergenceCLI:
+    type: interface
+    description: command-line interface to trigger and monitor the convergence pipeline
+  CodeOrchestratesLLMCreates:
+    type: rule
+    description: code decides WHEN to act, LLM only creates content when explicitly asked by code
+  BoundedCreationRule:
+    type: rule
+    description: creation is bounded by modules times relevant lenses, never an open-ended loop
+  NeverOpenEndedLoop:
+    type: rule
+    description: LLM is never asked open-ended questions in a loop — bounded creation plus targeted fixes only
+  DataDecidesWhenToStop:
+    type: rule
+    description: no hardcoded limits on module count or audit rounds — the data determines convergence
+  OnlyHumanInputIsSpec:
+    type: rule
+    description: spec.md is the only human-written input, everything else is auto-generated
+  BoundedRetryRule:
+    type: rule
+    description: retry attempts for any single module creation or fix are capped to prevent infinite retry loops
+  AllPhasesCompleteRule:
+    type: rule
+    description: convergence requires organization, actors, hierarchy, creation, perspectives, compilation, and audit all recorded as complete in ConvergenceState
+  NeverModifyRunningCode:
+    type: rule
+    description: generated code must be staged and tested before replacing the running pipeline code — never overwrite in place
+
+journeys:
+  ProjectConvergence:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing the project
+      - node: SpecFile
+        action: stores the spec on disk as the sole human input
+      - node: ConvergenceCLI
+        action: receives the command to start convergence
+      - node: ReadSpec
+        action: reads spec.md from disk
+      - node: OnlyHumanInputIsSpec
+        action: validates that spec.md is the starting point for all generation
+      - node: WriteOrganization
+        action: delegates to LLM to analyze spec and write ORGANIZATION.md
+      - node: _actors/LLMWorker
+        action: reads the spec and writes ORGANIZATION.md with modules, dependencies, independence
+      - node: DiscoverActors
+        action: delegates to LLM to discover actors from 3 angles
+      - node: _actors/LLMWorker
+        action: discovers actors from activities perspective
+      - node: _actors/LLMWorker
+        action: discovers actors from threats perspective
+      - node: _actors/LLMWorker
+        action: discovers actors from lifecycle perspective
+      - node: _actors/LLMWorker
+        action: merges and deduplicates actors into _actors.yaml
+      - node: HierarchyDecision
+        action: delegates to LLM to decide whether to split into child engines
+      - node: _actors/LLMWorker
+        action: analyzes module independence and decides split or no-split
+      - node: ConvergenceState
+        action: records that organization and actors are complete, ready for module creation
+
+  ModuleCreationPipeline:
+    steps:
+      - node: ConvergenceState
+        action: provides the list of modules in build order from ORGANIZATION.md
+      - node: BoundedCreationRule
+        action: enforces that creation is bounded by modules times relevant lenses
+      - node: ModuleCreation
+        action: selects the next module in build order
+      - node: excerpt/SelectTargetModule
+        action: identifies the target module to generate an excerpt for
+      - node: excerpt/AssembleExcerpt
+        action: builds a focused excerpt of the existing graph for the LLM to reference
+      - node: excerpt/ExcerptOutput
+        action: provides the assembled excerpt with cross-module context
+      - node: _actors/LLMWorker
+        action: reads the excerpt and spec sections to create the module YAML with nodes and journeys
+      - node: graph/ModuleFile
+        action: stores the newly created module on disk
+      - node: CompileCheck
+        action: invokes compile.ts to validate the new module against the graph so far
+      - node: _actors/Compiler
+        action: runs full compilation and reports errors and warnings
+      - node: compilation/CompilationResult
+        action: provides error count, warning count, and details
+      - node: BoundedCreationLoop
+        action: repeats module creation and compile for each remaining module in build order
+      - node: NeverOpenEndedLoop
+        action: ensures the loop is bounded by the module list, not open-ended
+      - node: ConvergenceState
+        action: records all modules created and last compilation result
+
+  PerspectiveEnrichmentPipeline:
+    steps:
+      - node: ConvergenceState
+        action: indicates all modules have been created and initial compilation passed
+      - node: MapPerspectives
+        action: identifies which perspectives are relevant to each module based on its domain
+      - node: BoundedCreationRule
+        action: enforces that enrichment is bounded by modules times relevant perspectives
+      - node: excerpt/SelectTargetModule
+        action: selects the first module to examine
+      - node: excerpt/AssembleExcerpt
+        action: builds a focused excerpt of the module and its cross-module connections
+      - node: excerpt/ExcerptOutput
+        action: provides the assembled excerpt for the LLM to analyze
+      - node: ExamineFromPerspective
+        action: delegates to LLM to examine the module from the first relevant perspective
+      - node: _actors/LLMWorker
+        action: reads the excerpt and perspective definition to identify missing nodes and journeys
+      - node: graph/ModuleFile
+        action: stores the updated module with added nodes and journeys
+      - node: CompileCheck
+        action: invokes compile.ts to validate the enriched module against the full graph
+      - node: _actors/Compiler
+        action: runs compilation and reports any errors introduced by the enrichment
+      - node: compilation/CompilationResult
+        action: provides error count and details after the perspective pass
+      - node: ExamineFromPerspective
+        action: delegates to LLM for the next relevant perspective on the same module
+      - node: _actors/LLMWorker
+        action: examines the module from the next perspective and adds further missing content
+      - node: CompileCheck
+        action: recompiles after the second perspective pass
+      - node: BoundedCreationLoop
+        action: repeats for each remaining module-perspective pair until all are examined
+      - node: NeverOpenEndedLoop
+        action: ensures perspective enrichment terminates after all mapped pairs are processed
+      - node: ConvergenceState
+        action: records that perspective enrichment is complete for all modules
+
+  ConvergenceCheck:
+    steps:
+      - node: ConvergenceState
+        action: indicates all modules have been created and enriched from all perspectives
+      - node: CompileCheck
+        action: runs final compile.ts across all modules
+      - node: _actors/Compiler
+        action: validates the full graph for 0 errors and 0 orphans
+      - node: compilation/ZeroErrorConvergence
+        action: checks whether the 0-error 0-orphan threshold is met
+      - node: TargetedAudit
+        action: dispatches 3 auditors with specific coverage angles
+      - node: _actors/Auditor
+        action: checks spec coverage — are all spec sections represented in the graph
+      - node: _actors/Auditor
+        action: checks actor coverage — are all actors connected through journeys
+      - node: _actors/Auditor
+        action: checks cross-module coverage — are all modules connected to at least one other
+      - node: DataDecidesWhenToStop
+        action: determines whether audit findings require fixes or convergence is complete
+      - node: ConvergenceState
+        action: records audit results and whether gaps were found
+
+  AuditFixCycle:
+    steps:
+      - node: ConvergenceState
+        action: provides the list of audit gaps to fix
+      - node: AuditGapFix
+        action: selects a specific gap and delegates to LLM for a targeted fix
+      - node: _actors/LLMWorker
+        action: edits the relevant module to close the coverage gap
+      - node: RecompileAfterFix
+        action: runs compile.ts to verify the fix did not introduce new errors
+      - node: _actors/Compiler
+        action: validates the patched graph
+      - node: compilation/CompilationResult
+        action: provides updated error and warning counts
+      - node: ReauditAfterFix
+        action: runs the relevant auditor again to verify the gap is closed
+      - node: _actors/Auditor
+        action: re-checks the specific coverage angle that had the gap
+      - node: ConvergenceState
+        action: updates convergence status — either more fixes needed or CONVERGED
+
+  PublishAfterConvergence:
+    steps:
+      - node: ConvergenceState
+        action: confirms convergence is complete with 0 errors and 0 audit gaps
+      - node: TriggerPublish
+        action: invokes publish.ts to generate the box's public interface
+      - node: publish/ComputeInterfaceHash
+        action: computes a SHA256 hash over the exported nodes and journeys
+      - node: publish/GenerateInterfaceYaml
+        action: writes interface.yaml with the exported nodes and journeys
+      - node: publish/GenerateChangelogYaml
+        action: writes changelog.yaml with the diff from the previous interface
+      - node: publish/WriteEventFile
+        action: writes the event file to notify dependent boxes of the change
+      - node: CodeOrchestratesLLMCreates
+        action: ensures publish is triggered by code, not by LLM decision
+      - node: ConvergenceState
+        action: records that interface and event file have been published
+
+  CodeGenerationPipeline:
+    steps:
+      - node: ConvergenceState
+        action: confirms publish is complete, ready for code generation
+      - node: TriggerCodegen
+        action: invokes codegen.ts to generate TypeScript skeletons from the graph
+      - node: codegen/ReadConvergedGraph
+        action: extracts all nodes organized by module from the compiled index
+      - node: codegen/SkeletonFile
+        action: stores the generated skeleton files with empty stubs for all nodes
+      - node: organization/DependencyGraph
+        action: provides the build order so dependencies are filled before dependents
+      - node: _actors/LLMWorker
+        action: fills implementation bodies in each skeleton in dependency order
+      - node: codegen/FilledSourceFile
+        action: stores the filled TypeScript implementation files
+      - node: codegen/WriteGeneratedFile
+        action: writes filled files to the generated code output directory
+      - node: TriggerTestgen
+        action: invokes testgen.ts to generate test skeletons from journey steps
+      - node: testgen/ReadJourneySteps
+        action: extracts all journeys and steps as the test case source
+      - node: testgen/TestSkeletonFile
+        action: stores the test skeletons with empty assertion bodies
+      - node: _actors/LLMWorker
+        action: fills test assertions in each test skeleton
+      - node: testgen/FilledTestFile
+        action: stores the assertion-complete test files
+      - node: testgen/WriteTestFile
+        action: writes filled test files to the test output directory
+      - node: ExecuteTests
+        action: runs all generated tests and collects pass/fail results
+      - node: testgen/TestResultReport
+        action: stores the pass/fail results for every test case
+      - node: FixTestFailures
+        action: identifies failing tests and delegates to LLM for fixes
+      - node: _actors/LLMWorker
+        action: fixes the failing test or implementation code
+      - node: ExecuteTests
+        action: re-runs tests to verify fixes
+      - node: ConvergenceState
+        action: records code generation complete with all tests passing
+
+  SleepWakeCycle:
+    steps:
+      - node: ConvergenceState
+        action: confirms all pipeline steps are complete
+      - node: EnterSleepMode
+        action: sets up fs.watch on dependency event files and enters zero-cost sleep
+      - node: _actors/DependentBox
+        action: waits at zero cost until a dependency publishes a change
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event when an event file is written
+      - node: WakeOnEvent
+        action: wakes from sleep and reads the event file
+      - node: TargetedReconvergence
+        action: runs sync to identify stale modules, then compile + audit on only those modules
+      - node: _actors/Compiler
+        action: validates only the stale modules
+      - node: _actors/Auditor
+        action: audits only the affected coverage areas
+      - node: TriggerPublish
+        action: re-publishes the updated interface after targeted reconvergence
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep waiting for the next event
+
+  RecoverFromCreationFailure:
+    steps:
+      - node: ModuleCreation
+        action: delegates to LLM to create a module
+      - node: _actors/LLMWorker
+        action: writes a module YAML file that contains errors
+      - node: graph/ModuleFile
+        action: stores the problematic module on disk
+      - node: CompileCheck
+        action: invokes compile.ts on the new module
+      - node: _actors/Compiler
+        action: reports compilation errors in the new module
+      - node: compilation/CompilationResult
+        action: provides non-zero error count with specific error details
+      - node: compilation/ErrorReport
+        action: lists each error with type, location, and message
+      - node: BoundedRetryRule
+        action: checks that retry count has not exceeded the cap for this module
+      - node: RetryModuleCreation
+        action: packages the error report as context for a second creation attempt
+      - node: excerpt/ExcerptOutput
+        action: provides the same excerpt used in the original attempt
+      - node: _actors/LLMWorker
+        action: reads the error report and excerpt to create a corrected module
+      - node: graph/ModuleFile
+        action: overwrites the failed module with the corrected version
+      - node: CompileCheck
+        action: recompiles the corrected module against the graph
+      - node: _actors/Compiler
+        action: validates the corrected module
+      - node: compilation/CompilationResult
+        action: provides the recompilation result
+      - node: BoundedCreationLoop
+        action: proceeds to the next module if compilation now passes
+      - node: ConvergenceState
+        action: records the retry outcome and updates module completion status
+
+  RecoverFromFixRegression:
+    steps:
+      - node: AuditGapFix
+        action: applies a targeted fix to a module
+      - node: _actors/LLMWorker
+        action: edits the module to close a coverage gap
+      - node: graph/ModuleFile
+        action: stores the edited module on disk
+      - node: RecompileAfterFix
+        action: runs compile.ts on the patched graph
+      - node: _actors/Compiler
+        action: detects new compilation errors introduced by the fix
+      - node: compilation/CompilationResult
+        action: provides non-zero error count indicating regression
+      - node: compilation/ErrorReport
+        action: lists the new errors caused by the fix
+      - node: RollbackFailedFix
+        action: reverts the module file to its pre-fix state from the last known good version
+      - node: graph/ModuleFile
+        action: restores the original module content before the fix
+      - node: BoundedRetryRule
+        action: checks that retry count has not exceeded the cap for this fix
+      - node: AuditGapFix
+        action: builds a new fix prompt including the regression error details
+      - node: _actors/LLMWorker
+        action: reads the error report and original gap to produce a fix that avoids the regression
+      - node: graph/ModuleFile
+        action: stores the revised fix on disk
+      - node: RecompileAfterFix
+        action: recompiles with the revised fix
+      - node: _actors/Compiler
+        action: validates the revised fix introduces no new errors
+      - node: compilation/CompilationResult
+        action: confirms zero new errors from the revised fix
+      - node: ConvergenceState
+        action: records the fix-retry outcome
+
+  ResumeAfterCrash:
+    steps:
+      - node: _actors/ProjectOwner
+        action: restarts the convergence pipeline after a crash or interruption
+      - node: ConvergenceCLI
+        action: receives the restart command
+      - node: ResumePipeline
+        action: reads ConvergenceState to determine the last completed pipeline step
+      - node: ConvergenceState
+        action: provides the last recorded step, completed modules list, and partial results
+      - node: llm/SpawnWorkerProcess
+        action: launches a fresh worker process to replace the one lost in the crash
+      - node: _actors/LLMWorker
+        action: the new worker is ready to accept tasks
+      - node: CompileCheck
+        action: runs compile.ts on all existing modules to verify graph integrity after the crash
+      - node: _actors/Compiler
+        action: validates the current state of all module files on disk
+      - node: compilation/CompilationResult
+        action: provides the post-crash compilation result
+      - node: ResumePipeline
+        action: compares completed modules against the full module list to identify remaining work
+      - node: ConvergenceState
+        action: updates to reflect the verified state and resumes from the next incomplete step
+
+  RecoverFromWorkerCrash:
+    steps:
+      - node: _actors/LLMWorker
+        action: becomes unresponsive or crashes during a task
+      - node: DetectWorkerFailure
+        action: detects the worker process is no longer responding
+      - node: ConvergenceState
+        action: records which task was in progress when the worker failed
+      - node: llm/ShutdownWorker
+        action: terminates the failed worker process cleanly
+      - node: RespawnWorker
+        action: spawns a fresh worker process to replace the failed one
+      - node: llm/SpawnWorkerProcess
+        action: launches the new persistent worker subprocess
+      - node: _actors/LLMWorker
+        action: the new worker is ready to accept tasks
+      - node: ConvergenceState
+        action: provides the interrupted task context for the new worker
+      - node: RespawnWorker
+        action: resubmits the interrupted task to the new worker
+      - node: _actors/LLMWorker
+        action: receives and begins processing the resubmitted task
+      - node: ConvergenceState
+        action: records that the worker has been replaced and the task resubmitted
+
+  HandleTestFixExhaustion:
+    steps:
+      - node: ExecuteTests
+        action: runs tests after a fix attempt
+      - node: testgen/TestResultReport
+        action: reports that some tests still fail after the fix
+      - node: testgen/CollectFailures
+        action: gathers the remaining failures
+      - node: FixTestFailures
+        action: attempts another fix for the remaining failures
+      - node: _actors/LLMWorker
+        action: applies another round of fixes
+      - node: ExecuteTests
+        action: re-runs previously failing tests
+      - node: testgen/TestResultReport
+        action: reports that failures persist after multiple fix rounds
+      - node: BoundedRetryRule
+        action: detects that the retry cap for test fixes has been reached
+      - node: NeverOpenEndedLoop
+        action: enforces that the fix cycle must terminate
+      - node: compilation/ErrorReport
+        action: records the unconverged test failures as errors with full details
+      - node: ConvergenceState
+        action: records that test generation completed with unresolved failures, blocking full pipeline completion
+
+  ValidateAfterActorDiscovery:
+    steps:
+      - node: DiscoverActors
+        action: completes all 3 rounds of actor discovery
+      - node: actors/ActorsFile
+        action: provides the merged _actors.yaml on disk
+      - node: ValidateActorCompleteness
+        action: reads _actors.yaml and checks that activities-angle actors are present
+      - node: ValidateActorCompleteness
+        action: checks that threats-angle actors are present
+      - node: ValidateActorCompleteness
+        action: checks that lifecycle-angle actors are present
+      - node: actors/ThreeAngleDiscovery
+        action: enforces that exactly 3 angles were used
+      - node: ConvergenceState
+        action: records that actor discovery is validated with all 3 angles covered
+
+  ValidateCreationComplete:
+    steps:
+      - node: BoundedCreationLoop
+        action: signals that the creation loop has finished all modules in build order
+      - node: organization/ModuleList
+        action: provides the expected list of modules from ORGANIZATION.md
+      - node: ValidateCreationCompleteness
+        action: compares the expected module list against YAML files on disk
+      - node: compilation/ValidateModuleCompleteness
+        action: checks that every expected module exists in the compiled index
+      - node: CompileCheck
+        action: runs compile.ts across all created modules
+      - node: _actors/Compiler
+        action: validates the full set of modules compiles with 0 errors
+      - node: compilation/CompilationResult
+        action: confirms all modules are present and error-free
+      - node: ConvergenceState
+        action: records that creation completeness is validated
+
+  ValidatePerspectivesComplete:
+    steps:
+      - node: BoundedCreationLoop
+        action: signals that the perspective enrichment loop has finished all pairs
+      - node: MapPerspectives
+        action: provides the full mapping of modules to their relevant perspectives
+      - node: ValidatePerspectiveCompleteness
+        action: compares completed module-perspective pairs against the full mapping
+      - node: ValidatePerspectiveCompleteness
+        action: flags any module-perspective pair that was skipped or not recorded
+      - node: CompileCheck
+        action: runs compile.ts to confirm all enrichments compiled cleanly
+      - node: _actors/Compiler
+        action: validates the fully enriched graph
+      - node: compilation/CompilationResult
+        action: confirms zero errors after all perspective enrichments
+      - node: ConvergenceState
+        action: records that perspective completeness is validated
+
+  FinalConvergenceGate:
+    steps:
+      - node: ConvergenceState
+        action: indicates all audit gaps have been fixed and reaudits passed
+      - node: PipelineInvariantCheck
+        action: verifies organization phase was recorded as complete
+      - node: PipelineInvariantCheck
+        action: verifies actor discovery phase was recorded as complete
+      - node: PipelineInvariantCheck
+        action: verifies hierarchy decision phase was recorded as complete
+      - node: PipelineInvariantCheck
+        action: verifies module creation phase was recorded as complete
+      - node: PipelineInvariantCheck
+        action: verifies perspective enrichment phase was recorded as complete
+      - node: PipelineInvariantCheck
+        action: verifies compilation phase reported zero errors
+      - node: PipelineInvariantCheck
+        action: verifies audit phase reported zero gaps
+      - node: AllPhasesCompleteRule
+        action: enforces that all 7 phases must be complete before convergence is declared
+      - node: compilation/ValidateModuleCompleteness
+        action: confirms every ORGANIZATION.md module exists in the compiled index
+      - node: graph/UniqueNodeNameRule
+        action: confirms no duplicate node names across all modules
+      - node: graph/AllRefsResolveRule
+        action: confirms every node reference resolves to a known target
+      - node: graph/NoIsolationRule
+        action: confirms every node participates in at least one journey
+      - node: compilation/ZeroErrorConvergence
+        action: confirms the definitive compilation reports exactly zero errors and zero orphans
+      - node: audit/DeclareConverged
+        action: receives the clean result and marks the graph as CONVERGED
+      - node: ConvergenceState
+        action: transitions to CONVERGED status
+      - node: TriggerPublish
+        action: proceeds to publish the converged interface
+
+  HandleCompactionDuringCreation:
+    steps:
+      - node: BoundedCreationLoop
+        action: is mid-way through creating modules in a large project
+      - node: _actors/LLMWorker
+        action: signals that it is approaching the context window limit
+      - node: HandleWorkerCompaction
+        action: detects the compaction signal from the worker
+      - node: ConvergenceState
+        action: records which module was last completed before compaction
+      - node: llm/HandleCompaction
+        action: compresses the worker's conversation context, preserving key state
+      - node: _actors/LLMWorker
+        action: resumes with compacted context containing the essential pipeline state
+      - node: excerpt/SelectTargetModule
+        action: selects the next module to create after compaction
+      - node: excerpt/AssembleExcerpt
+        action: rebuilds a fresh excerpt for the next module since the worker lost prior excerpt context
+      - node: excerpt/ExcerptOutput
+        action: provides the new excerpt to the compacted worker
+      - node: ModuleCreation
+        action: continues creating the next module with compacted context
+      - node: _actors/LLMWorker
+        action: creates the module using the fresh excerpt and compacted state
+      - node: CompileCheck
+        action: validates the post-compaction module against the full graph
+      - node: _actors/Compiler
+        action: confirms the module created after compaction is still valid
+      - node: compilation/CompilationResult
+        action: provides the compilation result for the post-compaction module
+      - node: BoundedCreationLoop
+        action: continues the creation loop from the current position
+      - node: ConvergenceState
+        action: records that compaction was handled and creation continues
+
+  HierarchySplitPipeline:
+    steps:
+      - node: HierarchyDecision
+        action: determines that the module set should split into child engines
+      - node: hierarchy/AnalyzeModuleIndependence
+        action: identifies which groups of modules are independent from each other
+      - node: hierarchy/DecideSplit
+        action: confirms the split decision and defines the child engine boundaries
+      - node: hierarchy/CreateChildDirectory
+        action: creates a directory structure for each child engine
+      - node: hierarchy/GenerateScopedSpec
+        action: generates a scoped spec.md for each child engine from the parent spec
+      - node: hierarchy/DistributeSharedActors
+        action: copies shared actors to each child engine's _actors.yaml
+      - node: hierarchy/AssignModulesToChildren
+        action: maps each module from ORGANIZATION.md to its child engine
+      - node: SplitIntoChildEngines
+        action: prepares each child engine with its scoped spec, actors, and module assignments
+      - node: hierarchy/SpawnChildEngine
+        action: launches an independent convergence pipeline for the first child engine
+      - node: hierarchy/SpawnChildEngine
+        action: launches an independent convergence pipeline for the second child engine
+      - node: hierarchy/WaitForAllChildren
+        action: blocks until all child engines have reached CONVERGED status
+      - node: CollectChildResults
+        action: reads the published interface from each child engine
+      - node: hierarchy/CollectChildInterfaces
+        action: gathers all child interface.yaml files into the parent
+      - node: hierarchy/ValidateCrossEngineRefs
+        action: checks that cross-engine references between children resolve correctly
+      - node: hierarchy/CreateCrossEngineJourneys
+        action: builds journeys that span child engine boundaries in the parent graph
+      - node: hierarchy/PromoteExternalRefsToErrors
+        action: promotes any unresolved cross-engine refs from warnings to errors at parent level
+      - node: CompileCheck
+        action: runs parent-level compilation across all child interfaces and cross-engine journeys
+      - node: _actors/Compiler
+        action: validates the parent graph with all child interfaces integrated
+      - node: compilation/CompilationResult
+        action: provides the parent-level compilation result
+      - node: ConvergenceState
+        action: records that hierarchy split is complete and all children have converged
+
+  HandleCoalescedWakeEvents:
+    steps:
+      - node: _actors/DependentBox
+        action: publishes a change event while the box is sleeping
+      - node: _actors/DependentBox
+        action: a second dependency publishes a change event moments later
+      - node: _actors/FileSystem
+        action: delivers both fs.watch events in rapid succession
+      - node: WakeOnEvent
+        action: wakes from sleep on the first event
+      - node: events/DebounceEvents
+        action: holds processing to allow additional events to arrive within the debounce window
+      - node: events/ReadEventFile
+        action: reads the first dependency's event file
+      - node: events/ReadEventFile
+        action: reads the second dependency's event file
+      - node: events/OscillationCooldown
+        action: checks that the cooldown period has elapsed since the last wake cycle
+      - node: sync/FindAffectedModules
+        action: traces which local modules are affected by the first dependency change
+      - node: sync/FindAffectedModules
+        action: traces which local modules are affected by the second dependency change
+      - node: sync/MarkModulesStale
+        action: marks the union of all affected modules as stale in a single pass
+      - node: TargetedReconvergence
+        action: reconverges all stale modules from both events in one combined pass
+      - node: _actors/Compiler
+        action: validates all stale modules together
+      - node: _actors/Auditor
+        action: audits the combined set of affected coverage areas
+      - node: TriggerPublish
+        action: publishes the updated interface once after processing all coalesced events
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep after processing all coalesced events
+
+  SpecChangeOnSelf:
+    steps:
+      - node: _actors/ReturningOwner
+        action: edits spec.md for a project whose graph describes its own convergence pipeline
+      - node: SpecFile
+        action: stores the updated spec on disk
+      - node: ReadSpec
+        action: reads the changed spec from disk
+      - node: organization/ReadSpecFile
+        action: parses the updated spec to identify which sections changed
+      - node: organization/IdentifyModules
+        action: determines if the spec change affects the module list itself
+      - node: sync/FindAffectedModules
+        action: traces which modules reference the changed spec sections
+      - node: DetectSelfModification
+        action: flags that affected modules include convergence, compilation, or graph — modules describing the running pipeline
+      - node: ConvergenceState
+        action: records that this is a self-referential reconvergence requiring extra care
+      - node: sync/MarkModulesStale
+        action: marks the self-referential modules as stale
+      - node: TargetedReconvergence
+        action: reconverges only the stale self-referential modules using the current running code
+      - node: _actors/LLMWorker
+        action: updates the stale modules to reflect the spec changes
+      - node: CompileCheck
+        action: validates the updated self-referential modules against the full graph
+      - node: _actors/Compiler
+        action: confirms zero errors in the updated graph
+      - node: TargetedAudit
+        action: audits the updated modules for coverage completeness
+      - node: _actors/Auditor
+        action: verifies the self-referential modules still accurately cover their spec sections
+      - node: ConvergenceState
+        action: records that self-referential reconvergence is complete
+
+  SafeCodegenForSelf:
+    steps:
+      - node: ConvergenceState
+        action: confirms convergence of a self-referential project where codegen will produce code that replaces the running pipeline
+      - node: DetectSelfModification
+        action: identifies that codegen targets include convergence.ts, compile.ts, and other pipeline code
+      - node: NeverModifyRunningCode
+        action: enforces that generated code must be staged, not written over the running code
+      - node: TriggerCodegen
+        action: invokes codegen.ts to generate skeletons from the converged graph
+      - node: codegen/ReadConvergedGraph
+        action: extracts all nodes including those describing the pipeline itself
+      - node: _actors/LLMWorker
+        action: fills implementation stubs for all modules including self-referential ones
+      - node: codegen/FilledSourceFile
+        action: stores the filled source files including new convergence.ts and compile.ts
+      - node: StageGeneratedCode
+        action: writes all generated code to a staging directory instead of the live code directory
+      - node: StagingDirectory
+        action: holds the staged code ready for testing
+      - node: TriggerTestgen
+        action: invokes testgen.ts to generate test skeletons for all modules
+      - node: _actors/LLMWorker
+        action: fills test assertions for all modules including self-referential ones
+      - node: testgen/FilledTestFile
+        action: stores the filled test files
+      - node: ExecuteTests
+        action: runs all tests against the staged code in the staging directory
+      - node: testgen/TestResultReport
+        action: stores test results from running against staged code
+      - node: FixTestFailures
+        action: fixes any test failures in the staged code
+      - node: _actors/LLMWorker
+        action: applies fixes to the staged versions, not the running code
+      - node: ExecuteTests
+        action: re-runs tests against the fixed staged code
+      - node: SwapGeneratedCode
+        action: atomically replaces the running code directory with the staged code
+      - node: ConvergenceState
+        action: records that self-referential code generation is complete and the new code is live
+
+  ValidateGraphDescribesItself:
+    steps:
+      - node: ConvergenceState
+        action: confirms convergence is complete for a self-referential project
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph including all self-referential modules
+      - node: ValidateSelfConsistency
+        action: reads convergence.yaml and checks its pipeline phases match the actual convergence.ts execution order
+      - node: ValidateSelfConsistency
+        action: reads compilation.yaml and checks its validation checks match the actual compile.ts behavior
+      - node: ValidateSelfConsistency
+        action: reads graph.yaml and checks its node type schema matches the actual compiled index structure
+      - node: ValidateSelfConsistency
+        action: reads llm.yaml and checks its worker lifecycle matches the actual worker process behavior
+      - node: ValidateSelfConsistency
+        action: reads testgen.yaml and checks its test generation process matches the actual testgen.ts output
+      - node: compilation/CompilationResult
+        action: provides the compilation result to compare against compilation.yaml's description
+      - node: audit/AuditFindingsList
+        action: provides the audit results to compare against audit.yaml's description
+      - node: DataDecidesWhenToStop
+        action: determines if any self-consistency mismatches were found
+      - node: ConvergenceState
+        action: records self-consistency validation results — either clean or flagging mismatches for manual review

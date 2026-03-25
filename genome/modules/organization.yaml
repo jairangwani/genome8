@@ -1,0 +1,129 @@
+spec_sections: [3, 5]
+
+nodes:
+  ReadSpecFile:
+    type: process
+    description: reads spec.md from disk as the input for organizational analysis
+  ParseSpecSections:
+    type: process
+    description: splits the spec into numbered sections so each module can reference which sections it covers
+  IdentifyScope:
+    type: process
+    description: extracts a 1-2 sentence scope statement describing what the project is and does
+  IdentifyModules:
+    type: process
+    description: analyzes the spec to discover all independent concerns, each becoming a named module with a description
+  AnalyzeDependencies:
+    type: process
+    description: determines which modules depend on which others and produces a build order
+  AnalyzeIndependence:
+    type: process
+    description: classifies modules by how standalone they are — fully independent, standalone with dependencies, or tightly coupled
+  AssembleOrganization:
+    type: process
+    description: combines scope, modules, dependencies, and independence into the final ORGANIZATION.md structure
+  WriteOrganizationFile:
+    type: process
+    description: writes the assembled organization to ORGANIZATION.md on disk
+  OrganizationFile:
+    type: artifact
+    description: the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis
+  SpecSectionIndex:
+    type: artifact
+    description: the parsed index of spec sections with their numbers, used by modules to declare which sections they cover
+  ModuleList:
+    type: artifact
+    description: the list of identified modules with names and descriptions, consumed by convergence for module creation
+  DependencyGraph:
+    type: artifact
+    description: the directed graph of module dependencies defining the build order for module creation
+  IndependenceClassification:
+    type: artifact
+    description: the classification of each module's standalone capability, used by hierarchy for split decisions
+
+journeys:
+  AnalyzeSpecAndWriteOrganization:
+    steps:
+      - node: convergence/ReadSpec
+        action: triggers the organization step by reading spec.md
+      - node: convergence/SpecFile
+        action: provides the raw spec content from disk
+      - node: ReadSpecFile
+        action: loads the spec content for organizational analysis
+      - node: ParseSpecSections
+        action: splits the spec into numbered sections with titles
+      - node: SpecSectionIndex
+        action: stores the section index for module spec_sections references
+      - node: convergence/WriteOrganization
+        action: delegates to LLM to perform the organizational analysis
+      - node: _actors/LLMWorker
+        action: reads the spec and begins identifying the project structure
+      - node: IdentifyScope
+        action: extracts the project scope statement
+      - node: IdentifyModules
+        action: discovers all independent concerns as named modules
+      - node: ModuleList
+        action: stores the discovered module names and descriptions
+      - node: AnalyzeDependencies
+        action: determines module dependencies and build order
+      - node: DependencyGraph
+        action: stores the dependency build order
+      - node: AnalyzeIndependence
+        action: classifies each module's standalone capability
+      - node: IndependenceClassification
+        action: stores the independence analysis
+      - node: AssembleOrganization
+        action: combines all sections into the ORGANIZATION.md structure
+      - node: WriteOrganizationFile
+        action: writes ORGANIZATION.md to disk
+      - node: OrganizationFile
+        action: the organization file is now on disk and ready for consumption
+
+  ProvideModuleListForCreation:
+    steps:
+      - node: OrganizationFile
+        action: provides the organization containing the module list and build order
+      - node: ModuleList
+        action: supplies the list of modules to create
+      - node: DependencyGraph
+        action: supplies the build order for module creation sequence
+      - node: convergence/ModuleCreation
+        action: receives the module list and begins creating modules in build order
+      - node: convergence/BoundedCreationLoop
+        action: iterates through the module list bounded by the dependency graph
+
+  ProvideIndependenceForHierarchy:
+    steps:
+      - node: OrganizationFile
+        action: provides the organization with independence analysis
+      - node: IndependenceClassification
+        action: supplies which modules are standalone vs tightly coupled
+      - node: ModuleList
+        action: supplies the full module list with groupings
+      - node: hierarchy/AnalyzeModuleIndependence
+        action: reads the independence data to evaluate potential child engine groups
+      - node: hierarchy/DecideSplit
+        action: uses independence and coupling data to decide whether to split
+
+  UpdateOrganizationAfterReconvergence:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: signals that reconvergence may have changed the module structure
+      - node: ReadSpecFile
+        action: re-reads spec.md in case the spec itself changed
+      - node: _actors/LLMWorker
+        action: re-analyzes the spec for any new or removed modules
+      - node: IdentifyModules
+        action: re-identifies modules from the updated spec
+      - node: ModuleList
+        action: updates the module list with any changes
+      - node: AnalyzeDependencies
+        action: re-computes dependencies for the updated module set
+      - node: DependencyGraph
+        action: updates the build order
+      - node: AssembleOrganization
+        action: rebuilds the organization structure
+      - node: WriteOrganizationFile
+        action: overwrites ORGANIZATION.md with the updated content
+      - node: OrganizationFile
+        action: the updated organization is now on disk

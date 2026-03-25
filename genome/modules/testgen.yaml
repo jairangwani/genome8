@@ -1,0 +1,146 @@
+spec_sections: [2, 3, 5]
+
+nodes:
+  ReadJourneySteps:
+    type: process
+    description: reads all journeys from the compiled index and extracts their ordered steps as the basis for test cases
+  GenerateTestFilePerJourney:
+    type: process
+    description: creates one TypeScript test file per journey with a describe block and one test case per step
+  GenerateStepTestCase:
+    type: process
+    description: creates an empty test case for a single journey step with the step's node and action as the test name
+  GenerateConnectionAssertions:
+    type: process
+    description: creates assertion stubs for each consecutive step pair verifying the output of one step feeds into the next
+  MapTestImports:
+    type: process
+    description: reads the generated code files from codegen to produce import statements linking tests to implementations
+  FillTestAssertions:
+    type: process
+    description: delegates to LLM to fill empty assertion bodies with concrete checks based on the step actions and node types
+  WriteTestFile:
+    type: process
+    description: writes the filled test file to disk in the test output directory
+  RunTests:
+    type: process
+    description: executes all generated test files and collects pass/fail results for each test case
+  CollectFailures:
+    type: process
+    description: gathers all failing test cases with their error messages and stack traces
+  GenerateFixPrompt:
+    type: process
+    description: builds a targeted prompt for each failure specifying the test, the implementation, and the error to fix
+  ApplyTestFix:
+    type: process
+    description: delegates to LLM to fix either the test assertion or the implementation code based on the failure
+  RerunAfterFix:
+    type: process
+    description: re-executes only the previously failing tests to verify the fix worked
+  TestSkeletonFile:
+    type: artifact
+    description: a TypeScript test file with empty assertion bodies for all steps in a journey
+  FilledTestFile:
+    type: artifact
+    description: a TypeScript test file with LLM-filled assertions ready to execute
+  TestResultReport:
+    type: artifact
+    description: the collected pass/fail results from running all test files with error details for failures
+  FailureFixList:
+    type: artifact
+    description: the list of failing tests with error messages, used to drive targeted LLM fixes
+  TestsFromJourneys:
+    type: rule
+    description: every test case maps directly to a journey step — no tests exist without a corresponding journey
+  StepsAreTestCases:
+    type: rule
+    description: each journey step with its node and action becomes exactly one test case, ensuring 1-to-1 coverage
+
+journeys:
+  GenerateTestSkeletons:
+    steps:
+      - node: convergence/TriggerTestgen
+        action: invokes testgen.ts after codegen has generated and filled implementation files
+      - node: graph/CompiledIndex
+        action: provides all journeys with their ordered steps
+      - node: ReadJourneySteps
+        action: extracts all journeys and their steps as the test case source
+      - node: TestsFromJourneys
+        action: enforces that every test maps to a journey step
+      - node: StepsAreTestCases
+        action: enforces 1-to-1 mapping between steps and test cases
+      - node: GenerateTestFilePerJourney
+        action: creates a test file with a describe block for the first journey
+      - node: GenerateStepTestCase
+        action: creates an empty test case for each step in the journey
+      - node: GenerateConnectionAssertions
+        action: creates assertion stubs for each consecutive step pair
+      - node: codegen/FilledSourceFile
+        action: provides the implementation files for import generation
+      - node: MapTestImports
+        action: generates import statements linking tests to the codegen output
+      - node: TestSkeletonFile
+        action: stores the assembled test skeleton for each journey
+
+  FillTestAssertionsWithLLM:
+    steps:
+      - node: TestSkeletonFile
+        action: provides the empty test skeleton for a journey
+      - node: excerpt/ExcerptOutput
+        action: provides focused context for the module being tested
+      - node: codegen/FilledSourceFile
+        action: provides the implementation code the tests will exercise
+      - node: llm/TaskPayload
+        action: packages the skeleton, excerpt, and implementation into a task
+      - node: llm/SendTask
+        action: sends the fill task to the LLM worker
+      - node: _actors/LLMWorker
+        action: reads the skeleton, implementation, and context to write concrete assertions
+      - node: FillTestAssertions
+        action: LLM writes specific assertions into each empty test case body
+      - node: llm/ReceiveResult
+        action: receives the filled test file from the worker
+      - node: FilledTestFile
+        action: stores the assertion-complete test file
+      - node: WriteTestFile
+        action: writes the filled test file to the test output directory
+
+  RunTestsAndCollectResults:
+    steps:
+      - node: convergence/RunTests
+        action: triggers test execution after all test files are filled and written
+      - node: FilledTestFile
+        action: provides all filled test files for execution
+      - node: RunTests
+        action: executes all test files and captures output
+      - node: TestResultReport
+        action: stores the pass/fail results for every test case
+      - node: CollectFailures
+        action: gathers failing tests with error messages and stack traces
+      - node: FailureFixList
+        action: stores the failure list for the fix cycle
+
+  FixFailingTests:
+    steps:
+      - node: FailureFixList
+        action: provides the list of failures to fix
+      - node: GenerateFixPrompt
+        action: builds a targeted fix prompt for the first failure
+      - node: llm/TaskPayload
+        action: packages the failure context into a fix task
+      - node: llm/SendTask
+        action: sends the fix task to the worker
+      - node: _actors/LLMWorker
+        action: reads the failing test, implementation, and error to determine the fix
+      - node: ApplyTestFix
+        action: LLM edits either the test assertion or the implementation code
+      - node: convergence/FixTestFailures
+        action: records that a fix has been applied
+      - node: RerunAfterFix
+        action: re-executes only the previously failing tests
+      - node: TestResultReport
+        action: updates with the re-run results
+      - node: CollectFailures
+        action: checks if any failures remain after the fix
+      - node: convergence/ConvergenceState
+        action: records test results — either more fixes needed or all tests passing

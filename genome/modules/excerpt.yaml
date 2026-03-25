@@ -1,0 +1,349 @@
+spec_sections: [3]
+
+nodes:
+  SelectTargetModule:
+    type: process
+    description: identifies which module to generate an excerpt for based on the current convergence step
+  CollectLocalNodes:
+    type: process
+    description: gathers all nodes defined within the target module from the compiled index
+  CollectLocalJourneys:
+    type: process
+    description: gathers all journeys defined within the target module from the compiled index
+  CollectCrossModuleConnections:
+    type: process
+    description: finds all connections where one endpoint is in the target module and the other is in a different module
+  CollectReferencedActors:
+    type: process
+    description: finds all _actors/ references used in the target module's journeys
+  CollectWarnings:
+    type: process
+    description: gathers all compilation warnings relevant to the target module including external refs and orphans
+  AssembleExcerpt:
+    type: process
+    description: combines local nodes, journeys, cross-module connections, actors, and warnings into a single focused output
+  TruncateToLimit:
+    type: process
+    description: trims the assembled excerpt to approximately 200 lines while preserving completeness of each section
+  CollectModuleSource:
+    type: process
+    description: reads the target module's raw YAML file content for inclusion in the YOUR FILE section of the excerpt
+  CollectGlobalStats:
+    type: process
+    description: gathers global compilation statistics including total nodes, journeys, connections, orphan count, and duplicate count
+  CollectAllModuleSummaries:
+    type: process
+    description: gathers one-line summaries for every module showing node count, journey count, and cross-module connection count
+  CollectTriggeredByActors:
+    type: process
+    description: identifies which actors trigger journeys in the target module by scanning journey first-steps for actor references
+  RankCrossModuleByRelevance:
+    type: process
+    description: ranks cross-module connections by relevance when the full set exceeds the budget, keeping direct dependencies and demoting distant transitive connections
+  SummarizeLargeModuleSource:
+    type: process
+    description: when the module YAML exceeds a line threshold, produces a compact summary listing node names with types and journey names instead of the raw source
+  CompressModuleSummaries:
+    type: process
+    description: when there are many modules, abbreviates the ALL MODULES section to show directly-connected modules in full detail and group the rest into a count line
+  CacheExcerptByState:
+    type: process
+    description: caches generated excerpts keyed by module name and compiled index hash, serving cached results when the graph has not changed since last generation
+  InvalidateExcerptCache:
+    type: process
+    description: clears all cached excerpts when compilation produces a new compiled index, ensuring stale context is never served to workers
+  ExcerptOutput:
+    type: artifact
+    description: the final ~200 line focused context document for a single module
+  ExcerptLineLimit:
+    type: rule
+    description: each excerpt must be approximately 200 lines to provide focused context without overwhelming the LLM
+  LensRelevance:
+    type: rule
+    description: excerpt content is scoped to what is relevant for the target module, filtering out unrelated graph data
+  AdaptiveBudgetAllocation:
+    type: rule
+    description: the ~200 line budget is allocated dynamically across sections based on module complexity, giving more space to cross-module connections for highly-connected modules and more to source for complex modules
+
+journeys:
+  GenerateModuleExcerpt:
+    steps:
+      - node: _actors/Compiler
+        action: provides the compiled index with all nodes, journeys, and connections
+      - node: graph/CompiledIndex
+        action: supplies the full graph data for extraction
+      - node: SelectTargetModule
+        action: identifies the module to generate an excerpt for
+      - node: CollectLocalNodes
+        action: extracts all nodes defined in the target module
+      - node: CollectLocalJourneys
+        action: extracts all journeys defined in the target module
+      - node: CollectCrossModuleConnections
+        action: finds all edges crossing into or out of the target module
+      - node: CollectReferencedActors
+        action: finds all actors referenced in the target module's journey steps
+      - node: CollectTriggeredByActors
+        action: identifies which actors appear as first-step triggers in the module's journeys
+      - node: CollectWarnings
+        action: gathers compilation warnings relevant to this module
+      - node: CollectGlobalStats
+        action: gathers total nodes, journeys, connections, orphans, and duplicates across all modules
+      - node: CollectAllModuleSummaries
+        action: gathers one-line stats for every module in the graph
+      - node: CollectModuleSource
+        action: reads the raw YAML file content of the target module
+      - node: AssembleExcerpt
+        action: combines all collected sections into a structured excerpt document
+      - node: ExcerptLineLimit
+        action: enforces the ~200 line target for the output
+      - node: TruncateToLimit
+        action: trims the assembled excerpt if it exceeds the line limit
+      - node: ExcerptOutput
+        action: stores the final focused context document for the module
+
+  ProvideExcerptForModuleCreation:
+    steps:
+      - node: convergence/ModuleCreation
+        action: requests focused context for the next module to be created
+      - node: SelectTargetModule
+        action: identifies the module that needs context for LLM creation
+      - node: graph/CompiledIndex
+        action: provides current graph state including all previously created modules
+      - node: CollectCrossModuleConnections
+        action: finds existing connections that the new module should reference
+      - node: CollectReferencedActors
+        action: identifies actors relevant to the new module's domain
+      - node: CollectAllModuleSummaries
+        action: provides the full module list so the worker knows what modules exist
+      - node: CollectGlobalStats
+        action: provides current graph health metrics for the worker
+      - node: LensRelevance
+        action: filters context to only what is relevant for this specific module
+      - node: AssembleExcerpt
+        action: builds the focused context from relevant graph data
+      - node: TruncateToLimit
+        action: ensures the excerpt fits within the ~200 line budget
+      - node: ExcerptOutput
+        action: provides the excerpt as context input for the LLM worker
+      - node: llm/TaskPayload
+        action: packages the excerpt into the task payload sent to the worker
+
+  ProvideExcerptForPerspectiveEnrichment:
+    steps:
+      - node: convergence/ExamineFromPerspective
+        action: requests focused context for a perspective enrichment pass on a module
+      - node: SelectTargetModule
+        action: identifies the module being enriched from a specific perspective
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph with all current nodes and connections
+      - node: CollectLocalNodes
+        action: extracts the module's current nodes so the worker knows what already exists
+      - node: CollectLocalJourneys
+        action: extracts the module's current journeys so the worker knows what's already covered
+      - node: CollectCrossModuleConnections
+        action: shows how the module currently connects to other modules
+      - node: CollectReferencedActors
+        action: lists actors currently involved in this module's journeys
+      - node: CollectTriggeredByActors
+        action: identifies which actors trigger this module's journeys
+      - node: CollectGlobalStats
+        action: provides overall graph health for the worker to assess impact
+      - node: CollectAllModuleSummaries
+        action: shows all modules so the worker can identify valid cross-module reference targets
+      - node: CollectModuleSource
+        action: reads the full YAML source so the worker can write the complete updated file
+      - node: AssembleExcerpt
+        action: combines all sections into a perspective-enrichment excerpt
+      - node: TruncateToLimit
+        action: trims to the ~200 line budget while preserving the full module source
+      - node: ExcerptOutput
+        action: provides the enrichment-focused excerpt to the convergence pipeline
+
+  ProvideExcerptForCodegenFill:
+    steps:
+      - node: codegen/FillImplementation
+        action: requests focused context for filling a code skeleton with implementation
+      - node: SelectTargetModule
+        action: identifies the module whose code skeleton needs filling
+      - node: graph/CompiledIndex
+        action: provides the compiled graph for understanding node purposes and connections
+      - node: CollectLocalNodes
+        action: extracts the module's nodes with types and descriptions for implementation guidance
+      - node: CollectLocalJourneys
+        action: extracts the module's journeys showing how nodes interact in sequences
+      - node: CollectCrossModuleConnections
+        action: identifies imports and dependencies the implementation needs to reference
+      - node: LensRelevance
+        action: filters context to implementation-relevant details, emphasizing node descriptions and journey flows
+      - node: AssembleExcerpt
+        action: builds the codegen-focused excerpt prioritizing implementation guidance
+      - node: TruncateToLimit
+        action: ensures the excerpt fits within the line budget
+      - node: ExcerptOutput
+        action: provides the implementation-focused excerpt for the codegen pipeline
+
+  ProvideExcerptForTestgenFill:
+    steps:
+      - node: testgen/FillTestAssertions
+        action: requests focused context for filling test assertion bodies
+      - node: SelectTargetModule
+        action: identifies the module whose test skeleton needs assertion filling
+      - node: graph/CompiledIndex
+        action: provides the compiled graph for understanding expected behaviors
+      - node: CollectLocalNodes
+        action: extracts node definitions to understand what each test should verify
+      - node: CollectLocalJourneys
+        action: extracts journey steps to understand the expected sequence of actions
+      - node: CollectCrossModuleConnections
+        action: identifies cross-module interactions the tests should validate
+      - node: codegen/FilledSourceFile
+        action: provides the implementation code the tests will exercise
+      - node: LensRelevance
+        action: filters context to test-relevant details, emphasizing expected behaviors and assertions
+      - node: AssembleExcerpt
+        action: builds the testgen-focused excerpt with implementation and graph context
+      - node: TruncateToLimit
+        action: ensures the excerpt fits within the line budget
+      - node: ExcerptOutput
+        action: provides the test-focused excerpt for the testgen pipeline
+
+  ProvideExcerptForAuditFix:
+    steps:
+      - node: convergence/AuditGapFix
+        action: requests focused context for fixing a specific audit gap in a module
+      - node: SelectTargetModule
+        action: identifies the module that contains the audit gap
+      - node: graph/CompiledIndex
+        action: provides the compiled graph showing current state including the gap
+      - node: CollectLocalNodes
+        action: extracts the module's nodes to show what exists
+      - node: CollectLocalJourneys
+        action: extracts the module's journeys to show current coverage
+      - node: CollectCrossModuleConnections
+        action: shows cross-module connections relevant to the gap
+      - node: CollectWarnings
+        action: includes compilation warnings that may relate to the audit finding
+      - node: CollectModuleSource
+        action: reads the raw YAML so the worker can edit the specific file
+      - node: AssembleExcerpt
+        action: builds the fix-focused excerpt combining gap details with module context
+      - node: TruncateToLimit
+        action: ensures the excerpt fits within the line budget
+      - node: ExcerptOutput
+        action: provides the fix-focused excerpt to the LLM worker for targeted repair
+
+  ProvideExcerptForAudit:
+    steps:
+      - node: convergence/TargetedAudit
+        action: requests focused context for an auditor to check a specific module
+      - node: SelectTargetModule
+        action: identifies the module being audited
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph for extraction
+      - node: CollectLocalNodes
+        action: extracts the module's nodes for the auditor to review
+      - node: CollectLocalJourneys
+        action: extracts the module's journeys for the auditor to review
+      - node: CollectCrossModuleConnections
+        action: shows the auditor how this module connects to others
+      - node: CollectWarnings
+        action: includes any existing warnings the auditor should consider
+      - node: AssembleExcerpt
+        action: builds the audit-focused excerpt
+      - node: ExcerptOutput
+        action: provides the excerpt to the auditor
+      - node: _actors/Auditor
+        action: receives the focused context and begins coverage checking
+
+  ProvideExcerptForHumanDeveloper:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: requests context for a specific module to understand or edit it
+      - node: SelectTargetModule
+        action: identifies the module the developer wants to explore
+      - node: graph/CompiledIndex
+        action: provides the compiled graph data
+      - node: CollectLocalNodes
+        action: extracts the module's node definitions
+      - node: CollectLocalJourneys
+        action: extracts the module's journey definitions
+      - node: CollectCrossModuleConnections
+        action: shows how the module connects to the rest of the graph
+      - node: CollectReferencedActors
+        action: lists the actors involved in this module
+      - node: CollectWarnings
+        action: shows any validation warnings for this module
+      - node: AssembleExcerpt
+        action: combines all sections into a readable excerpt
+      - node: TruncateToLimit
+        action: trims to ~200 lines for focused reading
+      - node: ExcerptOutput
+        action: displays the excerpt to the developer
+
+  HandleHighConnectionModule:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module with a high number of cross-module connections
+      - node: graph/CompiledIndex
+        action: provides all connections for the target module
+      - node: CollectCrossModuleConnections
+        action: gathers the full set of cross-module connections which exceeds the normal budget
+      - node: RankCrossModuleByRelevance
+        action: scores each connection by directness, ranking direct dependencies above transitive ones
+      - node: RankCrossModuleByRelevance
+        action: selects the top-ranked connections that fit within the cross-module budget allocation
+      - node: AdaptiveBudgetAllocation
+        action: allocates more of the ~200 line budget to the cross-module section for this highly-connected module
+      - node: AssembleExcerpt
+        action: assembles the excerpt using only the highest-relevance connections
+      - node: TruncateToLimit
+        action: trims the excerpt to the adapted budget limit
+      - node: ExcerptOutput
+        action: stores the connection-focused excerpt that fits within the line budget
+
+  HandleOversizedModuleSource:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module whose YAML source exceeds the line budget threshold
+      - node: CollectModuleSource
+        action: reads the raw YAML and detects that it exceeds the source line threshold
+      - node: SummarizeLargeModuleSource
+        action: extracts node names with their types as a compact list
+      - node: SummarizeLargeModuleSource
+        action: extracts journey names with step counts as a compact list
+      - node: SummarizeLargeModuleSource
+        action: produces the compact summary replacing the raw source in the excerpt
+      - node: AdaptiveBudgetAllocation
+        action: reallocates the saved lines from source compression to other sections
+      - node: AssembleExcerpt
+        action: includes the summarized source instead of the raw YAML file content
+      - node: ExcerptOutput
+        action: stores the excerpt with source summary fitting within the line budget
+
+  ServeExcerptFromCache:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the module that needs an excerpt
+      - node: graph/CompiledIndex
+        action: provides the current compiled index hash for cache lookup
+      - node: CacheExcerptByState
+        action: checks if a cached excerpt exists for this module at the current compiled index hash
+      - node: CacheExcerptByState
+        action: finds a valid cache hit and retrieves the stored excerpt
+      - node: ExcerptOutput
+        action: serves the cached excerpt immediately without running any collection steps
+
+  RegenerateAfterGraphChange:
+    steps:
+      - node: _actors/Compiler
+        action: completes a compilation that changes the compiled index
+      - node: graph/CompiledIndex
+        action: provides the new compiled index with a different hash than before
+      - node: InvalidateExcerptCache
+        action: detects that the compiled index hash has changed since the last cache entries were stored
+      - node: InvalidateExcerptCache
+        action: clears all cached excerpts to prevent serving stale context
+      - node: CacheExcerptByState
+        action: resets the cache to empty, ready to store fresh excerpts on next generation
+      - node: compilation/CompilationResult
+        action: confirms the compilation is complete and excerpts are ready to be regenerated on demand

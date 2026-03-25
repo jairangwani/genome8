@@ -663,10 +663,29 @@ HUMAN RUNS: genome converge /path/to/project
 
   If no gaps → CONVERGED.
 
+  ── Step 4d: Code-to-Graph Sync (bottom-up) ──
+
+  If actual code files exist in the project, reconcile them with the graph.
+  This is how CODE drives PLAN changes — the real bottom-up flow.
+
+  Two checks:
+  1. UNTRACKED FILES: code exists but no node references it
+     → LLM reads the code, adds nodes + journeys to the graph
+     → The plan updates to match what the code actually does
+
+  2. TRACKED FILES: node has files: field pointing to code
+     → LLM compares code vs journey description
+     → If code does MORE than journey says → add missing journeys
+     → If code does LESS than journey says → flag as unimplemented
+
+  This closes the loop: spec → graph → code → graph. Both directions sync.
+  Without this, the plan drifts from reality — the exact problem genome solves.
+
   WHY THIS WORKS:
   - Creation is bounded (modules × lenses). No infinite loop.
   - Convergence is CODE (compile). Instant, deterministic.
   - Audit is targeted (fix SPECIFIC gaps, not "what's missing?").
+  - Code-to-graph sync ensures the plan matches reality, not just the spec.
   - No delta tracking. No quiet rounds. No wasteful re-examination.
   - Boxes sleep after convergence. Wake ONLY on ripple (dependency change).
 

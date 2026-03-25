@@ -572,6 +572,106 @@ Read the file, add what's needed, write it back using the Write tool.`);
     doCompile();
   }
 
+  // ═══ STEP 4d — Code-to-Graph Sync (bottom-up) ═══
+  // If actual code files exist, read them and reconcile with the graph.
+  // This is how CODE drives PLAN changes — the real bottom-up flow.
+  console.log('\n═══ STEP 4d: Code-to-Graph Sync ═══');
+
+  const codeFiles: Array<{ node: string; file: string }> = [];
+  const preCodeResult = doCompile();
+  for (const [nodeName, node] of Object.entries(preCodeResult.index.nodes)) {
+    if (node.files && node.files.length > 0) {
+      for (const file of node.files) {
+        const fullPath = path.join(absProjectDir, file);
+        if (fs.existsSync(fullPath)) {
+          codeFiles.push({ node: nodeName, file: fullPath });
+        }
+      }
+    }
+  }
+
+  // Also scan for code files that exist but aren't in the graph
+  const srcDir = path.join(absProjectDir, 'src');
+  if (fs.existsSync(srcDir)) {
+    const srcFiles = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+    for (const file of srcFiles) {
+      const fullPath = path.join(srcDir, file);
+      const isTracked = codeFiles.some(cf => cf.file === fullPath);
+      if (!isTracked) {
+        codeFiles.push({ node: '', file: fullPath }); // Untracked code file
+      }
+    }
+  }
+
+  if (codeFiles.length > 0) {
+    console.log(`  Found ${codeFiles.length} code files to reconcile with graph...`);
+
+    // Read all code files and ask LLM to compare with graph
+    const trackedFiles = codeFiles.filter(cf => cf.node);
+    const untrackedFiles = codeFiles.filter(cf => !cf.node);
+
+    if (untrackedFiles.length > 0) {
+      console.log(`  ${untrackedFiles.length} untracked code files (exist but not in graph):`);
+      const untrackedList = untrackedFiles.map(cf => {
+        const content = fs.readFileSync(cf.file, 'utf-8');
+        const lines = content.split('\n').length;
+        return `  - ${path.basename(cf.file)} (${lines} lines)`;
+      }).join('\n');
+      console.log(untrackedList);
+
+      // Ask LLM to reconcile untracked files with the graph
+      const untrackedSummary = untrackedFiles.map(cf => {
+        const content = fs.readFileSync(cf.file, 'utf-8');
+        return `=== ${path.basename(cf.file)} ===\n${content.substring(0, 3000)}`;
+      }).join('\n\n');
+
+      const allModuleFiles = fs.readdirSync(modulesDir).filter(f => f.endsWith('.yaml') && f !== '_actors.yaml');
+
+      await worker.call(`These code files exist in the project but are NOT tracked in the graph (no node has a files: field pointing to them).
+
+UNTRACKED FILES:
+${untrackedSummary}
+
+EXISTING MODULES: ${allModuleFiles.join(', ')}
+
+For each untracked file:
+1. Does it implement something already described in a node? → Add files: [path] to that node
+2. Does it implement something NOT in the graph? → Add a new node + journey for it
+3. Is it irrelevant (config, boilerplate)? → Skip
+
+Update the appropriate YAML module files using the Write tool.`);
+
+      doCompile(); // Recompile after reconciliation
+    }
+
+    if (trackedFiles.length > 0) {
+      console.log(`  ${trackedFiles.length} tracked code files — checking for drift...`);
+
+      for (const cf of trackedFiles.slice(0, 10)) { // Limit to avoid excessive calls
+        const code = fs.readFileSync(cf.file, 'utf-8');
+        const node = preCodeResult.index.nodes[cf.node];
+        if (!node) continue;
+
+        await worker.call(`Compare this code to its node in the graph. Flag any drift.
+
+NODE: ${cf.node}
+DESCRIPTION: ${node.description}
+IN JOURNEYS: ${node.in_journeys.join(', ')}
+
+CODE (${path.basename(cf.file)}):
+${code.substring(0, 5000)}
+
+Does the code match what the journey says? If the code does MORE than the journey describes (new functions, new capabilities), update the module YAML to add the missing nodes/journeys. If the code does LESS, flag it.
+
+Update the appropriate YAML module file using the Write tool if needed.`);
+      }
+
+      doCompile(); // Recompile after drift check
+    }
+  } else {
+    console.log('  No code files found to reconcile. Skipping.');
+  }
+
   // ═══ STEP 5 — Publish + Notify ═══
   console.log('\n═══ STEP 5: Publish ═══');
   const finalResult = doCompile();

@@ -1,0 +1,123 @@
+spec_sections: [3, 5]
+
+nodes:
+  ReadConvergedGraph:
+    type: process
+    description: reads the compiled index after convergence to extract all nodes with their types and descriptions for skeleton generation
+  GenerateProcessSkeletons:
+    type: process
+    description: creates TypeScript function stubs for each process node with name, parameters inferred from connections, and return type
+  GenerateArtifactSkeletons:
+    type: process
+    description: creates TypeScript interface and class stubs for each artifact node with fields inferred from journey usage
+  GenerateInterfaceSkeletons:
+    type: process
+    description: creates TypeScript API endpoint or handler stubs for each interface node
+  GenerateRuleSkeletons:
+    type: process
+    description: creates TypeScript validation function stubs for each rule node with the constraint logic left empty
+  MapConnectionsToImports:
+    type: process
+    description: reads cross-module connections to generate import statements linking skeleton files across modules
+  AssembleModuleFile:
+    type: process
+    description: combines all skeletons for a single module into one TypeScript file with imports, types, and function stubs
+  FillImplementation:
+    type: process
+    description: delegates to LLM to fill the empty function bodies and class methods in a skeleton file with working code
+  WriteGeneratedFile:
+    type: process
+    description: writes the filled TypeScript file to disk in the generated code output directory
+  SkeletonFile:
+    type: artifact
+    description: a TypeScript file containing empty stubs for all nodes in a module, ready for LLM to fill
+  FilledSourceFile:
+    type: artifact
+    description: a TypeScript file with LLM-filled implementations for all node stubs in a module
+  GeneratedCodeDirectory:
+    type: artifact
+    description: the output directory containing all generated TypeScript files organized by module
+  CodeComesFromNodes:
+    type: rule
+    description: every generated function, class, or interface maps directly to a node in the graph — no code exists without a node
+  SkeletonBeforeFill:
+    type: rule
+    description: code generation always produces empty skeletons first, then LLM fills — never asks LLM to generate from scratch
+
+journeys:
+  GenerateSkeletonsFromGraph:
+    steps:
+      - node: convergence/TriggerCodegen
+        action: invokes codegen.ts after convergence and publish are complete
+      - node: graph/CompiledIndex
+        action: provides the full converged graph with all nodes and connections
+      - node: ReadConvergedGraph
+        action: extracts all process, artifact, interface, and rule nodes organized by module
+      - node: CodeComesFromNodes
+        action: ensures every skeleton maps to exactly one graph node
+      - node: GenerateProcessSkeletons
+        action: creates function stubs for all process nodes
+      - node: GenerateArtifactSkeletons
+        action: creates interface and class stubs for all artifact nodes
+      - node: GenerateInterfaceSkeletons
+        action: creates handler stubs for all interface nodes
+      - node: GenerateRuleSkeletons
+        action: creates validation function stubs for all rule nodes
+      - node: graph/ConnectionSet
+        action: provides cross-module edges for import generation
+      - node: MapConnectionsToImports
+        action: generates import statements from connection edges
+      - node: AssembleModuleFile
+        action: combines stubs and imports into a single TypeScript skeleton per module
+      - node: SkeletonFile
+        action: stores the assembled skeleton file for each module
+      - node: SkeletonBeforeFill
+        action: confirms skeletons are complete before any LLM filling begins
+
+  FillSkeletonsWithLLM:
+    steps:
+      - node: SkeletonFile
+        action: provides the empty skeleton for a module
+      - node: excerpt/ExcerptOutput
+        action: provides focused context for the module to guide implementation
+      - node: llm/TaskPayload
+        action: packages the skeleton and excerpt into a task for the worker
+      - node: llm/SendTask
+        action: sends the fill task to the LLM worker
+      - node: _actors/LLMWorker
+        action: reads the skeleton and excerpt to understand what each stub should do
+      - node: FillImplementation
+        action: LLM writes working code into each empty function body and class method
+      - node: llm/ReceiveResult
+        action: receives the filled source code from the worker
+      - node: FilledSourceFile
+        action: stores the implementation-complete TypeScript file
+      - node: WriteGeneratedFile
+        action: writes the filled file to the generated code output directory
+      - node: GeneratedCodeDirectory
+        action: the file is now on disk in the output directory
+
+  FillAllModulesInOrder:
+    steps:
+      - node: organization/DependencyGraph
+        action: provides the build order so dependencies are filled before dependents
+      - node: SkeletonFile
+        action: provides the first module's skeleton in build order
+      - node: FillImplementation
+        action: LLM fills the first module which has no internal dependencies
+      - node: FilledSourceFile
+        action: the first filled file is available for subsequent modules to import
+      - node: WriteGeneratedFile
+        action: writes the first filled file to disk
+      - node: SkeletonFile
+        action: provides the next module's skeleton in build order
+      - node: _actors/LLMWorker
+        action: fills the next module with access to previously filled dependency files
+      - node: FillImplementation
+        action: LLM fills the module referencing already-implemented dependencies
+      - node: WriteGeneratedFile
+        action: writes each filled file to disk as it completes
+      - node: GeneratedCodeDirectory
+        action: accumulates all filled files in build order
+      - node: convergence/ConvergenceState
+        action: records that code generation is complete for all modules

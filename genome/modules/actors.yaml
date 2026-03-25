@@ -1,0 +1,326 @@
+spec_sections: [3, 4, 5]
+
+nodes:
+  DiscoverFromActivities:
+    type: process
+    description: analyzes the spec to find actors from the activities perspective — who uses, creates, operates, governs, and visits the system
+  DiscoverFromThreats:
+    type: process
+    description: analyzes the spec to find threat actors — attackers, abusers, failure scenarios, and exploitation vectors
+  DiscoverFromLifecycle:
+    type: process
+    description: analyzes the spec to find lifecycle actors — first visit, onboarding, power use, decline, exit, and return
+  MergeAndDeduplicate:
+    type: process
+    description: combines actors from all 3 angles, removes duplicates, and keeps the best description for each
+  WriteActorsFile:
+    type: process
+    description: writes the merged actor list to _actors.yaml in the modules directory
+  InheritActorsFromParent:
+    type: process
+    description: copies the parent's _actors.yaml into a child engine directory so children share the same actor set
+  ValidateActorCoverage:
+    type: process
+    description: checks that every discovered actor appears in at least one journey across all modules
+  ActorsFile:
+    type: artifact
+    description: the _actors.yaml file containing all discovered actors with type and description
+  ActivitiesActorList:
+    type: artifact
+    description: the list of actors discovered from the activities perspective before merging
+  ThreatsActorList:
+    type: artifact
+    description: the list of actors discovered from the threats perspective before merging
+  LifecycleActorList:
+    type: artifact
+    description: the list of actors discovered from the lifecycle perspective before merging
+  MergedActorList:
+    type: artifact
+    description: the deduplicated combined actor list from all 3 discovery angles
+  ThreeAngleDiscovery:
+    type: rule
+    description: actors must be discovered from exactly 3 angles (activities, threats, lifecycle) to ensure comprehensive coverage
+  ParentDiscoversChildrenInherit:
+    type: rule
+    description: only the parent engine discovers actors — children inherit them to prevent duplication
+
+journeys:
+  DiscoverActorsFromSpec:
+    steps:
+      - node: convergence/DiscoverActors
+        action: triggers actor discovery after organization step is complete
+      - node: organization/OrganizationFile
+        action: provides the organizational context for actor analysis
+      - node: convergence/SpecFile
+        action: provides the raw spec for actor extraction
+      - node: ThreeAngleDiscovery
+        action: enforces that all 3 discovery angles will be executed
+      - node: _actors/LLMWorker
+        action: reads the spec to discover actors from the activities perspective
+      - node: DiscoverFromActivities
+        action: identifies who uses, creates, operates, governs, and visits the system
+      - node: ActivitiesActorList
+        action: stores the activities-perspective actors
+      - node: _actors/LLMWorker
+        action: reads the spec to discover actors from the threats perspective
+      - node: DiscoverFromThreats
+        action: identifies attackers, abusers, failure scenarios, and exploitation vectors
+      - node: ThreatsActorList
+        action: stores the threats-perspective actors
+      - node: _actors/LLMWorker
+        action: reads the spec to discover actors from the lifecycle perspective
+      - node: DiscoverFromLifecycle
+        action: identifies first visit, onboarding, power use, decline, exit, and return actors
+      - node: LifecycleActorList
+        action: stores the lifecycle-perspective actors
+
+  MergeAndWriteActors:
+    steps:
+      - node: ActivitiesActorList
+        action: provides the activities-perspective actors for merging
+      - node: ThreatsActorList
+        action: provides the threats-perspective actors for merging
+      - node: LifecycleActorList
+        action: provides the lifecycle-perspective actors for merging
+      - node: MergeAndDeduplicate
+        action: combines all actors, removes duplicates, keeps best descriptions
+      - node: MergedActorList
+        action: stores the final deduplicated actor set
+      - node: WriteActorsFile
+        action: writes the merged actors to _actors.yaml
+      - node: ActorsFile
+        action: the _actors.yaml file is now on disk in the modules directory
+      - node: convergence/ConvergenceState
+        action: records that actor discovery is complete
+
+  InheritActorsToChildren:
+    steps:
+      - node: _actors/ParentEngine
+        action: has completed actor discovery and is preparing child engines
+      - node: ActorsFile
+        action: provides the parent's _actors.yaml for distribution
+      - node: ParentDiscoversChildrenInherit
+        action: enforces that children inherit actors rather than re-discovering
+      - node: InheritActorsFromParent
+        action: copies _actors.yaml into the child engine directory
+      - node: hierarchy/DistributeSharedActors
+        action: places the shared actors in each child's modules directory
+      - node: _actors/ChildEngine
+        action: receives the inherited actors and uses them during its own convergence
+
+  SpecInjectionDefense:
+    steps:
+      - node: _actors/MaliciousSpecAuthor
+        action: submits a spec.md containing prompt injection or adversarial content
+      - node: convergence/ReadSpec
+        action: reads the potentially malicious spec from disk
+      - node: DiscoverFromActivities
+        action: processes the spec through LLM which may encounter injected prompts
+      - node: _actors/LLMWorker
+        action: receives the spec content including any adversarial payloads
+      - node: WriteActorsFile
+        action: writes whatever actors the LLM discovered including any injected entries
+      - node: _actors/Compiler
+        action: validates the resulting _actors.yaml for structural correctness
+      - node: compilation/DuplicateDetection
+        action: catches any duplicate actor names injected by the adversarial content
+      - node: compilation/DanglingRefDetection
+        action: catches any phantom references injected through the adversarial spec
+
+  YAMLTamperingDefense:
+    steps:
+      - node: _actors/YAMLTamperer
+        action: directly edits _actors.yaml to inject invalid actor definitions or corrupt entries
+      - node: ActorsFile
+        action: contains the tampered content
+      - node: _actors/Compiler
+        action: runs compilation on the tampered file
+      - node: compilation/YAMLErrorReporting
+        action: catches any YAML syntax errors from the tampering
+      - node: graph/NodeTypeSchema
+        action: validates that tampered entries still conform to the actor type schema
+      - node: compilation/CompilationResult
+        action: reports validation errors from the tampered content
+
+  RogueWorkerDefense:
+    steps:
+      - node: _actors/RogueWorker
+        action: produces subtly wrong actor content with hallucinated or phantom actors
+      - node: WriteActorsFile
+        action: writes the rogue content to _actors.yaml
+      - node: ActorsFile
+        action: contains the hallucinated actors
+      - node: ValidateActorCoverage
+        action: checks that every actor appears in at least one journey
+      - node: compilation/OrphanDetection
+        action: flags hallucinated actors that no journey references as orphans
+      - node: convergence/AuditGapFix
+        action: targeted fix removes orphan actors that cannot be connected to any journey
+
+  EventSpoofingDefense:
+    steps:
+      - node: _actors/EventSpoofer
+        action: writes a fake event file to trigger unnecessary reconvergence
+      - node: events/DetectEventFileChange
+        action: detects the spoofed event file change
+      - node: events/ReadEventFile
+        action: reads the spoofed event content
+      - node: sync/FetchDependencyHash
+        action: fetches the actual dependency hash to compare
+      - node: sync/CompareStoredHash
+        action: compares and finds the hash has not actually changed
+      - node: sync/SkipIfAllCurrent
+        action: aborts sync because no real change occurred, neutralizing the spoof
+
+  InfiniteRippleDefense:
+    steps:
+      - node: _actors/InfiniteLoopTrigger
+        action: crafts circular dependencies or oscillating changes to cause unbounded ripple
+      - node: events/DetectEventFileChange
+        action: detects the rapid sequence of events
+      - node: events/OscillationCooldown
+        action: suppresses re-trigger because the same dependency fired within the cooldown window
+      - node: events/DebounceEvents
+        action: batches the rapid events into a single sync trigger
+      - node: sync/CompareStoredHash
+        action: compares hashes and finds they cycle back to a previous state
+      - node: sync/SkipIfAllCurrent
+        action: aborts because the effective state has not changed
+
+  HashCollisionDefense:
+    steps:
+      - node: _actors/HashCollisionExploiter
+        action: manipulates content to produce identical SHA256 hashes
+      - node: publish/ComputeInterfaceHash
+        action: computes hash on the manipulated content
+      - node: publish/ComparePreviousHash
+        action: compares and incorrectly finds no change due to collision
+      - node: publish/SkipPublishIfUnchanged
+        action: incorrectly skips publish, missing the real change
+      - node: _actors/Auditor
+        action: detects the coverage gap during depth audit because spec content diverges from graph
+      - node: convergence/AuditGapFix
+        action: targeted fix forces a re-publish of the affected interface
+
+  PrivilegeEscalationDefense:
+    steps:
+      - node: _actors/PrivilegeEscalator
+        action: attempts to use LLMWorker's native tools to access files outside box scope
+      - node: llm/NativeToolSet
+        action: provides the tool access that could be exploited
+      - node: llm/WriteFile
+        action: worker attempts to write to a path outside the box directory
+      - node: _actors/Compiler
+        action: detects files or references outside the expected module scope
+      - node: compilation/DanglingRefDetection
+        action: flags any references to nodes or files outside the box boundary
+      - node: compilation/CompilationResult
+        action: reports the out-of-scope access as validation errors
+
+  ResourceExhaustionDefense:
+    steps:
+      - node: _actors/ResourceExhauster
+        action: submits a spec designed to spawn unbounded child engines
+      - node: organization/IdentifyModules
+        action: discovers a very large number of modules from the adversarial spec
+      - node: organization/ModuleList
+        action: stores the inflated module list
+      - node: hierarchy/DecideSplit
+        action: evaluates whether the large module count warrants splitting
+      - node: convergence/BoundedCreationRule
+        action: enforces that creation is bounded by modules times lenses, not unbounded
+      - node: convergence/DataDecidesWhenToStop
+        action: allows convergence to complete even with many modules since creation is bounded
+
+  StaleBoxRecovery:
+    steps:
+      - node: _actors/StaleBox
+        action: has stopped watching events and drifted out of sync
+      - node: events/RegisterEventWatchers
+        action: re-registers fs.watch watchers on dependency event files
+      - node: sync/FetchDependencyHash
+        action: fetches current hashes from all dependencies
+      - node: sync/CompareStoredHash
+        action: finds multiple hashes have changed during the stale period
+      - node: sync/FindAffectedModules
+        action: identifies all modules affected by the accumulated changes
+      - node: sync/MarkModulesStale
+        action: marks all affected modules for reconvergence
+      - node: convergence/TargetedReconvergence
+        action: reconverges all stale modules to bring the box back in sync
+
+  DeprecatedModuleCleanup:
+    steps:
+      - node: _actors/DeprecatedModule
+        action: exists on disk but is no longer relevant to the current spec
+      - node: compilation/OrphanDetection
+        action: detects that the module's nodes are no longer referenced by any journey
+      - node: compilation/IsolatedModuleDetection
+        action: detects that the module has zero cross-module connections
+      - node: compilation/CompilationResult
+        action: reports the module as both orphaned and isolated
+      - node: _actors/Auditor
+        action: flags the deprecated module during coverage audit
+      - node: convergence/AuditGapFix
+        action: targeted fix removes or archives the deprecated module
+
+  NewProjectAdoption:
+    steps:
+      - node: _actors/NewProjectAdopter
+        action: encounters genome8 and wants to try it on their project
+      - node: _actors/ProjectOwner
+        action: writes their first spec.md describing their system
+      - node: convergence/ConvergenceCLI
+        action: receives the command to start convergence for the first time
+      - node: convergence/ReadSpec
+        action: reads the new project's spec.md
+      - node: organization/IdentifyModules
+        action: discovers the project's modules from the spec
+      - node: DiscoverFromActivities
+        action: discovers the project's actors from the activities angle
+      - node: DiscoverFromThreats
+        action: discovers threat actors relevant to the new project
+      - node: DiscoverFromLifecycle
+        action: discovers lifecycle actors for the new project
+      - node: convergence/ConvergenceState
+        action: tracks the first-time convergence through all pipeline steps
+
+  MigratingProjectBootstrap:
+    steps:
+      - node: _actors/MigratingProject
+        action: has existing documentation and code that needs to be captured in the graph
+      - node: _actors/ProjectOwner
+        action: writes a spec.md summarizing the existing system
+      - node: convergence/ReadSpec
+        action: reads the migration spec
+      - node: organization/IdentifyModules
+        action: discovers modules that map to the existing system's components
+      - node: _actors/LLMWorker
+        action: analyzes existing artifacts to inform module creation with pre-existing context
+      - node: convergence/ModuleCreation
+        action: creates modules that capture the existing system's structure
+      - node: _actors/Compiler
+        action: validates that the bootstrapped graph is consistent
+      - node: compilation/CompilationResult
+        action: reports any gaps between the spec and the bootstrapped modules
+
+  ReturningOwnerReconvergence:
+    steps:
+      - node: _actors/ReturningOwner
+        action: re-triggers convergence after a long period of inactivity
+      - node: convergence/ReadSpec
+        action: reads the possibly unchanged spec.md
+      - node: sync/FetchDependencyHash
+        action: fetches current hashes from all dependencies
+      - node: sync/CompareStoredHash
+        action: finds many hashes have changed during the absence
+      - node: sync/FindAffectedModules
+        action: identifies all stale modules
+      - node: convergence/TargetedReconvergence
+        action: reconverges all stale modules
+      - node: _actors/Compiler
+        action: validates the reconverged graph
+      - node: _actors/Auditor
+        action: audits coverage after reconvergence
+      - node: convergence/ConvergenceState
+        action: records the system is back in sync after the returning owner's trigger

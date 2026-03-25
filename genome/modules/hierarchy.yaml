@@ -1,0 +1,168 @@
+spec_sections: [2, 3, 5, 6]
+
+nodes:
+  AnalyzeModuleIndependence:
+    type: process
+    description: reads ORGANIZATION.md independence section to identify which module groups could form separate child engines
+  DecideSplit:
+    type: process
+    description: LLM-based decision on whether to split, using module count, independence, and coupling analysis — no hardcoded threshold
+  CreateChildDirectory:
+    type: process
+    description: creates a new directory for each child engine with its own modules/ folder structure
+  GenerateScopedSpec:
+    type: process
+    description: writes a scoped spec.md for each child containing only the sections relevant to that child's module group
+  DistributeSharedActors:
+    type: process
+    description: copies the parent's _actors.yaml into each child directory so all children inherit the same shared actors
+  AssignModulesToChildren:
+    type: process
+    description: maps each module from ORGANIZATION.md to exactly one child engine based on the grouping decision
+  SpawnChildEngine:
+    type: process
+    description: launches a child convergence.ts process for each child directory as an independent subprocess
+  WaitForAllChildren:
+    type: process
+    description: blocks until every spawned child engine has completed its convergence and published its interface
+  CollectChildInterfaces:
+    type: process
+    description: reads each child's published interface.yaml to gather their exported nodes and journeys
+  CreateCrossEngineJourneys:
+    type: process
+    description: creates journeys at the parent level that connect nodes across different children's published interfaces
+  ValidateCrossEngineRefs:
+    type: process
+    description: checks that all external refs in children (warnings) resolve to actual nodes in sibling child interfaces
+  PromoteExternalRefsToErrors:
+    type: process
+    description: converts unresolved external refs from warnings to errors at the parent level where all children are visible
+  ChildDirectory:
+    type: artifact
+    description: a directory containing scoped spec.md, shared _actors.yaml, and modules/ for one child engine
+  ScopedSpecFile:
+    type: artifact
+    description: a child-specific spec.md containing only the sections relevant to that child's module group
+  CrossEngineJourneySet:
+    type: artifact
+    description: the set of parent-level journeys connecting nodes across children's published interfaces
+  ChildInterfaceCollection:
+    type: artifact
+    description: the collected interface.yaml files from all children, used for cross-engine validation
+  SameCodeEveryLevel:
+    type: rule
+    description: convergence.ts is the exact same code at parent, child, and grandchild levels — no level-specific logic
+  SharedActorsNoduplicates:
+    type: rule
+    description: parent discovers actors once, children inherit them — no child re-discovers or duplicates actors
+  ExternalRefsWarningsInChildrenErrorsInParent:
+    type: rule
+    description: children emit warnings for unresolved cross-engine refs, parent promotes them to errors if they remain unresolved
+
+journeys:
+  DecideHierarchySplit:
+    steps:
+      - node: convergence/HierarchyDecision
+        action: invokes the hierarchy decision step after organization and actor discovery
+      - node: AnalyzeModuleIndependence
+        action: reads the independence analysis from ORGANIZATION.md
+      - node: _actors/LLMWorker
+        action: analyzes module groups, coupling, and independence to decide whether to split
+      - node: DecideSplit
+        action: produces a split decision with child groupings or a no-split result
+      - node: convergence/ConvergenceState
+        action: records the hierarchy decision — split with groupings or no-split
+
+  PrepareChildEngines:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the split decision with module-to-child assignments
+      - node: AssignModulesToChildren
+        action: maps each module to exactly one child engine group
+      - node: CreateChildDirectory
+        action: creates the directory structure for the first child engine
+      - node: ChildDirectory
+        action: the child directory is ready on disk
+      - node: GenerateScopedSpec
+        action: writes a scoped spec.md with only the relevant sections for this child
+      - node: ScopedSpecFile
+        action: stores the scoped spec in the child directory
+      - node: DistributeSharedActors
+        action: copies _actors.yaml from the parent into the child directory
+      - node: SharedActorsNoduplicates
+        action: ensures actors are inherited, not re-discovered by the child
+      - node: CreateChildDirectory
+        action: repeats directory creation for each additional child engine
+      - node: GenerateScopedSpec
+        action: repeats scoped spec generation for each additional child
+      - node: DistributeSharedActors
+        action: repeats actor distribution for each additional child
+
+  SpawnAndWaitForChildren:
+    steps:
+      - node: _actors/ParentEngine
+        action: has all child directories prepared and ready to spawn
+      - node: SameCodeEveryLevel
+        action: confirms that each child runs the same convergence.ts code as the parent
+      - node: SpawnChildEngine
+        action: launches a convergence.ts subprocess for the first child directory
+      - node: _actors/ChildEngine
+        action: begins independent convergence in its scoped directory
+      - node: SpawnChildEngine
+        action: launches convergence.ts for each additional child directory
+      - node: _actors/ChildEngine
+        action: each child converges independently with its scoped spec and inherited actors
+      - node: WaitForAllChildren
+        action: parent blocks until every child process has completed and exited
+      - node: _actors/ChildEngine
+        action: publishes its interface.yaml upon convergence completion
+      - node: publish/InterfaceYamlFile
+        action: each child's published interface is now on disk
+
+  ValidateAndConnectChildren:
+    steps:
+      - node: _actors/ParentEngine
+        action: all children have converged and published their interfaces
+      - node: CollectChildInterfaces
+        action: reads interface.yaml from each child directory
+      - node: ChildInterfaceCollection
+        action: stores all collected child interfaces for validation
+      - node: ValidateCrossEngineRefs
+        action: checks every external ref warning from children against sibling interfaces
+      - node: ExternalRefsWarningsInChildrenErrorsInParent
+        action: enforces that unresolved refs become errors at the parent level
+      - node: PromoteExternalRefsToErrors
+        action: converts any remaining unresolved external refs to compilation errors
+      - node: _actors/Compiler
+        action: validates the parent graph including cross-engine references
+      - node: compilation/CompilationResult
+        action: reports the validation result with any cross-engine errors
+      - node: CreateCrossEngineJourneys
+        action: creates parent-level journeys linking nodes across children's interfaces
+      - node: CrossEngineJourneySet
+        action: stores the cross-engine journeys in the parent's graph
+      - node: graph/CompiledIndex
+        action: incorporates cross-engine journeys into the parent's compiled index
+
+  PublishParentAfterHierarchy:
+    steps:
+      - node: _actors/ParentEngine
+        action: cross-engine validation passed with 0 errors
+      - node: CrossEngineJourneySet
+        action: provides the parent-level journeys for inclusion in the interface
+      - node: ChildInterfaceCollection
+        action: provides child interfaces to include in the parent's published interface
+      - node: publish/CollectExportedNodes
+        action: selects parent and cross-engine nodes for the parent interface
+      - node: publish/CollectExportedJourneys
+        action: selects parent and cross-engine journeys for the parent interface
+      - node: publish/ComputeInterfaceHash
+        action: computes SHA256 hash for the parent's combined interface
+      - node: publish/GenerateInterfaceYaml
+        action: writes the parent's interface.yaml combining all child interfaces
+      - node: publish/InterfaceYamlFile
+        action: stores the parent interface on disk
+      - node: publish/WriteEventFile
+        action: writes event file signaling the parent has published
+      - node: publish/EventFile
+        action: the parent event file is visible to upstream dependents

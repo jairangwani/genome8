@@ -1,0 +1,311 @@
+spec_sections: [3]
+
+nodes:
+  YAMLParsing:
+    type: process
+    description: reads raw YAML module files from disk and parses them into structured data
+  DuplicateDetection:
+    type: process
+    description: scans the node registry for duplicate node names across all modules
+  DanglingRefDetection:
+    type: process
+    description: checks every journey step node reference and flags those that resolve to no known node
+  OrphanDetection:
+    type: process
+    description: identifies nodes that are defined but never referenced in any journey step
+  IsolatedModuleDetection:
+    type: process
+    description: finds modules whose nodes have zero connections to nodes in any other module
+  ExternalRefClassification:
+    type: process
+    description: classifies unresolved refs as external sibling-engine references and emits warnings instead of errors
+  YAMLErrorReporting:
+    type: process
+    description: catches and reports YAML syntax errors with file name and line number for each malformed module
+  ValidationAggregation:
+    type: process
+    description: collects all errors and warnings from all validation checks into a single compilation result
+  IncrementalValidation:
+    type: process
+    description: validates only the newly added module against the existing graph, checking for new duplicates, dangling refs, and type errors without full rebuild
+  SkipMalformedModule:
+    type: process
+    description: excludes a module with fatal YAML parse errors from the compiled index, allowing compilation of remaining modules to continue
+  ValidateModuleCompleteness:
+    type: process
+    description: checks that every module listed in ORGANIZATION.md exists as a compiled module in the index, ensuring no module was missed during bounded creation
+  CompilationResult:
+    type: artifact
+    description: the output of compile.ts containing error count, warning count, orphan list, duplicate list, and dangling ref list
+  ErrorReport:
+    type: artifact
+    description: structured list of all validation errors with type, location, and message for each
+  WarningReport:
+    type: artifact
+    description: structured list of all warnings including external refs that parent will validate later
+  CompileCLI:
+    type: interface
+    description: command-line interface to run compile.ts and receive validation output
+  ZeroErrorConvergence:
+    type: rule
+    description: convergence requires compile.ts to report exactly 0 errors and 0 orphans before proceeding
+  ExternalRefsAreWarnings:
+    type: rule
+    description: unresolved refs to sibling engines are warnings in children, errors only at parent level
+
+journeys:
+  ParseAllModules:
+    steps:
+      - node: _actors/Compiler
+        action: scans the modules directory for all .yaml files
+      - node: YAMLParsing
+        action: reads each YAML file and parses it into structured data
+      - node: YAMLErrorReporting
+        action: catches syntax errors in any malformed YAML file and records them
+      - node: graph/NodeDefinition
+        action: parses each node entry from the parsed YAML
+      - node: graph/JourneyDefinition
+        action: parses each journey entry from the parsed YAML
+      - node: graph/NodeRegistry
+        action: registers all parsed nodes into the deduplicated map
+      - node: graph/JourneyRegistry
+        action: registers all parsed journeys into the journey collection
+      - node: graph/CompiledIndex
+        action: merges all parsed modules into the in-memory compiled structure
+
+  DetectDuplicates:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the full node registry for inspection
+      - node: DuplicateDetection
+        action: scans all node names and flags any name that appears in more than one module
+      - node: ErrorReport
+        action: records each duplicate as a validation error with both module locations
+
+  DetectDanglingRefs:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides all journey steps and the node registry
+      - node: DanglingRefDetection
+        action: checks each step's node reference against the registry and flags misses
+      - node: ExternalRefClassification
+        action: reclassifies unresolved refs matching sibling-engine patterns as external warnings
+      - node: ExternalRefsAreWarnings
+        action: enforces that external refs produce warnings not errors at child level
+      - node: ErrorReport
+        action: records true dangling refs as errors
+      - node: WarningReport
+        action: records external refs as warnings for parent validation
+
+  DetectOrphans:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides all nodes and all journey steps
+      - node: OrphanDetection
+        action: compares node registry against step references and flags unreferenced nodes
+      - node: ErrorReport
+        action: records each orphan node as a validation error
+
+  DetectIsolatedModules:
+    steps:
+      - node: graph/ConnectionSet
+        action: provides all computed edges between nodes
+      - node: IsolatedModuleDetection
+        action: checks each module for at least one cross-module connection and flags those with none
+      - node: ErrorReport
+        action: records each isolated module as a validation error
+
+  FullCompilation:
+    steps:
+      - node: _actors/Compiler
+        action: initiates a full compilation run
+      - node: YAMLParsing
+        action: parses all module YAML files
+      - node: YAMLErrorReporting
+        action: reports any YAML syntax errors found
+      - node: graph/ConnectionComputation
+        action: computes all connections from journey steps
+      - node: graph/CrossModuleRefResolution
+        action: resolves all cross-module node references
+      - node: graph/ActorRefResolution
+        action: resolves all actor references
+      - node: DuplicateDetection
+        action: checks for duplicate node names
+      - node: DanglingRefDetection
+        action: checks for unresolved node references
+      - node: ExternalRefClassification
+        action: classifies external refs as warnings
+      - node: OrphanDetection
+        action: checks for unreferenced nodes
+      - node: IsolatedModuleDetection
+        action: checks for modules with no cross-module connections
+      - node: ValidationAggregation
+        action: collects all errors and warnings into a single result
+      - node: CompilationResult
+        action: outputs final counts of errors, warnings, orphans, duplicates, and dangling refs
+      - node: ZeroErrorConvergence
+        action: determines whether the result meets the 0-error 0-orphan threshold for convergence
+
+  CompileFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs compile.ts from the command line
+      - node: CompileCLI
+        action: accepts the command and passes it to the compiler
+      - node: _actors/Compiler
+        action: executes the full compilation pipeline
+      - node: CompilationResult
+        action: returns the validation output
+      - node: CompileCLI
+        action: displays errors, warnings, and summary to the developer
+
+  CompileAfterModuleCreation:
+    steps:
+      - node: convergence/CompileCheck
+        action: triggers compilation after LLMWorker creates a single new module
+      - node: graph/ModuleFile
+        action: provides the newly created module file
+      - node: YAMLParsing
+        action: parses the new module's YAML content
+      - node: YAMLErrorReporting
+        action: checks the new module for YAML syntax errors
+      - node: graph/IncrementalMerge
+        action: merges the new module into the existing compiled index
+      - node: IncrementalValidation
+        action: checks the new module's nodes for duplicates against the existing registry
+      - node: DanglingRefDetection
+        action: checks the new module's journey refs against all known nodes
+      - node: ExternalRefClassification
+        action: classifies any unresolved refs from the new module as external warnings
+      - node: ValidationAggregation
+        action: collects errors and warnings from the incremental checks
+      - node: CompilationResult
+        action: outputs the incremental compilation result for the new module
+      - node: convergence/BoundedCreationLoop
+        action: receives the result and proceeds to the next module if clean
+
+  CompileAfterAuditFix:
+    steps:
+      - node: convergence/RecompileAfterFix
+        action: triggers recompilation after an audit gap fix has been applied
+      - node: _actors/Compiler
+        action: runs full compilation on the patched graph
+      - node: YAMLParsing
+        action: reparses all modules including the edited one
+      - node: YAMLErrorReporting
+        action: checks for YAML errors in the edited module
+      - node: graph/ConnectionComputation
+        action: recomputes all connections with the fix applied
+      - node: DuplicateDetection
+        action: rechecks for duplicates after the fix
+      - node: DanglingRefDetection
+        action: rechecks for dangling refs after the fix
+      - node: OrphanDetection
+        action: rechecks for orphans after the fix
+      - node: ValidationAggregation
+        action: collects all results from the recompilation
+      - node: CompilationResult
+        action: outputs the post-fix compilation result
+      - node: ZeroErrorConvergence
+        action: confirms the fix maintained zero-error status
+      - node: convergence/ReauditAfterFix
+        action: proceeds to re-audit to verify the gap is closed
+
+  HandlePartialParseFailure:
+    steps:
+      - node: _actors/Compiler
+        action: begins parsing all module YAML files
+      - node: YAMLParsing
+        action: attempts to parse each module file
+      - node: YAMLErrorReporting
+        action: catches a fatal parse error in one or more modules
+      - node: ErrorReport
+        action: records the parse failure with file name, line number, and error message
+      - node: SkipMalformedModule
+        action: excludes the malformed module from the compiled index
+      - node: graph/NodeDefinition
+        action: parses node entries from only the successfully parsed modules
+      - node: graph/JourneyDefinition
+        action: parses journey entries from only the successfully parsed modules
+      - node: graph/CompiledIndex
+        action: builds a partial compiled index from the parseable modules
+      - node: ValidationAggregation
+        action: aggregates errors including the skipped module's parse failure
+      - node: CompilationResult
+        action: outputs a result with non-zero error count due to the malformed module
+      - node: ZeroErrorConvergence
+        action: fails the zero-error check, blocking convergence until the module is fixed
+
+  RecoverFromLLMCreatedErrors:
+    steps:
+      - node: _actors/LLMWorker
+        action: creates a module with YAML errors or validation problems during convergence
+      - node: graph/ModuleFile
+        action: stores the problematic module on disk
+      - node: YAMLParsing
+        action: attempts to parse the new module's YAML
+      - node: YAMLErrorReporting
+        action: detects YAML syntax errors or malformed structure in the LLM output
+      - node: ErrorReport
+        action: records the specific errors with locations and messages
+      - node: CompilationResult
+        action: outputs a non-zero error result for this module
+      - node: convergence/AuditGapFix
+        action: receives the error report and delegates a targeted fix to the LLM
+      - node: _actors/LLMWorker
+        action: reads the error report and edits the module to fix the specific errors
+      - node: graph/ModuleFile
+        action: stores the corrected module on disk
+      - node: YAMLParsing
+        action: reparses the corrected module
+      - node: YAMLErrorReporting
+        action: confirms no YAML errors remain in the corrected module
+      - node: IncrementalValidation
+        action: validates the corrected module against the existing graph
+      - node: DanglingRefDetection
+        action: checks the corrected module's refs resolve correctly
+      - node: DuplicateDetection
+        action: checks the corrected module introduces no duplicate names
+      - node: ValidationAggregation
+        action: collects the revalidation results
+      - node: CompilationResult
+        action: outputs a clean result confirming the fix resolved the errors
+
+  FinalConvergenceGate:
+    steps:
+      - node: convergence/ConvergenceState
+        action: indicates all audit fixes are complete and requests the definitive final compilation
+      - node: _actors/Compiler
+        action: runs the final full compilation across all modules
+      - node: YAMLParsing
+        action: parses all modules one final time
+      - node: YAMLErrorReporting
+        action: confirms zero YAML errors across all modules
+      - node: organization/ModuleList
+        action: provides the expected list of modules from ORGANIZATION.md
+      - node: ValidateModuleCompleteness
+        action: checks that every expected module from the organization exists in the compiled index
+      - node: graph/CompiledIndex
+        action: provides the full graph for final validation
+      - node: graph/UniqueNodeNameRule
+        action: verifies no duplicate node names exist across all modules
+      - node: DuplicateDetection
+        action: confirms zero duplicates in the final graph
+      - node: graph/AllRefsResolveRule
+        action: verifies every node reference resolves to a known target
+      - node: DanglingRefDetection
+        action: confirms zero dangling refs in the final graph
+      - node: graph/NoIsolationRule
+        action: verifies every node participates in at least one journey
+      - node: OrphanDetection
+        action: confirms zero orphans in the final graph
+      - node: IsolatedModuleDetection
+        action: confirms zero isolated modules in the final graph
+      - node: ValidationAggregation
+        action: collects all final validation results
+      - node: CompilationResult
+        action: outputs the definitive result with zero errors, zero orphans, zero duplicates
+      - node: ZeroErrorConvergence
+        action: confirms the zero-error threshold is met
+      - node: audit/DeclareConverged
+        action: receives the clean final compilation and marks the graph as CONVERGED

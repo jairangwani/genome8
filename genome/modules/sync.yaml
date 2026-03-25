@@ -1,0 +1,549 @@
+spec_sections: [3, 5]
+
+nodes:
+  ReadDependencyList:
+    type: process
+    description: reads the list of dependencies for a box from its configuration to know which interfaces to check
+  FetchDependencyHash:
+    type: process
+    description: reads the SHA256 hash from each dependency's published interface.yaml
+  CompareStoredHash:
+    type: process
+    description: compares each fetched dependency hash against the locally stored hash from the last sync
+  IdentifyStaleDependencies:
+    type: process
+    description: collects all dependencies whose hash has changed since the last sync
+  FindAffectedModules:
+    type: process
+    description: traces which local modules reference nodes from the changed dependencies and marks them as stale
+  MarkModulesStale:
+    type: process
+    description: writes stale markers on affected modules so targeted reconvergence knows which modules to reprocess
+  UpdateStoredHashes:
+    type: process
+    description: writes the new dependency hashes to local storage after successful reconvergence
+  SkipIfAllCurrent:
+    type: process
+    description: aborts the sync check early if all dependency hashes match, avoiding unnecessary work
+  ParseEventPayload:
+    type: process
+    description: extracts the changelog summary, interface hash, ripple origin chain, and sequence number from the incoming event file
+  FilterUnrelatedChanges:
+    type: process
+    description: compares the changelog's changed node and journey names against local cross-module references and discards dependency changes that no local module references
+  ComputeStaleModuleCount:
+    type: process
+    description: counts the number of stale modules and records the count in the sync result for convergence logging and progress tracking
+  ValidateDependencyConfig:
+    type: process
+    description: checks that each entry in the dependency list points to a real box directory with a reachable interface.yaml file before attempting any hash fetch
+  DetectOscillationInOriginChain:
+    type: process
+    description: reads the ripple origin chain from the parsed event payload and checks whether this box's ID already appears in the chain, detecting A→B→A sync loops
+  CheckEventSequenceNumber:
+    type: process
+    description: compares the incoming event's sequence number against the last processed sequence number for that dependency and rejects events that are stale or duplicate
+  SuppressSyncOnOscillation:
+    type: process
+    description: aborts the entire sync pipeline when oscillation is detected, preventing reconvergence and republish that would perpetuate the cycle
+  AppendBoxToOriginChain:
+    type: process
+    description: adds this box's ID to the ripple origin chain before the outgoing event is written so downstream boxes can detect cycles that include this box
+  ComputeRippleScope:
+    type: process
+    description: determines the minimal set of interface nodes that actually crossed into this box by intersecting the incoming changelog with local cross-module references
+  NarrowOutgoingChangelog:
+    type: process
+    description: rewrites the outgoing event's changelog to include only the changes that affected this box, preventing upstream-only changes from rippling further downstream
+  DependencyHashStore:
+    type: artifact
+    description: local storage of the last-known SHA256 hash for each dependency interface
+  StaleModuleList:
+    type: artifact
+    description: the list of local modules marked as stale due to dependency changes, consumed by targeted reconvergence
+  SyncResult:
+    type: artifact
+    description: the output of sync.ts containing changed dependencies, affected modules, and stale markers
+  LastProcessedSequence:
+    type: artifact
+    description: stores the last successfully processed event sequence number per dependency for detecting out-of-order or duplicate events
+  HashMismatchMeansStale:
+    type: rule
+    description: any difference between stored and fetched hash means the dependency changed and affected modules are stale
+  TargetedNotFull:
+    type: rule
+    description: sync triggers targeted reconvergence on only the affected modules, never a full re-creation pipeline
+  SyncTriggeredByEvent:
+    type: rule
+    description: sync only runs in response to an event file change detected by fs.watch, never on a timer or polling loop
+  DiscardStaleEvent:
+    type: rule
+    description: events with sequence number less than or equal to the last processed sequence for that dependency must be silently discarded without triggering sync
+  OscillationBlocksSync:
+    type: rule
+    description: if this box's ID appears in the ripple origin chain of an incoming event, sync must abort without marking any modules stale or triggering reconvergence
+
+journeys:
+  CheckDependencyHashes:
+    steps:
+      - node: _actors/DependentBox
+        action: has received an event indicating a dependency may have changed
+      - node: ReadDependencyList
+        action: reads the box's dependency configuration to get the list of upstream boxes
+      - node: FetchDependencyHash
+        action: reads the SHA256 hash from each dependency's interface.yaml
+      - node: publish/InterfaceHash
+        action: provides the current hash from the dependency's published interface
+      - node: DependencyHashStore
+        action: provides the locally stored hash from the last successful sync
+      - node: CompareStoredHash
+        action: compares each fetched hash against the stored hash
+      - node: HashMismatchMeansStale
+        action: enforces that any hash difference means the dependency has changed
+      - node: IdentifyStaleDependencies
+        action: collects all dependencies with mismatched hashes into a changed list
+      - node: SyncResult
+        action: records which dependencies changed
+
+  SkipSyncWhenCurrent:
+    steps:
+      - node: _actors/DependentBox
+        action: receives an event and initiates a sync check
+      - node: ReadDependencyList
+        action: reads the dependency list
+      - node: FetchDependencyHash
+        action: fetches current hashes from all dependency interfaces
+      - node: DependencyHashStore
+        action: provides stored hashes for comparison
+      - node: CompareStoredHash
+        action: compares all fetched hashes against stored hashes
+      - node: SkipIfAllCurrent
+        action: determines all hashes match and aborts sync early
+      - node: SyncResult
+        action: records that no dependencies changed, no reconvergence needed
+
+  FindAndMarkStaleModules:
+    steps:
+      - node: SyncResult
+        action: provides the list of changed dependencies
+      - node: graph/CompiledIndex
+        action: provides the full graph with all cross-module connections
+      - node: graph/ConnectionSet
+        action: provides the edge set showing which local nodes reference dependency nodes
+      - node: FindAffectedModules
+        action: traces connections from changed dependency nodes to local modules that reference them
+      - node: FilterUnrelatedChanges
+        action: discards any affected modules whose references are only to unchanged parts of the dependency
+      - node: MarkModulesStale
+        action: writes stale markers on each affected local module that survived filtering
+      - node: ComputeStaleModuleCount
+        action: counts the stale modules and records the count in the sync result
+      - node: StaleModuleList
+        action: stores the list of stale modules for targeted reconvergence
+      - node: TargetedNotFull
+        action: ensures only stale modules will be reprocessed, not the full creation pipeline
+
+  TriggerTargetedReconvergence:
+    steps:
+      - node: StaleModuleList
+        action: provides the list of modules that need reconvergence
+      - node: convergence/TargetedReconvergence
+        action: receives the stale module list and begins targeted reprocessing
+      - node: _actors/Compiler
+        action: recompiles only the stale modules
+      - node: compilation/CompilationResult
+        action: provides validation results for the recompiled modules
+      - node: _actors/Auditor
+        action: audits only the affected coverage areas
+      - node: convergence/ConvergenceState
+        action: records that targeted reconvergence is complete
+      - node: UpdateStoredHashes
+        action: writes the new dependency hashes to local storage
+      - node: DependencyHashStore
+        action: updates with the latest hashes so future syncs detect only new changes
+      - node: AppendBoxToOriginChain
+        action: adds this box's ID to the ripple origin chain for the outgoing event
+      - node: NarrowOutgoingChangelog
+        action: rewrites the outgoing changelog to include only changes that affected this box
+      - node: publish/WriteEventFile
+        action: writes a new event file to propagate the ripple downstream
+      - node: publish/EventFile
+        action: the event file signals downstream dependents to run their own sync
+
+  SyncAfterEventDetection:
+    steps:
+      - node: _actors/FileSystem
+        action: detects a change on a dependency's event file via fs.watch
+      - node: SyncTriggeredByEvent
+        action: confirms the sync was triggered by an event file change, not a poll
+      - node: events/ReadEventFile
+        action: reads the raw event file content from disk
+      - node: ParseEventPayload
+        action: extracts the interface hash, changelog summary, origin chain, and sequence number from the event
+      - node: CheckEventSequenceNumber
+        action: compares the event sequence number against the last processed sequence for this dependency
+      - node: LastProcessedSequence
+        action: provides the last processed sequence number for comparison
+      - node: DiscardStaleEvent
+        action: enforces that only events with sequence greater than the last processed are accepted
+      - node: DetectOscillationInOriginChain
+        action: checks whether this box's ID appears in the event's ripple origin chain
+      - node: OscillationBlocksSync
+        action: enforces that sync must abort if oscillation is detected
+      - node: ReadDependencyList
+        action: reads the dependency list to identify which upstream box changed
+      - node: FetchDependencyHash
+        action: reads the SHA256 hash from the changed dependency's interface.yaml
+      - node: publish/InterfaceHash
+        action: provides the current hash from the dependency's published interface
+      - node: DependencyHashStore
+        action: provides the stored hash for this specific dependency
+      - node: CompareStoredHash
+        action: compares the fetched hash against the stored hash and confirms a mismatch
+      - node: HashMismatchMeansStale
+        action: enforces that the mismatch means the dependency has changed
+      - node: IdentifyStaleDependencies
+        action: adds the changed dependency to the stale list
+      - node: SyncResult
+        action: records the changed dependency and its changelog summary
+      - node: graph/CompiledIndex
+        action: provides the full graph for affected module tracing
+      - node: graph/ConnectionSet
+        action: provides the edge set for tracing dependency references
+      - node: FindAffectedModules
+        action: traces connections from the changed dependency to local modules
+      - node: FilterUnrelatedChanges
+        action: narrows the affected set using the changelog to exclude modules referencing only unchanged parts
+      - node: MarkModulesStale
+        action: writes stale markers on the narrowed set of affected modules
+      - node: ComputeStaleModuleCount
+        action: counts stale modules and records the count
+      - node: StaleModuleList
+        action: stores the stale module list
+      - node: TargetedNotFull
+        action: ensures only stale modules enter reconvergence
+      - node: convergence/TargetedReconvergence
+        action: begins targeted reconvergence on the stale modules
+      - node: _actors/Compiler
+        action: recompiles the stale modules
+      - node: compilation/CompilationResult
+        action: confirms zero errors in the recompiled modules
+      - node: _actors/Auditor
+        action: audits the affected coverage areas
+      - node: convergence/ConvergenceState
+        action: records targeted reconvergence complete
+      - node: UpdateStoredHashes
+        action: persists the new dependency hash to local storage
+      - node: DependencyHashStore
+        action: updated with the latest hash for this dependency
+      - node: LastProcessedSequence
+        action: updated with the sequence number from the processed event
+      - node: AppendBoxToOriginChain
+        action: adds this box's ID to the ripple origin chain for the outgoing event
+      - node: NarrowOutgoingChangelog
+        action: rewrites the outgoing changelog to include only locally-relevant changes
+      - node: publish/WriteEventFile
+        action: writes a new event file to propagate changes downstream
+      - node: publish/EventFile
+        action: the event file notifies downstream dependents
+
+  HandleMultipleDependencyChanges:
+    steps:
+      - node: events/DebounceEvents
+        action: batches multiple rapid event file changes into a single sync trigger
+      - node: SyncTriggeredByEvent
+        action: confirms the batched sync was triggered by event changes
+      - node: ReadDependencyList
+        action: reads the full dependency list for the box
+      - node: FetchDependencyHash
+        action: fetches current hashes from all dependencies, not just the one that triggered the event
+      - node: DependencyHashStore
+        action: provides stored hashes for all dependencies
+      - node: CompareStoredHash
+        action: compares each fetched hash against its stored counterpart
+      - node: IdentifyStaleDependencies
+        action: collects all dependencies with mismatched hashes into a single combined changed list
+      - node: SyncResult
+        action: records all changed dependencies from the batched sync
+      - node: graph/CompiledIndex
+        action: provides the graph for tracing affected modules across all changed dependencies
+      - node: graph/ConnectionSet
+        action: provides edges for tracing references to all changed dependencies
+      - node: FindAffectedModules
+        action: traces connections from all changed dependency nodes to local modules
+      - node: FilterUnrelatedChanges
+        action: discards modules that only reference unchanged parts of each dependency
+      - node: MarkModulesStale
+        action: writes stale markers on the union of all affected modules
+      - node: ComputeStaleModuleCount
+        action: counts the total stale modules across all dependency changes
+      - node: StaleModuleList
+        action: stores the combined stale module list
+      - node: TargetedNotFull
+        action: ensures the combined set enters targeted reconvergence, not full rebuild
+
+  SyncOnFirstBoot:
+    steps:
+      - node: _actors/DependentBox
+        action: boots for the first time and needs to establish baseline dependency state
+      - node: ValidateDependencyConfig
+        action: checks that all dependency entries point to real boxes with reachable interfaces
+      - node: ReadDependencyList
+        action: reads the full dependency list from the box configuration
+      - node: FetchDependencyHash
+        action: fetches the current SHA256 hash from each dependency's interface.yaml
+      - node: publish/InterfaceHash
+        action: provides the current hash from each dependency
+      - node: DependencyHashStore
+        action: is checked and found to be empty since this is the first boot
+      - node: CompareStoredHash
+        action: finds no stored hash for any dependency and treats all as changed
+      - node: HashMismatchMeansStale
+        action: enforces that missing stored hashes count as mismatches
+      - node: IdentifyStaleDependencies
+        action: marks all dependencies as stale since none have stored hashes
+      - node: SyncResult
+        action: records all dependencies as changed for first-boot sync
+      - node: graph/CompiledIndex
+        action: provides the graph which may be empty or partially built on first boot
+      - node: FindAffectedModules
+        action: marks all local modules as affected since all dependencies are new
+      - node: MarkModulesStale
+        action: marks all modules stale for full targeted reconvergence on first boot
+      - node: StaleModuleList
+        action: stores the full module list as stale
+      - node: convergence/TargetedReconvergence
+        action: begins reconvergence across all modules since every dependency is new
+      - node: UpdateStoredHashes
+        action: writes all fetched hashes as the initial baseline for future syncs
+      - node: DependencyHashStore
+        action: populated with the first set of stored hashes
+      - node: LastProcessedSequence
+        action: initialized with the current sequence numbers from each dependency's event
+
+  ValidateDependenciesBeforeSync:
+    steps:
+      - node: _actors/DependentBox
+        action: initiates a sync check after receiving an event
+      - node: ReadDependencyList
+        action: reads the dependency list from the box configuration
+      - node: ValidateDependencyConfig
+        action: iterates each dependency entry and checks the box directory exists
+      - node: ValidateDependencyConfig
+        action: checks that each dependency's interface.yaml file is present and readable
+      - node: ValidateDependencyConfig
+        action: flags any dependency with a missing directory or unreachable interface as invalid
+      - node: SyncResult
+        action: records the validation failures for invalid dependencies
+      - node: convergence/ConvergenceState
+        action: receives the sync result with validation failures and blocks sync until dependency configuration is fixed
+
+  PropagateNarrowedStaleList:
+    steps:
+      - node: events/ReadEventFile
+        action: reads the incoming event file from the changed dependency
+      - node: ParseEventPayload
+        action: extracts the embedded changelog listing which nodes and journeys were added, removed, or modified
+      - node: SyncResult
+        action: provides the list of changed dependencies from hash comparison
+      - node: graph/CompiledIndex
+        action: provides the full graph for cross-reference tracing
+      - node: graph/ConnectionSet
+        action: provides edges showing which local nodes reference the changed dependency's nodes
+      - node: FindAffectedModules
+        action: traces all local modules that reference any node in the changed dependency
+      - node: FilterUnrelatedChanges
+        action: compares each affected module's references against the changelog's changed node list
+      - node: FilterUnrelatedChanges
+        action: removes modules whose references are only to nodes that did not change according to the changelog
+      - node: MarkModulesStale
+        action: writes stale markers on only the narrowed set of truly affected modules
+      - node: ComputeStaleModuleCount
+        action: counts the narrowed stale set and records it in the sync result
+      - node: StaleModuleList
+        action: stores the narrowed stale module list for targeted reconvergence
+
+  DetectAndBlockOscillation:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification via fs.watch
+      - node: events/ReadEventFile
+        action: reads the incoming event file from disk
+      - node: ParseEventPayload
+        action: extracts the ripple origin chain from the event payload
+      - node: DetectOscillationInOriginChain
+        action: reads the origin chain and searches for this box's ID in the list
+      - node: DetectOscillationInOriginChain
+        action: finds this box's ID in the chain, confirming an A→B→A oscillation cycle
+      - node: OscillationBlocksSync
+        action: enforces that sync must not proceed when oscillation is detected
+      - node: SuppressSyncOnOscillation
+        action: aborts the sync pipeline without marking any modules stale
+      - node: SyncResult
+        action: records that sync was suppressed due to oscillation detection
+      - node: convergence/ConvergenceState
+        action: receives the suppressed sync result and does not trigger reconvergence or republish
+
+  DiscardOutOfOrderEvent:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification
+      - node: events/ReadEventFile
+        action: reads the event file from disk
+      - node: ParseEventPayload
+        action: extracts the sequence number from the event payload
+      - node: CheckEventSequenceNumber
+        action: reads the incoming sequence number from the parsed event
+      - node: LastProcessedSequence
+        action: provides the last successfully processed sequence number for this dependency
+      - node: CheckEventSequenceNumber
+        action: compares the incoming sequence against the stored sequence and finds it is less than or equal
+      - node: DiscardStaleEvent
+        action: enforces that stale or duplicate events must be silently discarded
+      - node: SyncResult
+        action: records that the event was discarded as out-of-order with no sync triggered
+
+  NarrowRippleScopeBeforePropagation:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: completes reconvergence on stale modules after a dependency change
+      - node: _actors/Compiler
+        action: confirms zero errors in the reconverged modules
+      - node: publish/ComputeInterfaceHash
+        action: computes the new interface hash after reconvergence
+      - node: publish/ComparePreviousHash
+        action: confirms the interface actually changed after reconvergence
+      - node: publish/ComputeChangelogDiff
+        action: diffs the previous interface against the current to produce the full outgoing changelog
+      - node: ComputeRippleScope
+        action: intersects the incoming event's changelog with local cross-module references to find the minimal set of changes that actually affected this box
+      - node: NarrowOutgoingChangelog
+        action: removes entries from the outgoing changelog that only reflect upstream changes not relevant to this box
+      - node: NarrowOutgoingChangelog
+        action: produces the narrowed changelog containing only locally-relevant changes for downstream consumption
+      - node: AppendBoxToOriginChain
+        action: adds this box's ID to the ripple origin chain for downstream oscillation detection
+      - node: publish/WriteEventFile
+        action: writes the outgoing event with the narrowed changelog and extended origin chain
+      - node: publish/EventFile
+        action: the narrowed event file propagates only relevant changes to downstream dependents
+
+  EndToEndRipplePropagation:
+    steps:
+      - node: _actors/FileSystem
+        action: detects a dependency event file change via fs.watch
+      - node: events/ReadEventFile
+        action: reads the incoming event file
+      - node: ParseEventPayload
+        action: extracts hash, changelog, origin chain, and sequence number
+      - node: CheckEventSequenceNumber
+        action: validates the event sequence is newer than the last processed
+      - node: LastProcessedSequence
+        action: provides the last processed sequence for comparison
+      - node: DetectOscillationInOriginChain
+        action: checks the origin chain for this box's ID and finds no oscillation
+      - node: ReadDependencyList
+        action: reads the dependency configuration
+      - node: FetchDependencyHash
+        action: fetches the current hash from the changed dependency
+      - node: DependencyHashStore
+        action: provides the stored hash for comparison
+      - node: CompareStoredHash
+        action: confirms a hash mismatch
+      - node: IdentifyStaleDependencies
+        action: records the changed dependency
+      - node: SyncResult
+        action: stores the sync result with changelog
+      - node: graph/CompiledIndex
+        action: provides the graph for affected module tracing
+      - node: graph/ConnectionSet
+        action: provides edges for reference tracing
+      - node: FindAffectedModules
+        action: traces connections to identify affected local modules
+      - node: ComputeRippleScope
+        action: intersects incoming changelog with local references to find minimal change set
+      - node: FilterUnrelatedChanges
+        action: narrows affected modules using the scoped change set
+      - node: MarkModulesStale
+        action: marks only the truly affected modules
+      - node: StaleModuleList
+        action: stores the stale list
+      - node: convergence/TargetedReconvergence
+        action: reconverges only the stale modules
+      - node: _actors/Compiler
+        action: recompiles the stale modules
+      - node: compilation/CompilationResult
+        action: confirms zero errors
+      - node: _actors/Auditor
+        action: audits the affected areas
+      - node: convergence/ConvergenceState
+        action: records reconvergence complete
+      - node: UpdateStoredHashes
+        action: persists the new dependency hash
+      - node: DependencyHashStore
+        action: updated with the latest hash
+      - node: LastProcessedSequence
+        action: updated with the processed event's sequence number
+      - node: NarrowOutgoingChangelog
+        action: produces the narrowed changelog for the outgoing event
+      - node: AppendBoxToOriginChain
+        action: extends the origin chain with this box's ID
+      - node: publish/WriteEventFile
+        action: writes the narrowed outgoing event
+      - node: publish/EventFile
+        action: the narrowed event ripples to downstream dependents
+
+  HandleConcurrentDependencyRipples:
+    steps:
+      - node: events/DebounceEvents
+        action: batches event file changes from multiple dependencies into a single sync trigger
+      - node: ParseEventPayload
+        action: extracts origin chains from each dependency's event
+      - node: DetectOscillationInOriginChain
+        action: checks each dependency's origin chain for this box's ID
+      - node: DetectOscillationInOriginChain
+        action: filters out any dependency whose origin chain contains this box, keeping only non-oscillating dependencies
+      - node: CheckEventSequenceNumber
+        action: validates sequence numbers for each remaining dependency event
+      - node: LastProcessedSequence
+        action: provides stored sequences for all dependencies
+      - node: DiscardStaleEvent
+        action: discards any dependency events with stale sequence numbers
+      - node: ReadDependencyList
+        action: reads the full dependency list
+      - node: FetchDependencyHash
+        action: fetches current hashes from all non-discarded dependencies
+      - node: DependencyHashStore
+        action: provides stored hashes for all dependencies
+      - node: CompareStoredHash
+        action: compares fetched hashes against stored for each dependency
+      - node: IdentifyStaleDependencies
+        action: collects all changed dependencies into a merged list
+      - node: SyncResult
+        action: records the merged set of changed dependencies
+      - node: graph/CompiledIndex
+        action: provides the graph for tracing across all changed dependencies
+      - node: graph/ConnectionSet
+        action: provides edges for reference tracing
+      - node: FindAffectedModules
+        action: traces connections from all changed dependencies to local modules
+      - node: ComputeRippleScope
+        action: intersects each dependency's changelog with local references to compute the union of relevant changes
+      - node: FilterUnrelatedChanges
+        action: narrows affected modules using the merged ripple scope
+      - node: MarkModulesStale
+        action: marks the union of affected modules from all concurrent ripples
+      - node: ComputeStaleModuleCount
+        action: counts the total stale modules from the merged ripple
+      - node: StaleModuleList
+        action: stores the combined stale list
+      - node: TargetedNotFull
+        action: ensures the combined set enters targeted reconvergence
+      - node: UpdateStoredHashes
+        action: persists new hashes for all changed dependencies after reconvergence
+      - node: LastProcessedSequence
+        action: updated with the latest sequence number from each processed dependency event
+      - node: AppendBoxToOriginChain
+        action: merges all incoming origin chains and appends this box's ID to the combined chain
+      - node: NarrowOutgoingChangelog
+        action: produces a single narrowed outgoing changelog combining locally-relevant changes from all dependencies

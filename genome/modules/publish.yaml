@@ -1,0 +1,533 @@
+spec_sections: [2, 3]
+
+nodes:
+  CollectExportedNodes:
+    type: process
+    description: selects which nodes from the compiled index should be exported as the box's public interface
+  CollectExportedJourneys:
+    type: process
+    description: selects which journeys from the compiled index should be exported as the box's public interface
+  ComputeInterfaceHash:
+    type: process
+    description: computes a full SHA256 hash over the exported nodes and journeys to detect changes
+  ComparePreviousHash:
+    type: process
+    description: compares the new interface hash against the previously published hash to determine if anything changed
+  GenerateInterfaceYaml:
+    type: process
+    description: writes interface.yaml containing the exported nodes, journeys, and their SHA256 hash
+  GenerateChangelogYaml:
+    type: process
+    description: writes changelog.yaml describing what changed between the previous and current interface
+  WriteEventFile:
+    type: process
+    description: writes an event file to disk signaling that this box has published a new interface
+  SkipPublishIfUnchanged:
+    type: process
+    description: aborts the publish pipeline if the new hash matches the previous hash, avoiding unnecessary ripple
+  StorePreviousHash:
+    type: process
+    description: writes the newly computed InterfaceHash to disk as the PreviousHash, ready for comparison on the next publish cycle
+  ComputeChangelogDiff:
+    type: process
+    description: diffs the previous exported content against the current exported content, identifying specifically which nodes and journeys were added, removed, or modified
+  ValidateExportedInterface:
+    type: process
+    description: checks that the exported subset is self-consistent with all journey refs resolving to exported nodes or explicitly marked external refs
+  NotifyPublishComplete:
+    type: process
+    description: signals convergence that publish finished successfully and the pipeline can proceed to codegen and testgen
+  DetectWriteFailure:
+    type: process
+    description: detects when any file write operation during publish fails due to disk full, permission denied, or IO error and captures the specific error details
+  RollbackPartialPublish:
+    type: process
+    description: removes partially written publish artifacts from disk to restore the pre-publish state after a mid-pipeline failure
+  DetectCorruptedPreviousHash:
+    type: process
+    description: validates the PreviousHash file is readable, valid hex, and the expected 64-character length, flagging corruption if any check fails
+  ReportPublishFailure:
+    type: process
+    description: builds a structured failure report with the failing step, error details, and partial state, then sends it to convergence for retry or abort decision
+  DetectRippleOscillation:
+    type: process
+    description: reads the ripple origin chain from an incoming event and checks whether the current box ID already appears in it, detecting A→B→A publish cycles
+  TrackRippleOrigin:
+    type: process
+    description: appends the current box ID and event sequence number to the ripple origin chain before writing the outgoing event file
+  DeduplicateEventFile:
+    type: process
+    description: compares the new event file's interface hash against the last written event file and skips writing if the hash is identical
+  EmbedChangelogInEvent:
+    type: process
+    description: embeds the changelog diff summary listing added, removed, and modified nodes and journeys into the event file so dependents can scope their reconvergence
+  SuppressNoOpRipple:
+    type: process
+    description: after reconvergence produces an interface hash identical to the pre-reconvergence hash, suppresses event file write to stop the ripple chain from propagating further
+  InterfaceYamlFile:
+    type: artifact
+    description: the published interface.yaml file containing exported nodes, journeys, and SHA256 hash for this box
+  ChangelogYamlFile:
+    type: artifact
+    description: the published changelog.yaml file describing what changed in the latest publish
+  InterfaceHash:
+    type: artifact
+    description: the SHA256 hash of the current interface content used for change detection by dependent boxes
+  PreviousHash:
+    type: artifact
+    description: the SHA256 hash from the last published interface, stored for comparison
+  EventSequenceCounter:
+    type: artifact
+    description: monotonically increasing integer embedded in each event file to allow dependents to detect out-of-order or duplicate events
+  EventFile:
+    type: interface
+    description: the event file written after publish that dependent boxes watch via fs.watch to trigger reconvergence
+  HashBasedChangeDetection:
+    type: rule
+    description: change detection uses full SHA256 hash comparison, not timestamp or file-size heuristics
+  PublishAfterConvergenceOnly:
+    type: rule
+    description: publish.ts only runs after convergence confirms 0 errors and 0 audit gaps
+  AtomicFileWrite:
+    type: rule
+    description: all publish files are written atomically via write-to-temp-then-rename to prevent partial file corruption on crash or power loss
+  RippleDepthLimit:
+    type: rule
+    description: enforces a maximum ripple depth to prevent unbounded propagation chains, blocking further event writes when the origin chain exceeds the configured limit
+  MonotonicEventSequencing:
+    type: rule
+    description: event sequence numbers must be monotonically increasing and dependents must ignore events with sequence number less than or equal to the last processed event
+  ChangelogScopedReconvergence:
+    type: rule
+    description: dependents must use the embedded changelog in the event file to scope reconvergence to only the modules affected by upstream changes rather than full reconvergence
+
+journeys:
+  PublishInterface:
+    steps:
+      - node: convergence/TriggerPublish
+        action: invokes publish.ts after convergence is confirmed complete
+      - node: PublishAfterConvergenceOnly
+        action: verifies that convergence reported 0 errors and 0 audit gaps before proceeding
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph to select exports from
+      - node: CollectExportedNodes
+        action: selects the nodes to include in the public interface
+      - node: CollectExportedJourneys
+        action: selects the journeys to include in the public interface
+      - node: ValidateExportedInterface
+        action: checks that all journey refs within the export resolve to exported nodes or external markers
+      - node: ComputeInterfaceHash
+        action: computes SHA256 hash over the validated exported nodes and journeys
+      - node: InterfaceHash
+        action: stores the computed hash for comparison and embedding in the output
+      - node: PreviousHash
+        action: provides the hash from the last published interface
+      - node: ComparePreviousHash
+        action: compares new hash against previous to determine if content changed
+      - node: HashBasedChangeDetection
+        action: enforces that only hash comparison is used, not timestamps
+      - node: ComputeChangelogDiff
+        action: diffs previous exported content against current to identify added, removed, and modified items
+      - node: GenerateInterfaceYaml
+        action: writes interface.yaml with exported nodes, journeys, and hash
+      - node: InterfaceYamlFile
+        action: stores the published interface on disk
+      - node: GenerateChangelogYaml
+        action: writes changelog.yaml using the computed diff to describe specific changes
+      - node: ChangelogYamlFile
+        action: stores the changelog on disk
+      - node: StorePreviousHash
+        action: persists the new InterfaceHash as PreviousHash on disk for the next publish cycle
+      - node: EmbedChangelogInEvent
+        action: embeds the changelog diff into the event file payload so dependents can scope reconvergence
+      - node: TrackRippleOrigin
+        action: appends this box's ID to the ripple origin chain in the outgoing event
+      - node: EventSequenceCounter
+        action: increments the monotonic sequence number for this event
+      - node: WriteEventFile
+        action: writes the event file signaling a new publish to dependent boxes
+      - node: EventFile
+        action: the event file is now on disk and visible to fs.watch watchers
+      - node: NotifyPublishComplete
+        action: signals convergence that publish is done and the pipeline can proceed to codegen
+      - node: convergence/ConvergenceState
+        action: records publish completion and advances to the next pipeline phase
+
+  FirstTimePublish:
+    steps:
+      - node: convergence/TriggerPublish
+        action: invokes publish.ts after the first convergence of this box
+      - node: PublishAfterConvergenceOnly
+        action: verifies convergence reported 0 errors and 0 audit gaps
+      - node: graph/CompiledIndex
+        action: provides the compiled graph for the first publish
+      - node: CollectExportedNodes
+        action: selects nodes for the initial public interface
+      - node: CollectExportedJourneys
+        action: selects journeys for the initial public interface
+      - node: ValidateExportedInterface
+        action: validates the exported subset is self-consistent before first publish
+      - node: ComputeInterfaceHash
+        action: computes the first SHA256 hash for this box's interface
+      - node: InterfaceHash
+        action: stores the initial hash
+      - node: PreviousHash
+        action: is checked and found to not exist on disk since this is the first publish
+      - node: ComparePreviousHash
+        action: detects no previous hash exists and signals that publish must always proceed
+      - node: GenerateInterfaceYaml
+        action: writes the initial interface.yaml with all exported nodes and journeys
+      - node: InterfaceYamlFile
+        action: stores the first published interface on disk
+      - node: ComputeChangelogDiff
+        action: produces an initial changelog with all items marked as added since there is no previous version
+      - node: GenerateChangelogYaml
+        action: writes the initial changelog.yaml listing all nodes and journeys as newly added
+      - node: ChangelogYamlFile
+        action: stores the initial changelog on disk
+      - node: StorePreviousHash
+        action: writes the first InterfaceHash as PreviousHash, establishing the baseline for future comparisons
+      - node: EmbedChangelogInEvent
+        action: embeds the full initial changelog into the first event so dependents know the complete interface
+      - node: TrackRippleOrigin
+        action: starts a new ripple origin chain with this box as the sole entry
+      - node: EventSequenceCounter
+        action: initializes the sequence counter to 1 for the first event
+      - node: WriteEventFile
+        action: writes the first event file announcing this box's existence to dependents
+      - node: EventFile
+        action: the initial event file is on disk for any watchers
+      - node: NotifyPublishComplete
+        action: signals convergence that first publish is complete
+      - node: convergence/ConvergenceState
+        action: records the successful first publish and proceeds to codegen
+
+  ComputeDetailedChangelog:
+    steps:
+      - node: InterfaceYamlFile
+        action: provides the previously published interface content for diffing
+      - node: CollectExportedNodes
+        action: provides the current set of exported nodes
+      - node: CollectExportedJourneys
+        action: provides the current set of exported journeys
+      - node: ComputeChangelogDiff
+        action: compares previous exported nodes against current and identifies additions
+      - node: ComputeChangelogDiff
+        action: compares previous exported nodes against current and identifies removals
+      - node: ComputeChangelogDiff
+        action: compares previous exported journeys against current and identifies modified step sequences
+      - node: GenerateChangelogYaml
+        action: formats the diff results into a structured changelog with added, removed, and modified sections
+      - node: ChangelogYamlFile
+        action: stores the detailed changelog on disk for dependent boxes and human review
+
+  SkipUnchangedPublish:
+    steps:
+      - node: convergence/TriggerPublish
+        action: invokes publish.ts after convergence
+      - node: graph/CompiledIndex
+        action: provides the compiled graph
+      - node: CollectExportedNodes
+        action: selects nodes for the interface
+      - node: CollectExportedJourneys
+        action: selects journeys for the interface
+      - node: ComputeInterfaceHash
+        action: computes SHA256 hash of the current interface
+      - node: InterfaceHash
+        action: stores the new hash
+      - node: PreviousHash
+        action: provides the previously published hash
+      - node: ComparePreviousHash
+        action: determines the hashes are identical
+      - node: SkipPublishIfUnchanged
+        action: aborts publish since nothing changed, avoiding unnecessary ripple
+      - node: NotifyPublishComplete
+        action: signals convergence that publish phase is done even though no files were written
+      - node: convergence/ConvergenceState
+        action: records that publish was skipped due to no changes and proceeds to codegen
+
+  RepublishAfterReconvergence:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: completes targeted reconvergence on stale modules after an event
+      - node: _actors/Compiler
+        action: confirms the reconverged modules have 0 errors
+      - node: graph/CompiledIndex
+        action: provides the updated compiled graph
+      - node: CollectExportedNodes
+        action: selects nodes for the updated interface
+      - node: CollectExportedJourneys
+        action: selects journeys for the updated interface
+      - node: ValidateExportedInterface
+        action: validates the updated export is self-consistent after reconvergence
+      - node: ComputeInterfaceHash
+        action: computes new SHA256 hash after reconvergence
+      - node: InterfaceHash
+        action: stores the new hash
+      - node: PreviousHash
+        action: provides the hash from before reconvergence
+      - node: ComparePreviousHash
+        action: confirms the interface actually changed after reconvergence
+      - node: ComputeChangelogDiff
+        action: diffs previous vs current to identify what the reconvergence changed
+      - node: GenerateInterfaceYaml
+        action: writes the updated interface.yaml
+      - node: InterfaceYamlFile
+        action: overwrites the previous interface on disk
+      - node: GenerateChangelogYaml
+        action: writes changelog describing the specific reconvergence changes
+      - node: ChangelogYamlFile
+        action: overwrites the previous changelog on disk
+      - node: StorePreviousHash
+        action: persists the new hash as PreviousHash for the next cycle
+      - node: EmbedChangelogInEvent
+        action: embeds the reconvergence changelog into the event so dependents scope their reconvergence
+      - node: TrackRippleOrigin
+        action: appends this box's ID to the existing ripple origin chain from the incoming event
+      - node: EventSequenceCounter
+        action: increments the sequence counter for the reconvergence event
+      - node: DetectRippleOscillation
+        action: checks the extended origin chain for cycles before allowing the event write
+      - node: RippleDepthLimit
+        action: checks the origin chain length against the maximum allowed depth
+      - node: WriteEventFile
+        action: writes a new event file to propagate the ripple to downstream dependents
+      - node: EventFile
+        action: the event file triggers further ripple in dependent boxes
+      - node: _actors/DependentBox
+        action: detects the new event and begins its own reconvergence cycle
+
+  PublishParentInterface:
+    steps:
+      - node: _actors/ParentEngine
+        action: has collected all child interfaces after hierarchy split
+      - node: CollectExportedNodes
+        action: selects parent-level nodes including cross-engine connections
+      - node: CollectExportedJourneys
+        action: selects parent-level journeys including cross-engine journeys
+      - node: ValidateExportedInterface
+        action: validates the parent export including cross-engine refs to child interfaces
+      - node: ComputeInterfaceHash
+        action: computes SHA256 hash for the parent interface
+      - node: InterfaceHash
+        action: stores the parent interface hash
+      - node: GenerateInterfaceYaml
+        action: writes the parent's interface.yaml combining child interfaces
+      - node: InterfaceYamlFile
+        action: stores the parent interface on disk
+      - node: ComputeChangelogDiff
+        action: diffs against previous parent interface to identify changes from child reconvergence
+      - node: GenerateChangelogYaml
+        action: writes changelog for the parent publish
+      - node: ChangelogYamlFile
+        action: stores the parent changelog on disk
+      - node: StorePreviousHash
+        action: persists the parent hash for next comparison cycle
+      - node: EmbedChangelogInEvent
+        action: embeds the parent changelog into the event for upstream dependents
+      - node: TrackRippleOrigin
+        action: starts a new origin chain rooted at the parent since parent publishes are origin points
+      - node: EventSequenceCounter
+        action: increments the parent's event sequence counter
+      - node: WriteEventFile
+        action: writes event file for parent-level dependents
+      - node: EventFile
+        action: signals parent publish to any upstream watchers
+
+  HandleInterfaceWriteFailure:
+    steps:
+      - node: GenerateInterfaceYaml
+        action: attempts to write interface.yaml but the write operation fails
+      - node: DetectWriteFailure
+        action: catches the IO error with the specific error code and file path
+      - node: AtomicFileWrite
+        action: confirms the temp file was never renamed, so no partial interface.yaml exists on disk
+      - node: ReportPublishFailure
+        action: builds a failure report identifying the interface write as the failing step
+      - node: convergence/ConvergenceState
+        action: receives the failure report and decides to retry publish or abort the pipeline
+
+  HandleEventWriteFailure:
+    steps:
+      - node: GenerateInterfaceYaml
+        action: successfully wrote interface.yaml to disk
+      - node: InterfaceYamlFile
+        action: confirms interface.yaml is on disk and valid
+      - node: GenerateChangelogYaml
+        action: successfully wrote changelog.yaml to disk
+      - node: ChangelogYamlFile
+        action: confirms changelog.yaml is on disk and valid
+      - node: StorePreviousHash
+        action: successfully persisted the new hash
+      - node: WriteEventFile
+        action: attempts to write the event file but the write operation fails
+      - node: DetectWriteFailure
+        action: catches the IO error on the event file write
+      - node: ReportPublishFailure
+        action: reports that interface and changelog are valid but dependents were not notified
+      - node: convergence/ConvergenceState
+        action: receives the report and retries only the event file write since other artifacts are intact
+
+  HandleValidationFailure:
+    steps:
+      - node: CollectExportedNodes
+        action: provides the collected exported nodes for validation
+      - node: CollectExportedJourneys
+        action: provides the collected exported journeys for validation
+      - node: ValidateExportedInterface
+        action: finds broken refs in the exported subset where journey steps reference unexported nodes
+      - node: ValidateExportedInterface
+        action: identifies the specific broken refs and the journeys that contain them
+      - node: ReportPublishFailure
+        action: builds a failure report listing the broken refs that prevent publish
+      - node: convergence/ConvergenceState
+        action: receives the validation failure and triggers audit or reconvergence to fix the broken refs
+
+  RecoverFromCorruptedHash:
+    steps:
+      - node: PreviousHash
+        action: provides the hash file from disk for validation
+      - node: DetectCorruptedPreviousHash
+        action: reads the file and finds it is not valid hex or not the expected 64-character length
+      - node: DetectCorruptedPreviousHash
+        action: flags the hash as corrupted and signals that comparison cannot proceed normally
+      - node: ComparePreviousHash
+        action: receives the corruption flag and treats this as a first-time publish scenario
+      - node: GenerateInterfaceYaml
+        action: proceeds to write interface.yaml since corrupted hash means change status is unknown
+      - node: InterfaceYamlFile
+        action: stores the interface on disk
+      - node: StorePreviousHash
+        action: overwrites the corrupted hash file with the fresh valid hash, restoring the baseline
+      - node: WriteEventFile
+        action: writes the event file since dependents should be notified after a corrupted hash recovery
+      - node: EventFile
+        action: the event file signals dependents to resync since hash continuity was broken
+
+  RollbackAfterPartialPublish:
+    steps:
+      - node: DetectWriteFailure
+        action: reports that a write failed mid-pipeline leaving some files written and others not
+      - node: InterfaceYamlFile
+        action: may exist on disk as a partial or complete write from before the failure
+      - node: ChangelogYamlFile
+        action: may exist on disk as a partial or complete write from before the failure
+      - node: RollbackPartialPublish
+        action: checks which publish artifacts exist on disk from the failed attempt
+      - node: RollbackPartialPublish
+        action: removes the partially written interface.yaml if it was written after the last valid publish
+      - node: RollbackPartialPublish
+        action: removes the partially written changelog.yaml if it was written after the last valid publish
+      - node: PreviousHash
+        action: is left unchanged since the new hash was never persisted, preserving the last valid baseline
+      - node: ReportPublishFailure
+        action: reports the rollback is complete and publish can be retried cleanly
+      - node: convergence/ConvergenceState
+        action: receives the rollback confirmation and schedules a publish retry
+
+  DetectAndPreventOscillation:
+    steps:
+      - node: _actors/DependentBox
+        action: receives an event file from an upstream box triggering reconvergence
+      - node: EventFile
+        action: provides the incoming event containing the ripple origin chain
+      - node: DetectRippleOscillation
+        action: reads the origin chain from the incoming event file
+      - node: DetectRippleOscillation
+        action: checks whether the current box ID already appears in the origin chain
+      - node: DetectRippleOscillation
+        action: detects the current box is already in the chain, confirming an A→B→A oscillation
+      - node: SuppressNoOpRipple
+        action: blocks the publish pipeline from writing a new event file since it would perpetuate the cycle
+      - node: NotifyPublishComplete
+        action: signals convergence that publish was suppressed due to oscillation detection
+      - node: convergence/ConvergenceState
+        action: records that publish was skipped due to ripple oscillation and proceeds without event propagation
+
+  DeduplicateRedundantEvent:
+    steps:
+      - node: ComputeInterfaceHash
+        action: computes the new interface hash after reconvergence
+      - node: InterfaceHash
+        action: provides the newly computed hash
+      - node: DeduplicateEventFile
+        action: reads the last written event file from disk
+      - node: DeduplicateEventFile
+        action: compares the new interface hash against the hash embedded in the last event file
+      - node: DeduplicateEventFile
+        action: determines the hashes are identical, meaning the event would carry no new information
+      - node: MonotonicEventSequencing
+        action: confirms that writing a duplicate event would violate the monotonic-change expectation
+      - node: SuppressNoOpRipple
+        action: skips writing the redundant event file since dependents already have this interface version
+      - node: NotifyPublishComplete
+        action: signals convergence that publish artifacts were updated but event propagation was suppressed
+
+  PropagateChangelogForTargetedReconvergence:
+    steps:
+      - node: ComputeChangelogDiff
+        action: produces the detailed diff identifying which specific nodes and journeys changed
+      - node: GenerateChangelogYaml
+        action: writes the changelog with added, removed, and modified sections
+      - node: ChangelogYamlFile
+        action: stores the changelog on disk
+      - node: EmbedChangelogInEvent
+        action: reads the changelog and extracts the list of changed node and journey names
+      - node: EmbedChangelogInEvent
+        action: embeds the change summary into the event file payload alongside the hash and origin chain
+      - node: ChangelogScopedReconvergence
+        action: enforces that the event includes enough detail for dependents to reconverge only affected modules
+      - node: WriteEventFile
+        action: writes the event file containing hash, origin chain, sequence number, and scoped changelog
+      - node: EventFile
+        action: the enriched event file is on disk for dependents to parse and scope their reconvergence
+      - node: _actors/DependentBox
+        action: reads the changelog from the event and triggers reconvergence only on modules that reference the changed nodes
+
+  SuppressNoOpAfterReconvergence:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: completes targeted reconvergence on modules affected by an upstream event
+      - node: _actors/Compiler
+        action: confirms the reconverged modules have 0 errors
+      - node: graph/CompiledIndex
+        action: provides the updated compiled graph
+      - node: CollectExportedNodes
+        action: selects nodes for the updated interface
+      - node: CollectExportedJourneys
+        action: selects journeys for the updated interface
+      - node: ComputeInterfaceHash
+        action: computes the new SHA256 hash after reconvergence
+      - node: InterfaceHash
+        action: stores the new hash
+      - node: PreviousHash
+        action: provides the hash from before this reconvergence cycle
+      - node: ComparePreviousHash
+        action: compares the new hash against the previous and finds they are identical
+      - node: SuppressNoOpRipple
+        action: determines that reconvergence produced no interface change so the ripple should stop here
+      - node: StorePreviousHash
+        action: skips writing since the hash is unchanged
+      - node: NotifyPublishComplete
+        action: signals convergence that the ripple was absorbed with no outgoing event
+      - node: convergence/ConvergenceState
+        action: records that reconvergence completed but the ripple was suppressed due to no interface change
+
+  EnforceRippleDepthLimit:
+    steps:
+      - node: EventFile
+        action: provides the incoming event with its ripple origin chain
+      - node: TrackRippleOrigin
+        action: reads the origin chain and counts the number of boxes in it
+      - node: RippleDepthLimit
+        action: compares the chain length against the configured maximum ripple depth
+      - node: RippleDepthLimit
+        action: determines the chain exceeds the maximum allowed depth
+      - node: SuppressNoOpRipple
+        action: blocks the event file write to prevent unbounded propagation even though the interface changed
+      - node: ReportPublishFailure
+        action: builds a warning report noting that ripple was truncated at max depth for manual review
+      - node: NotifyPublishComplete
+        action: signals convergence that publish artifacts were written but ripple propagation was stopped at depth limit
+      - node: convergence/ConvergenceState
+        action: records the depth-limited publish and flags it for operator review

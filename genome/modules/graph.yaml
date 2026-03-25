@@ -22,6 +22,9 @@ nodes:
   PublishedInterfaceDefinition:
     type: process
     description: defines what a box provides to other boxes as a versioned, hashable set of exported nodes and journeys
+  IncrementalMerge:
+    type: process
+    description: merges a single newly created module into the existing compiled index, adding its nodes, journeys, and connections without full rebuild
   NodeTypeSchema:
     type: rule
     description: enforces that every node must be exactly one of the 5 universal types (actor, process, artifact, interface, rule)
@@ -31,6 +34,12 @@ nodes:
   NoIsolationRule:
     type: rule
     description: every node must participate in at least one journey — no standalone nodes allowed in the graph
+  UniqueNodeNameRule:
+    type: rule
+    description: every node name must be unique across all modules — no two modules may define the same node name
+  AllRefsResolveRule:
+    type: rule
+    description: every node reference in every journey step must resolve to a defined node, actor, or cross-module target
   ModuleFile:
     type: artifact
     description: a YAML file containing spec_sections, nodes, and journeys that defines one scoped piece of the graph
@@ -71,6 +80,52 @@ journeys:
         action: parses each step binding a node reference to an action description
       - node: JourneyRegistry
         action: registers the journey in the collection of all journeys
+
+  AutomatedModuleCreation:
+    steps:
+      - node: _actors/LLMWorker
+        action: writes a complete module YAML file with nodes and journeys during convergence
+      - node: ModuleFile
+        action: stores the new module on disk
+      - node: NodeDefinition
+        action: parses all node entries from the new module
+      - node: NodeTypeSchema
+        action: validates all node types in the new module
+      - node: JourneyDefinition
+        action: parses all journey entries from the new module
+      - node: StepFormatRule
+        action: validates all steps have node and action fields
+      - node: StepDefinition
+        action: parses each step into node reference and action pairs
+      - node: convergence/CompileCheck
+        action: triggers compilation to validate the new module against the existing graph
+
+  IncrementalGraphBuild:
+    steps:
+      - node: CompiledIndex
+        action: provides the existing compiled graph before the new module
+      - node: ModuleFile
+        action: provides the newly created module to merge
+      - node: NodeDefinition
+        action: parses the new module's nodes
+      - node: NodeRegistry
+        action: adds new nodes to the existing deduplicated map
+      - node: JourneyDefinition
+        action: parses the new module's journeys
+      - node: JourneyRegistry
+        action: adds new journeys to the existing collection
+      - node: ConnectionComputation
+        action: computes connections for the new module's journey steps
+      - node: CrossModuleRefResolution
+        action: resolves references from the new module to nodes in existing modules
+      - node: ActorRefResolution
+        action: resolves actor references in the new module's journeys
+      - node: ConnectionSet
+        action: adds the new edges to the existing connection set
+      - node: IncrementalMerge
+        action: merges all new nodes, journeys, and connections into the compiled index
+      - node: CompiledIndex
+        action: updated with the new module's content integrated into the full graph
 
   ComputeConnections:
     steps:
@@ -131,3 +186,55 @@ journeys:
         action: selects which nodes and journeys to export as the box's public interface
       - node: _actors/DependentBox
         action: references the published interface to connect across box boundaries
+
+  VerifyGraphIntegrity:
+    steps:
+      - node: _actors/Compiler
+        action: initiates a full integrity check on the compiled graph
+      - node: CompiledIndex
+        action: provides the full graph for verification
+      - node: NodeTypeSchema
+        action: verifies every node has a valid type
+      - node: UniqueNodeNameRule
+        action: verifies no duplicate node names exist across all modules
+      - node: NodeRegistry
+        action: confirms every name in the registry maps to exactly one definition
+      - node: StepFormatRule
+        action: verifies every journey step has node and action fields
+      - node: AllRefsResolveRule
+        action: verifies every node reference in every step resolves to a known target
+      - node: CrossModuleRefResolution
+        action: confirms all cross-module references point to existing nodes
+      - node: ActorRefResolution
+        action: confirms all actor references point to existing actors
+      - node: NoIsolationRule
+        action: verifies every node participates in at least one journey
+      - node: ConnectionSet
+        action: confirms no orphan edges remain pointing to missing nodes
+      - node: compilation/CompilationResult
+        action: records zero errors, zero orphans, and zero dangling refs as the integrity result
+
+  RemediateOrphanNode:
+    steps:
+      - node: _actors/Auditor
+        action: identifies an orphan node that exists but appears in no journey
+      - node: NoIsolationRule
+        action: confirms the node violates the no-isolation constraint
+      - node: CompiledIndex
+        action: provides context about the orphan node's type, module, and neighboring nodes
+      - node: excerpt/ExcerptOutput
+        action: provides focused context for the module containing the orphan
+      - node: _actors/LLMWorker
+        action: writes a new journey or adds a step to an existing journey that connects the orphan
+      - node: JourneyDefinition
+        action: parses the new or updated journey containing the orphan node
+      - node: StepDefinition
+        action: parses the new step that references the formerly orphan node
+      - node: ConnectionComputation
+        action: recomputes connections including the new step
+      - node: IncrementalMerge
+        action: merges the updated journey and connections into the compiled index
+      - node: CompiledIndex
+        action: updated with the orphan now connected through a journey
+      - node: _actors/Compiler
+        action: revalidates to confirm the orphan count decreased
