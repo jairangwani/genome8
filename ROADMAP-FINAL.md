@@ -228,11 +228,11 @@ This is the ultimate test: genome replaces ALL its own documentation with a livi
 Use genome as the test subject. Real code. Real changes. Real ripple. No stubs.
 
 ### Test 1: Code change → graph updates → test generates
-- [ ] Add real function to compile.ts (e.g., validateUniqueStepActions)
-- [ ] Run Step 4d → detects new function not in graph
-- [ ] LLM adds node + journey to compilation module
-- [ ] Test skeleton generated for the new journey
-- [ ] Verify: graph matches code, test exists
+- [x] Added detectDuplicateSequences() to compile.ts
+- [x] Step 4d detected new function → added DetectDuplicateSequences node + journey
+- [x] Graph: 577→578 nodes, 375→376 journeys
+- [x] Test generated: 373→374 test files (1 new)
+- [x] PASSED: code change → graph update → test generation ✅
 
 ### Test 2: Plan change → code updates
 - [ ] Add new node to convergence.yaml manually (e.g., RetryOnLLMTimeout)

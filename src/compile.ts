@@ -22,6 +22,38 @@ export interface CompileResult {
   coverage: CoverageReport;
 }
 
+/**
+ * Detects duplicate step sequences across journeys.
+ * If two journeys have the same 3+ consecutive node sequence, flags it.
+ * This may indicate copy-paste or redundant journey definitions.
+ */
+export function detectDuplicateSequences(result: CompileResult): Array<{ sequence: string[]; journeys: string[] }> {
+  const sequences = new Map<string, string[]>();
+
+  for (const [name, journey] of Object.entries(result.index.journeys)) {
+    const nodes = journey.steps.map(s => s.node);
+    // Check all 3-step windows
+    for (let i = 0; i <= nodes.length - 3; i++) {
+      const seq = nodes.slice(i, i + 3);
+      const key = seq.join(' → ');
+      if (!sequences.has(key)) {
+        sequences.set(key, []);
+      }
+      sequences.get(key)!.push(name);
+    }
+  }
+
+  // Return only sequences found in 2+ journeys
+  const duplicates: Array<{ sequence: string[]; journeys: string[] }> = [];
+  for (const [key, journeyNames] of sequences) {
+    const unique = [...new Set(journeyNames)];
+    if (unique.length >= 2) {
+      duplicates.push({ sequence: key.split(' → '), journeys: unique });
+    }
+  }
+  return duplicates;
+}
+
 export function compile(modulesDir: string): CompileResult {
   return compileFromModules(loadAllModules(modulesDir));
 }

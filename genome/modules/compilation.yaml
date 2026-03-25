@@ -82,6 +82,10 @@ nodes:
     type: process
     description: checks that every journey step has a meaningful action description, flagging steps with empty or too-short actions
     files: ["src/compile.ts"]
+  DetectDuplicateSequences:
+    type: process
+    description: scans all journeys for identical 3-step consecutive node sequences shared across two or more journeys, flagging potential copy-paste or redundant journey definitions
+    files: ["src/compile.ts"]
   ExternalRefsAreWarnings:
     type: rule
     description: unresolved refs to sibling engines are warnings in children, errors only at parent level
@@ -561,3 +565,16 @@ journeys:
         action: flags descriptions that are duplicated verbatim across different nodes
       - node: ErrorReport
         action: records each low-quality or duplicate description as a validation issue with the node name and module
+
+  DetectDuplicateJourneySequences:
+    steps:
+      - node: _actors/Compiler
+        action: completes full compilation and produces a CompileResult
+      - node: CompilationResult
+        action: provides the compiled index containing all journeys and their steps
+      - node: DetectDuplicateSequences
+        action: slides a 3-step window over every journey's node list and groups matching sequences by key
+      - node: DetectDuplicateSequences
+        action: filters to sequences appearing in two or more distinct journeys
+      - node: WarningReport
+        action: records each duplicate sequence with the shared node triple and the list of journeys that contain it
