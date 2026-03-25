@@ -223,6 +223,68 @@ This is the ultimate test: genome replaces ALL its own documentation with a livi
 
 ---
 
+## Phase 8: End-to-End Stress Tests (on genome itself)
+
+Use genome as the test subject. Real code. Real changes. Real ripple. No stubs.
+
+### Test 1: Code change → graph updates → test generates
+- [ ] Add real function to compile.ts (e.g., validateUniqueStepActions)
+- [ ] Run Step 4d → detects new function not in graph
+- [ ] LLM adds node + journey to compilation module
+- [ ] Test skeleton generated for the new journey
+- [ ] Verify: graph matches code, test exists
+
+### Test 2: Plan change → code updates
+- [ ] Add new node to convergence.yaml manually (e.g., RetryOnLLMTimeout)
+- [ ] Node has files: ["src/convergence.ts"] but function doesn't exist in code
+- [ ] Run Step 4d → detects drift (graph says X, code doesn't have X)
+- [ ] LLM writes the implementation in convergence.ts
+- [ ] Verify: code matches graph
+
+### Test 3: Multi-module ripple within genome
+- [ ] Change compile module (add new validation rule)
+- [ ] Compile's published interface hash changes
+- [ ] Excerpt module depends on compile → detects change → reconverges
+- [ ] Convergence module depends on both → detects → reconverges
+- [ ] Verify: 3+ modules cascade correctly, no over-reconvergence
+
+### Test 4: Break something and watch self-healing
+- [ ] Delete a function from llm.ts that the graph says should exist
+- [ ] Run Step 4d → detects "function in graph but not in code"
+- [ ] LLM either restores the function or updates graph to remove it
+- [ ] Verify: graph and code back in sync
+
+### Test 5: Add a whole new module
+- [ ] Write new file src/metrics.ts (tracks LLM calls, tokens, time per step)
+- [ ] Don't update graph manually
+- [ ] Run Step 4d → finds untracked file → adds metrics module to graph
+- [ ] Creates nodes + journeys → connected to convergence and llm modules
+- [ ] Verify: new module fully integrated into graph
+
+### Test 6: Full cycle with hierarchy
+- [ ] Split genome into 2 engines (core: compile/types/excerpt, orchestration: convergence/llm/hierarchy)
+- [ ] Each engine converges independently → publishes interface
+- [ ] Change something in core → orchestration detects via event → reconverges
+- [ ] Parent validates cross-engine connections
+- [ ] Verify: hierarchy + ripple work on genome itself
+
+### Test 7: Stress the event ripple
+- [ ] Rapidly change 3 modules in sequence (compile, then publish, then sync)
+- [ ] Each change triggers ripple
+- [ ] Verify: no infinite loops, oscillation cooldown works
+- [ ] All affected modules reconverge exactly once
+- [ ] No rogue processes
+
+### What these prove (that we haven't proven):
+- Real code written by the system (not skeletons)
+- Real drift detected and fixed automatically
+- Real ripple across real modules with real code
+- Real self-healing when things break
+- The full loop: plan ↔ code ↔ tests ↔ plan — continuously
+- Production readiness for Pando
+
+---
+
 ## Known Gaps (honest, to fix in future)
 
 ## CRITICAL: Bidirectional Sync Tests (Step 4d)
