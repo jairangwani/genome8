@@ -88,6 +88,36 @@ nodes:
   StreamLargeEventPayload:
     type: process
     description: reads oversized event files in a streaming fashion rather than loading the full content into memory, extracting only the required hash, sequence, origin chain, and changelog fields
+  CrossCheckEventHashAgainstInterface:
+    type: process
+    description: fetches the dependency's actual interface.yaml from disk and compares its hash against the hash claimed in the event payload to detect stale or spoofed events
+  DetectDuplicateEventSequence:
+    type: process
+    description: compares the incoming event's sequence number against the last-processed sequence for that dependency and suppresses the event if the sequence was already processed
+  DetectMissedEventSequenceGap:
+    type: process
+    description: compares the incoming event's sequence number against the last-processed sequence for that dependency and flags a gap when numbers are not consecutive
+  DetectPartiallyWrittenEventFile:
+    type: process
+    description: checks that the event file is complete by verifying it ends with valid JSON closure and its byte length matches the content-length header if present before parsing
+  ValidateEventHashFormat:
+    type: process
+    description: enforces that the interface hash field in the event payload is a non-empty string matching the expected SHA256 hex format before passing to sync
+  ReadEventFilesInParallel:
+    type: process
+    description: reads multiple event files concurrently with a configurable concurrency limit during batch processing to reduce total IO wait time when many dependencies change at once
+  EnforceEventProcessingTimeout:
+    type: process
+    description: applies a configurable deadline to the sync delegation and reconvergence cycle for a single event and cancels the operation if the timeout is exceeded to prevent pipeline stalls
+  ShedLowPriorityEventsUnderLoad:
+    type: process
+    description: drops lowest-impact events from the processing queue when the pending event count exceeds a backpressure threshold to maintain system responsiveness during sustained cascading ripples
+  PartitionEventsByDependencySubgraph:
+    type: process
+    description: groups batched events into independent partitions based on which local modules they affect so that unrelated partitions can be processed concurrently without conflicting stale marks
+  SpillBatchPayloadsToDisk:
+    type: process
+    description: writes excess parsed event payloads to temporary disk storage when the in-memory batch exceeds a configurable payload count threshold and reads them back during sync delegation
   EventWatcherSet:
     type: artifact
     description: the set of active fs.watch instances monitoring dependency event file paths
@@ -118,6 +148,9 @@ nodes:
   WatcherCountLimit:
     type: rule
     description: enforces a maximum number of concurrent fs.watch instances per box to prevent file descriptor exhaustion on boxes with many dependencies
+  EventBackpressureThreshold:
+    type: rule
+    description: enforces a maximum number of pending events in the processing queue and triggers load shedding when exceeded to prevent memory exhaustion and pipeline stalls during cascading ripples
 
 journeys:
   SetupEventWatching:
@@ -776,3 +809,259 @@ journeys:
         action: persists the watcher allocation log entry
       - node: EnterSleep
         action: enters sleep with only the prioritized watchers active
+
+  CrossCheckEventHashWithInterface:
+    steps:
+      - node: _actors/FileSystem
+        action: fires the fs.watch callback for a dependency event file change
+      - node: DetectEventFileChange
+        action: receives the filesystem notification with the changed file path
+      - node: ReadEventFile
+        action: reads the event file and extracts the claimed interface hash
+      - node: ValidateEventFileFormat
+        action: validates the event file has valid structure
+      - node: ValidateEventHashFormat
+        action: confirms the hash field is a non-empty SHA256 hex string
+      - node: EventPayload
+        action: stores the validated event data including the claimed hash
+      - node: CrossCheckEventHashAgainstInterface
+        action: fetches the dependency's actual interface.yaml from disk
+      - node: CrossCheckEventHashAgainstInterface
+        action: computes or reads the hash of the actual interface.yaml and compares it against the event's claimed hash
+      - node: LogEventReceived
+        action: records whether the cross-check passed or detected a mismatch
+      - node: EventLog
+        action: persists the cross-check result log entry
+      - node: DelegateToSync
+        action: passes the verified event payload to sync.ts only if the cross-check passed
+
+  DeduplicateEventBySequenceNumber:
+    steps:
+      - node: _actors/FileSystem
+        action: fires the fs.watch callback, possibly a duplicate notification for the same file write
+      - node: DetectEventFileChange
+        action: receives the filesystem notification
+      - node: ReadEventFile
+        action: reads the event file from disk
+      - node: ValidateEventFileFormat
+        action: validates the event file structure
+      - node: ExtractEventSequenceNumber
+        action: reads the sequence number from the validated payload
+      - node: DetectDuplicateEventSequence
+        action: compares the sequence number against the last-processed sequence for this dependency
+      - node: DetectDuplicateEventSequence
+        action: determines the event is a duplicate because the sequence number was already processed
+      - node: LogEventReceived
+        action: records the event disposition as suppressed-duplicate with the repeated sequence number
+      - node: EventLog
+        action: persists the duplicate suppression log entry
+      - node: EnterSleep
+        action: returns to sleep without triggering sync since the event was already processed
+
+  DetectAndRecoverMissedEventSequence:
+    steps:
+      - node: _actors/FileSystem
+        action: fires the fs.watch callback for a dependency event file change
+      - node: DetectEventFileChange
+        action: receives the filesystem notification
+      - node: ReadEventFile
+        action: reads the event file from disk
+      - node: ValidateEventFileFormat
+        action: validates the event file structure
+      - node: ExtractEventSequenceNumber
+        action: reads the sequence number from the validated payload
+      - node: DetectMissedEventSequenceGap
+        action: compares the sequence number against the last-processed sequence and detects a gap
+      - node: DetectMissedEventSequenceGap
+        action: computes the number of missed events as the difference between expected and received sequence numbers
+      - node: LogEventFailure
+        action: records the sequence gap with the expected and received sequence numbers
+      - node: EventLog
+        action: persists the sequence gap log entry
+      - node: sync/FetchDependencyHash
+        action: fetches the current hash from the dependency's interface to catch up on any missed changes
+      - node: sync/CompareStoredHash
+        action: compares the fetched hash against the stored hash to detect all accumulated drift
+      - node: DelegateToSync
+        action: passes the current event plus the full hash comparison result to sync.ts for complete stale detection
+
+  RejectPartiallyWrittenEventFile:
+    steps:
+      - node: _actors/FileSystem
+        action: fires the fs.watch callback while the publisher is still writing the event file
+      - node: DetectEventFileChange
+        action: receives the filesystem notification before the write is complete
+      - node: ReadEventFile
+        action: reads the event file which may contain only partial content
+      - node: DetectPartiallyWrittenEventFile
+        action: checks whether the file content ends with valid JSON closure
+      - node: DetectPartiallyWrittenEventFile
+        action: determines the file is incomplete because it lacks proper JSON termination
+      - node: LogEventReceived
+        action: records the partial-write detection with the file path and current byte count
+      - node: EventLog
+        action: persists the partial-write log entry
+      - node: RetryEventProcessing
+        action: waits a brief delay for the publisher to finish writing
+      - node: ReadEventFile
+        action: re-reads the event file after the delay
+      - node: DetectPartiallyWrittenEventFile
+        action: re-checks whether the file is now complete with valid JSON closure
+      - node: ValidateEventFileFormat
+        action: validates the complete event file structure
+      - node: EventPayload
+        action: stores the validated event data from the fully written file
+      - node: DelegateToSync
+        action: passes the verified complete event payload to sync.ts
+
+  VerifyEventHashFormatBeforeSync:
+    steps:
+      - node: DetectEventFileChange
+        action: receives a filesystem notification for an event file change
+      - node: ReadEventFile
+        action: reads the event file from disk
+      - node: ValidateEventFileFormat
+        action: validates the event file has the required JSON structure
+      - node: ValidateEventHashFormat
+        action: checks that the interface hash field is a non-empty string
+      - node: ValidateEventHashFormat
+        action: verifies the hash matches the expected SHA256 hex pattern of exactly 64 lowercase hex characters
+      - node: HandleInvalidEventPayload
+        action: rejects the event if the hash is empty, too short, contains non-hex characters, or is otherwise malformed
+      - node: LogEventFailure
+        action: records the hash format violation with the invalid hash value and expected format
+      - node: EventLog
+        action: persists the hash format rejection log entry
+      - node: EnterSleep
+        action: returns to sleep without triggering sync since the hash cannot be trusted
+
+  ReadBatchedEventFilesInParallel:
+    steps:
+      - node: DebounceEvents
+        action: produces a large batch of events from many dependencies after the debounce window closes
+      - node: OscillationCooldown
+        action: filters the batch to remove dependencies that triggered within the cooldown window
+      - node: ReadEventFilesInParallel
+        action: splits the filtered batch into chunks matching the configured concurrency limit
+      - node: ReadEventFilesInParallel
+        action: launches concurrent file reads for the first chunk of event files
+      - node: ReadEventFile
+        action: reads each event file within the concurrent chunk
+      - node: ReadEventFilesInParallel
+        action: collects completed reads and launches the next chunk until all files are read
+      - node: ValidateEventFileFormat
+        action: validates each read event file's structure
+      - node: EventPayload
+        action: stores the validated payloads for all concurrently read events
+      - node: LogEventReceived
+        action: records the parallel read completion with total file count, chunk count, and elapsed time
+      - node: EventLog
+        action: persists the parallel read log entry
+      - node: DelegateToSync
+        action: passes the complete batch of validated payloads to sync.ts
+
+  TimeoutSlowEventProcessing:
+    steps:
+      - node: _actors/FileSystem
+        action: fires the fs.watch callback for a dependency event file change
+      - node: DetectEventFileChange
+        action: receives the filesystem notification
+      - node: ReadEventFile
+        action: reads and validates the event file
+      - node: ValidateEventFileFormat
+        action: validates the event file structure
+      - node: EventPayload
+        action: stores the validated event data
+      - node: EnforceEventProcessingTimeout
+        action: starts a deadline timer with the configured timeout duration before delegating to sync
+      - node: DelegateToSync
+        action: passes the event payload to sync.ts which begins hash comparison and stale detection
+      - node: EnforceEventProcessingTimeout
+        action: monitors the sync delegation for timeout expiry
+      - node: EnforceEventProcessingTimeout
+        action: cancels the sync delegation because the deadline was exceeded
+      - node: LogEventFailure
+        action: records the timeout with the event source dependency, elapsed time, and configured deadline
+      - node: EventLog
+        action: persists the timeout log entry
+      - node: convergence/ConvergenceState
+        action: receives the timed-out event for deferred processing or operator review
+
+  ShedEventsUnderBackpressure:
+    steps:
+      - node: DebounceEvents
+        action: produces a batch of events during a sustained cascading ripple
+      - node: EventBackpressureThreshold
+        action: checks the pending event count against the configured maximum queue depth
+      - node: ShedLowPriorityEventsUnderLoad
+        action: determines the queue exceeds the backpressure threshold
+      - node: graph/ConnectionSet
+        action: provides the edge set to score each event by the number of local modules it affects
+      - node: PrioritizeEventsByImpact
+        action: ranks all pending events by their impact score
+      - node: ShedLowPriorityEventsUnderLoad
+        action: identifies the lowest-impact events that must be dropped to bring the queue within the threshold
+      - node: ShedLowPriorityEventsUnderLoad
+        action: removes the identified events from the processing queue
+      - node: LogEventReceived
+        action: records which events were shed with their impact scores and source dependencies
+      - node: EventLog
+        action: persists the load-shedding log entry
+      - node: ReadEventFile
+        action: reads event files only for the retained high-impact events
+      - node: DelegateToSync
+        action: passes only the retained events to sync.ts for processing
+
+  PartitionAndProcessEventsInParallel:
+    steps:
+      - node: DebounceEvents
+        action: produces a large batch of events from many unrelated dependencies
+      - node: ReadEventFilesInParallel
+        action: reads all event files in the batch concurrently
+      - node: ValidateEventFileFormat
+        action: validates each read event file
+      - node: EventPayload
+        action: stores the validated payloads for all events
+      - node: graph/ConnectionSet
+        action: provides the edge set showing which local modules each dependency affects
+      - node: PartitionEventsByDependencySubgraph
+        action: builds a mapping of each event to the set of local modules it affects
+      - node: PartitionEventsByDependencySubgraph
+        action: groups events into independent partitions where no two partitions affect the same local module
+      - node: PartitionEventsByDependencySubgraph
+        action: assigns events with overlapping module sets to the same partition to prevent conflicting stale marks
+      - node: DelegateToSync
+        action: dispatches each independent partition to sync.ts concurrently
+      - node: LogEventReceived
+        action: records the partition count, events per partition, and total processing time
+      - node: EventLog
+        action: persists the partitioned processing log entry
+      - node: EnterSleep
+        action: returns to sleep after all partitions complete processing
+
+  SpillLargeBatchPayloadsToDisk:
+    steps:
+      - node: DebounceEvents
+        action: produces a batch containing more events than the configured in-memory payload threshold
+      - node: ReadEventFilesInParallel
+        action: reads event files concurrently for all events in the oversized batch
+      - node: ValidateEventFileFormat
+        action: validates each event file in the batch
+      - node: SpillBatchPayloadsToDisk
+        action: checks the parsed payload count against the configured in-memory threshold
+      - node: SpillBatchPayloadsToDisk
+        action: writes the lowest-priority parsed payloads to a temporary file on disk freeing heap memory
+      - node: SpillBatchPayloadsToDisk
+        action: retains only the highest-priority payloads in memory up to the threshold
+      - node: DelegateToSync
+        action: processes the in-memory payloads first passing them to sync.ts
+      - node: SpillBatchPayloadsToDisk
+        action: reads the spilled payloads back from disk in chunks as sync.ts is ready for more
+      - node: DelegateToSync
+        action: processes each chunk of restored payloads from disk
+      - node: LogEventReceived
+        action: records the spill event with total payload count, spilled count, and temporary file size
+      - node: EventLog
+        action: persists the payload spill log entry
+      - node: EnterSleep
+        action: returns to sleep after all payloads including spilled ones are processed

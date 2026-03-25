@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForAudit", () => {
   it("step 1: convergence/TargetedAudit requests focused context for an auditor to check a specific module", () => {
     // Node: convergence/TargetedAudit (process)
@@ -19,7 +22,7 @@ describe("ProvideExcerptForAudit", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the full compiled graph for extraction", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full compiled graph for extraction
     // TODO: agent fills assertion
   });
@@ -49,7 +52,7 @@ describe("ProvideExcerptForAudit", () => {
   });
 
   it("step 8: excerpt/AssembleExcerpt builds the audit-focused excerpt", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds the audit-focused excerpt
     // TODO: agent fills assertion
   });

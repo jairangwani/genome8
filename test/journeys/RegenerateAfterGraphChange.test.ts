@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("RegenerateAfterGraphChange", () => {
   it("step 1: _actors/Compiler completes a compilation that changes the compiled index", () => {
     // Node: _actors/Compiler (actor)
@@ -13,7 +15,7 @@ describe("RegenerateAfterGraphChange", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the new compiled index with a different hash than before", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the new compiled index with a different hash than before
     // TODO: agent fills assertion
   });

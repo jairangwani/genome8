@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("MergeChildGraphs", () => {
   it("step 1: _actors/ParentEngine cross-engine validation has passed and cross-engine journeys are created", () => {
     // Node: _actors/ParentEngine (actor)
@@ -43,7 +45,7 @@ describe("MergeChildGraphs", () => {
   });
 
   it("step 7: graph/CompiledIndex stores the merged parent graph containing parent nodes, child nodes, and cross-engine journeys", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: stores the merged parent graph containing parent nodes, child nodes, and cross-engine journeys
     // TODO: agent fills assertion
   });

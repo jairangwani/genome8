@@ -1,55 +1,62 @@
 // Auto-generated from journey: EnforceRippleDepthLimit
-// Module: publish
-// Modules touched: publish, convergence
+// Module: sync
+// Triggered by: _actors/FileSystem
+// Modules touched: _actors, events, sync, convergence
 
 import { describe, it, expect } from 'vitest';
 
 describe("EnforceRippleDepthLimit", () => {
-  it("step 1: publish/EventFile provides the incoming event with its ripple origin chain", () => {
-    // Node: publish/EventFile (interface)
-    // Action: provides the incoming event with its ripple origin chain
+  it("step 1: _actors/FileSystem delivers an event file change notification via fs.watch", () => {
+    // Node: _actors/FileSystem (actor)
+    // Action: delivers an event file change notification via fs.watch
     // TODO: agent fills assertion
   });
 
-  it("step 2: publish/TrackRippleOrigin reads the origin chain and counts the number of boxes in it", () => {
-    // Node: publish/TrackRippleOrigin (process)
-    // Action: reads the origin chain and counts the number of boxes in it
+  it("step 2: events/ReadEventFile reads the incoming event file from disk", () => {
+    // Node: events/ReadEventFile (process)
+    // Action: reads the incoming event file from disk
     // TODO: agent fills assertion
   });
 
-  it("step 3: publish/RippleDepthLimit compares the chain length against the configured maximum ripple depth", () => {
-    // Node: publish/RippleDepthLimit (rule)
-    // Action: compares the chain length against the configured maximum ripple depth
+  it("step 3: sync/ParseEventPayload extracts the ripple origin chain from the event payload", () => {
+    // Node: sync/ParseEventPayload (process)
+    // Action: extracts the ripple origin chain from the event payload
     // TODO: agent fills assertion
   });
 
-  it("step 4: publish/RippleDepthLimit determines the chain exceeds the maximum allowed depth", () => {
-    // Node: publish/RippleDepthLimit (rule)
-    // Action: determines the chain exceeds the maximum allowed depth
+  it("step 4: sync/CheckRippleDepthLimit counts the number of box IDs in the origin chain to determine current ripple depth", () => {
+    // Node: sync/CheckRippleDepthLimit (process)
+    // Action: counts the number of box IDs in the origin chain to determine current ripple depth
     // TODO: agent fills assertion
   });
 
-  it("step 5: publish/SuppressNoOpRipple blocks the event file write to prevent unbounded propagation even though the interface changed", () => {
-    // Node: publish/SuppressNoOpRipple (process)
-    // Action: blocks the event file write to prevent unbounded propagation even though the interface changed
+  it("step 5: sync/CheckRippleDepthLimit compares the depth against the configured maximum ripple depth", () => {
+    // Node: sync/CheckRippleDepthLimit (process)
+    // Action: compares the depth against the configured maximum ripple depth
     // TODO: agent fills assertion
   });
 
-  it("step 6: publish/ReportPublishFailure builds a warning report noting that ripple was truncated at max depth for manual review", () => {
-    // Node: publish/ReportPublishFailure (process)
-    // Action: builds a warning report noting that ripple was truncated at max depth for manual review
+  it("step 6: sync/CheckRippleDepthLimit determines the depth exceeds the limit, indicating a cascade storm risk", () => {
+    // Node: sync/CheckRippleDepthLimit (process)
+    // Action: determines the depth exceeds the limit, indicating a cascade storm risk
     // TODO: agent fills assertion
   });
 
-  it("step 7: publish/NotifyPublishComplete signals convergence that publish artifacts were written but ripple propagation was stopped at depth limit", () => {
-    // Node: publish/NotifyPublishComplete (process)
-    // Action: signals convergence that publish artifacts were written but ripple propagation was stopped at depth limit
+  it("step 7: sync/SuppressSyncOnOscillation aborts the sync pipeline to stop the cascade from propagating further", () => {
+    // Node: sync/SuppressSyncOnOscillation (process)
+    // Action: aborts the sync pipeline to stop the cascade from propagating further
     // TODO: agent fills assertion
   });
 
-  it("step 8: convergence/ConvergenceState records the depth-limited publish and flags it for operator review", () => {
+  it("step 8: sync/SyncResult records that sync was suppressed due to ripple depth exceeding the configured maximum", () => {
+    // Node: sync/SyncResult (artifact)
+    // Action: records that sync was suppressed due to ripple depth exceeding the configured maximum
+    // TODO: agent fills assertion
+  });
+
+  it("step 9: convergence/ConvergenceState receives the suppressed result and does not trigger reconvergence or republish", () => {
     // Node: convergence/ConvergenceState (artifact)
-    // Action: records the depth-limited publish and flags it for operator review
+    // Action: receives the suppressed result and does not trigger reconvergence or republish
     // TODO: agent fills assertion
   });
 

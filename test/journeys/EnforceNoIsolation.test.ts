@@ -5,9 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("EnforceNoIsolation", () => {
   it("step 1: graph/CompiledIndex provides the full graph with all nodes and connections", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full graph with all nodes and connections
     // TODO: agent fills assertion
   });

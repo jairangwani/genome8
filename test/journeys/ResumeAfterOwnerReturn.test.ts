@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("ResumeAfterOwnerReturn", () => {
   it("step 1: _actors/ReturningOwner restarts the engine after a period of downtime", () => {
     // Node: _actors/ReturningOwner (actor)
@@ -13,7 +15,7 @@ describe("ResumeAfterOwnerReturn", () => {
   });
 
   it("step 2: sync/ReadDependencyList provides the list of dependencies to check for missed events", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: provides the list of dependencies to check for missed events
     // TODO: agent fills assertion
   });

@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("HandleLargeGraphContextAssembly", () => {
   it("step 1: convergence/ConvergenceState provides the current task target for a graph with many modules", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -12,7 +14,7 @@ describe("HandleLargeGraphContextAssembly", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the full compiled index containing all modules, nodes, and connections", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full compiled index containing all modules, nodes, and connections
     // TODO: agent fills assertion
   });

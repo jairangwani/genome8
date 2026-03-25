@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/llm.ts
+
 describe("ProactivelyReplaceStaleWorker", () => {
   it("step 1: llm/CompactionCounter indicates the current worker has undergone many compactions", () => {
     // Node: llm/CompactionCounter (artifact)
@@ -48,7 +50,7 @@ describe("ProactivelyReplaceStaleWorker", () => {
   });
 
   it("step 8: llm/SpawnWorkerProcess launches a fresh Claude Code subprocess with a clean context window", () => {
-    // Node: llm/SpawnWorkerProcess (process)
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
     // Action: launches a fresh Claude Code subprocess with a clean context window
     // TODO: agent fills assertion
   });

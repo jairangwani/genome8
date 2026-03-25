@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/codegen.ts
+
 describe("GenerateSkeletonsFromGraph", () => {
   it("step 1: convergence/TriggerCodegen invokes codegen.ts after convergence and publish are complete", () => {
     // Node: convergence/TriggerCodegen (process)
@@ -12,13 +15,13 @@ describe("GenerateSkeletonsFromGraph", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the full converged graph with all nodes and connections", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full converged graph with all nodes and connections
     // TODO: agent fills assertion
   });
 
   it("step 3: codegen/ReadConvergedGraph extracts all process, artifact, interface, and rule nodes organized by module", () => {
-    // Node: codegen/ReadConvergedGraph (process)
+    // Node: codegen/ReadConvergedGraph (process) — has code: src/codegen.ts
     // Action: extracts all process, artifact, interface, and rule nodes organized by module
     // TODO: agent fills assertion
   });

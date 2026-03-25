@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/excerpt.ts
+
 describe("HandleOversizedModuleSource", () => {
   it("step 1: excerpt/SelectTargetModule identifies a module whose YAML source exceeds the line budget threshold", () => {
     // Node: excerpt/SelectTargetModule (process)
@@ -42,7 +44,7 @@ describe("HandleOversizedModuleSource", () => {
   });
 
   it("step 7: excerpt/AssembleExcerpt includes the summarized source instead of the raw YAML file content", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: includes the summarized source instead of the raw YAML file content
     // TODO: agent fills assertion
   });

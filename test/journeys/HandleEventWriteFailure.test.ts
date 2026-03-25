@@ -4,9 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("HandleEventWriteFailure", () => {
   it("step 1: publish/GenerateInterfaceYaml successfully wrote interface.yaml to disk", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: successfully wrote interface.yaml to disk
     // TODO: agent fills assertion
   });

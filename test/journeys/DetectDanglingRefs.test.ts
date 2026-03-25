@@ -4,9 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("DetectDanglingRefs", () => {
   it("step 1: graph/CompiledIndex provides all journey steps and the node registry", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides all journey steps and the node registry
     // TODO: agent fills assertion
   });

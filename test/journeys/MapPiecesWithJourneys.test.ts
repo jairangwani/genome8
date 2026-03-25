@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("MapPiecesWithJourneys", () => {
   it("step 1: _actors/LLMWorker writes journey steps that trace use cases across nodes in a module", () => {
     // Node: _actors/LLMWorker (actor)
@@ -43,7 +45,7 @@ describe("MapPiecesWithJourneys", () => {
   });
 
   it("step 7: graph/CompiledIndex assembles nodes and connections into the living graph", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: assembles nodes and connections into the living graph
     // TODO: agent fills assertion
   });

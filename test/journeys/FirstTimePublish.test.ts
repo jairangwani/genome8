@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/publish.ts
+
 describe("FirstTimePublish", () => {
   it("step 1: convergence/TriggerPublish invokes publish.ts after the first convergence of this box", () => {
     // Node: convergence/TriggerPublish (process)
@@ -18,7 +21,7 @@ describe("FirstTimePublish", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the compiled graph for the first publish", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled graph for the first publish
     // TODO: agent fills assertion
   });
@@ -66,7 +69,7 @@ describe("FirstTimePublish", () => {
   });
 
   it("step 11: publish/GenerateInterfaceYaml writes the initial interface.yaml with all exported nodes and journeys", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the initial interface.yaml with all exported nodes and journeys
     // TODO: agent fills assertion
   });

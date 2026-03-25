@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/excerpt.ts
+
 describe("PerspectiveEnrichmentPipeline", () => {
   it("step 1: convergence/ConvergenceState indicates all modules have been created and initial compilation passed", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -31,7 +33,7 @@ describe("PerspectiveEnrichmentPipeline", () => {
   });
 
   it("step 5: excerpt/AssembleExcerpt builds a focused excerpt of the module and its cross-module connections", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds a focused excerpt of the module and its cross-module connections
     // TODO: agent fills assertion
   });

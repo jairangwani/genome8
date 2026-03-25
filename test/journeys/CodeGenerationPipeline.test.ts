@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("CodeGenerationPipeline", () => {
   it("step 1: convergence/ConvergenceState confirms publish is complete, ready for code generation", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -19,7 +21,7 @@ describe("CodeGenerationPipeline", () => {
   });
 
   it("step 3: codegen/ReadConvergedGraph extracts all nodes organized by module from the compiled index", () => {
-    // Node: codegen/ReadConvergedGraph (process)
+    // Node: codegen/ReadConvergedGraph (process) — has code: src/codegen.ts
     // Action: extracts all nodes organized by module from the compiled index
     // TODO: agent fills assertion
   });

@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/cli.ts
+
 describe("CompileFromCLI", () => {
   it("step 1: _actors/HumanDeveloper runs compile.ts from the command line", () => {
     // Node: _actors/HumanDeveloper (actor)
@@ -13,7 +15,7 @@ describe("CompileFromCLI", () => {
   });
 
   it("step 2: compilation/CompileCLI accepts the command and passes it to the compiler", () => {
-    // Node: compilation/CompileCLI (interface)
+    // Node: compilation/CompileCLI (interface) — has code: src/cli.ts
     // Action: accepts the command and passes it to the compiler
     // TODO: agent fills assertion
   });
@@ -31,7 +33,7 @@ describe("CompileFromCLI", () => {
   });
 
   it("step 5: compilation/CompileCLI displays errors, warnings, and summary to the developer", () => {
-    // Node: compilation/CompileCLI (interface)
+    // Node: compilation/CompileCLI (interface) — has code: src/cli.ts
     // Action: displays errors, warnings, and summary to the developer
     // TODO: agent fills assertion
   });

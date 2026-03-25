@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("ServeExcerptFromCache", () => {
   it("step 1: excerpt/SelectTargetModule identifies the module that needs an excerpt", () => {
     // Node: excerpt/SelectTargetModule (process)
@@ -12,7 +14,7 @@ describe("ServeExcerptFromCache", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the current compiled index hash for cache lookup", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the current compiled index hash for cache lookup
     // TODO: agent fills assertion
   });

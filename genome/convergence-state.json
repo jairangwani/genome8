@@ -1,0 +1,15 @@
+{
+  "status": "unstable",
+  "tests_passed": false,
+  "converged_at": "2026-03-25T10:43:05.364Z",
+  "stats": {
+    "total_nodes": 577,
+    "total_journeys": 375,
+    "total_connections": 1963,
+    "modules": 15,
+    "orphans": 0,
+    "isolated_modules": 0,
+    "duplicate_names": 0
+  },
+  "interface_hash": "sha256:6e1bc3867a252899a80719ebf58a531731d550972337da581fd6f3d055e1af92"
+}

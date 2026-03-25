@@ -5,9 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("RegisterWatchersInBatches", () => {
   it("step 1: sync/ReadDependencyList provides the full dependency list which exceeds the normal watcher registration threshold", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: provides the full dependency list which exceeds the normal watcher registration threshold
     // TODO: agent fills assertion
   });

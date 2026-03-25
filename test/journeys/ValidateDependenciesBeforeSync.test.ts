@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("ValidateDependenciesBeforeSync", () => {
   it("step 1: _actors/DependentBox initiates a sync check after receiving an event", () => {
     // Node: _actors/DependentBox (actor)
@@ -13,7 +15,7 @@ describe("ValidateDependenciesBeforeSync", () => {
   });
 
   it("step 2: sync/ReadDependencyList reads the dependency list from the box configuration", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the dependency list from the box configuration
     // TODO: agent fills assertion
   });

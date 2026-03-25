@@ -5,9 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
+
 describe("HandleMissingSpec", () => {
   it("step 1: convergence/ReadSpec triggers the organization step expecting spec.md on disk", () => {
-    // Node: convergence/ReadSpec (process)
+    // Node: convergence/ReadSpec (process) — has code: src/convergence.ts
     // Action: triggers the organization step expecting spec.md on disk
     // TODO: agent fills assertion
   });

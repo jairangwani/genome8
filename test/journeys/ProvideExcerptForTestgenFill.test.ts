@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForTestgenFill", () => {
   it("step 1: testgen/FillTestAssertions requests focused context for filling test assertion bodies", () => {
     // Node: testgen/FillTestAssertions (process)
@@ -18,7 +21,7 @@ describe("ProvideExcerptForTestgenFill", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the compiled graph for understanding expected behaviors", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled graph for understanding expected behaviors
     // TODO: agent fills assertion
   });
@@ -54,7 +57,7 @@ describe("ProvideExcerptForTestgenFill", () => {
   });
 
   it("step 9: excerpt/AssembleExcerpt builds the testgen-focused excerpt with implementation and graph context", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds the testgen-focused excerpt with implementation and graph context
     // TODO: agent fills assertion
   });

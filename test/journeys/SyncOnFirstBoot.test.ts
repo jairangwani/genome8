@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+// Implementation: src/types.ts
+
 describe("SyncOnFirstBoot", () => {
   it("step 1: _actors/DependentBox boots for the first time and needs to establish baseline dependency state", () => {
     // Node: _actors/DependentBox (actor)
@@ -19,7 +22,7 @@ describe("SyncOnFirstBoot", () => {
   });
 
   it("step 3: sync/ReadDependencyList reads the full dependency list from the box configuration", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the full dependency list from the box configuration
     // TODO: agent fills assertion
   });
@@ -67,7 +70,7 @@ describe("SyncOnFirstBoot", () => {
   });
 
   it("step 11: graph/CompiledIndex provides the graph which may be empty or partially built on first boot", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the graph which may be empty or partially built on first boot
     // TODO: agent fills assertion
   });

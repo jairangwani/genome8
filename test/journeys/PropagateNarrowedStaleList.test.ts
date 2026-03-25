@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("PropagateNarrowedStaleList", () => {
   it("step 1: events/ReadEventFile reads the incoming event file from the changed dependency", () => {
     // Node: events/ReadEventFile (process)
@@ -24,7 +26,7 @@ describe("PropagateNarrowedStaleList", () => {
   });
 
   it("step 4: graph/CompiledIndex provides the full graph for cross-reference tracing", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full graph for cross-reference tracing
     // TODO: agent fills assertion
   });

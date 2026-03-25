@@ -1,5 +1,5 @@
 engine: genome8
-version_hash: sha256:3fac18f704364b040db103148dcab488d7f93ccc9415009c4d547621ebd3f16d
+version_hash: sha256:6e1bc3867a252899a80719ebf58a531731d550972337da581fd6f3d055e1af92
 provides:
   actors/DiscoverFromActivities:
     type: process
@@ -242,7 +242,7 @@ provides:
   audit/AuditFindingsList:
     type: artifact
     description: the collected list of coverage gaps from all 3 auditors with gap type, location, and description
-    in_journeys: 16
+    in_journeys: 19
   audit/SpecCoverageReport:
     type: artifact
     description: auditor 1's report listing which spec sections are covered and which have no representation in the graph
@@ -260,7 +260,7 @@ provides:
     description: >-
       records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking and termination
       decisions
-    in_journeys: 12
+    in_journeys: 13
   audit/ExactlyThreeAuditors:
     type: rule
     description: depth audit always uses exactly 3 auditors checking spec coverage, actor coverage, and cross-module coverage
@@ -278,7 +278,7 @@ provides:
     description: >-
       audit-fix-reaudit cycles are capped at a maximum number of rounds to prevent infinite loops when gaps cannot be
       resolved
-    in_journeys: 2
+    in_journeys: 3
   codegen/ReadConvergedGraph:
     type: process
     description: >-
@@ -398,23 +398,23 @@ provides:
   compilation/YAMLParsing:
     type: process
     description: reads raw YAML module files from disk and parses them into structured data
-    in_journeys: 11
+    in_journeys: 16
   compilation/DuplicateDetection:
     type: process
     description: scans the node registry for duplicate node names across all modules
-    in_journeys: 6
+    in_journeys: 9
   compilation/DanglingRefDetection:
     type: process
     description: checks every journey step node reference and flags those that resolve to no known node
-    in_journeys: 9
+    in_journeys: 11
   compilation/OrphanDetection:
     type: process
     description: identifies nodes that are defined but never referenced in any journey step
-    in_journeys: 6
+    in_journeys: 8
   compilation/IsolatedModuleDetection:
     type: process
     description: finds modules whose nodes have zero connections to nodes in any other module
-    in_journeys: 5
+    in_journeys: 6
   compilation/ExternalRefClassification:
     type: process
     description: classifies unresolved refs as external sibling-engine references and emits warnings instead of errors
@@ -422,11 +422,11 @@ provides:
   compilation/YAMLErrorReporting:
     type: process
     description: catches and reports YAML syntax errors with file name and line number for each malformed module
-    in_journeys: 9
+    in_journeys: 12
   compilation/ValidationAggregation:
     type: process
     description: collects all errors and warnings from all validation checks into a single compilation result
-    in_journeys: 6
+    in_journeys: 9
   compilation/IncrementalValidation:
     type: process
     description: >-
@@ -444,15 +444,55 @@ provides:
     description: >-
       checks that every module listed in ORGANIZATION.md exists as a compiled module in the index, ensuring no module
       was missed during bounded creation
-    in_journeys: 5
+    in_journeys: 6
+  compilation/StaleConnectionDetection:
+    type: process
+    description: >-
+      validates that every edge in the ConnectionSet has both source and target nodes present in the NodeRegistry,
+      catching connections left stale after node removal or module rewrite
+    in_journeys: 6
+  compilation/CompilationResultComparison:
+    type: process
+    description: >-
+      compares two CompilationResults or CompiledIndexes field by field for structural equality, flagging any
+      differences as non-determinism or merge-order drift
+    in_journeys: 4
+  compilation/ParallelValidationDispatch:
+    type: process
+    description: >-
+      dispatches independent validation checks (duplicates, dangling refs, orphans, isolation, stale connections)
+      concurrently on the same CompiledIndex and collects their ErrorReports when all complete
+    in_journeys: 2
+  compilation/DirtyModuleTracking:
+    type: process
+    description: >-
+      tracks which modules changed since the last successful compilation and identifies their cross-module dependents,
+      enabling targeted revalidation instead of full recompilation
+    in_journeys: 1
+  compilation/SchemaViolationDetection:
+    type: process
+    description: >-
+      validates each parsed module file has the required top-level structure (spec_sections as number array, nodes as
+      map, journeys as map) before content parsing proceeds
+    in_journeys: 6
+  compilation/FieldLossDetection:
+    type: process
+    description: >-
+      compares a module file before and after an LLM rewrite to detect any fields (including extension fields like
+      files) that were silently dropped during the edit
+    in_journeys: 4
+  compilation/ValidateDescriptionQuality:
+    type: process
+    description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions
+    in_journeys: 2
   compilation/CompilationResult:
     type: artifact
     description: the output of compile.ts containing error count, warning count, orphan list, duplicate list, and dangling ref list
-    in_journeys: 48
+    in_journeys: 68
   compilation/ErrorReport:
     type: artifact
     description: structured list of all validation errors with type, location, and message for each
-    in_journeys: 15
+    in_journeys: 38
   compilation/WarningReport:
     type: artifact
     description: structured list of all warnings including external refs that parent will validate later
@@ -465,6 +505,22 @@ provides:
     type: rule
     description: convergence requires compile.ts to report exactly 0 errors and 0 orphans before proceeding
     in_journeys: 8
+  compilation/DeterministicOrdering:
+    type: rule
+    description: >-
+      all output lists in CompilationResult, ErrorReport, and WarningReport are sorted by a canonical key (module name,
+      then node name, then journey name) so file system read order and check execution order never affect the output
+    in_journeys: 3
+  compilation/EarlyTerminationRule:
+    type: rule
+    description: >-
+      halts remaining validation checks when accumulated error count exceeds a configurable threshold, returning the
+      partial result immediately to avoid wasted work on a clearly failing compilation
+    in_journeys: 2
+  compilation/ValidateActionQuality:
+    type: process
+    description: checks that every journey step has a meaningful action description, flagging steps with empty or too-short actions
+    in_journeys: 1
   compilation/ExternalRefsAreWarnings:
     type: rule
     description: unresolved refs to sibling engines are warnings in children, errors only at parent level
@@ -472,11 +528,11 @@ provides:
   convergence/ReadSpec:
     type: process
     description: reads spec.md from disk as the sole human input to the convergence pipeline
-    in_journeys: 10
+    in_journeys: 13
   convergence/WriteOrganization:
     type: process
     description: delegates to LLM to analyze the spec and write ORGANIZATION.md with modules, dependencies, and independence
-    in_journeys: 3
+    in_journeys: 4
   convergence/DiscoverActors:
     type: process
     description: delegates to LLM to discover actors from 3 angles (activities, threats, lifecycle) and write _actors.yaml
@@ -484,39 +540,39 @@ provides:
   convergence/HierarchyDecision:
     type: process
     description: delegates to LLM to decide whether the module set should split into child engines based on independence analysis
-    in_journeys: 6
+    in_journeys: 7
   convergence/ModuleCreation:
     type: process
     description: iterates over modules from ORGANIZATION.md, making one LLM call per module with compile between each
-    in_journeys: 10
+    in_journeys: 11
   convergence/BoundedCreationLoop:
     type: process
     description: creates modules in build-order rounds, compiling after each to catch errors before the next module
-    in_journeys: 12
+    in_journeys: 15
   convergence/CompileCheck:
     type: process
     description: invokes compile.ts after each module creation and after all modules to verify 0 errors and 0 orphans
-    in_journeys: 17
+    in_journeys: 27
   convergence/TargetedAudit:
     type: process
     description: dispatches 3 auditors to check spec coverage, actor coverage, and cross-module coverage after compilation passes
-    in_journeys: 7
+    in_journeys: 10
   convergence/AuditGapFix:
     type: process
     description: takes audit findings and makes targeted LLM calls to fix specific coverage gaps without re-creating from scratch
-    in_journeys: 11
+    in_journeys: 12
   convergence/RecompileAfterFix:
     type: process
     description: runs compile.ts again after audit fixes to verify the fixes did not introduce new errors
-    in_journeys: 6
+    in_journeys: 8
   convergence/ReauditAfterFix:
     type: process
     description: runs targeted audit again after successful recompile to verify gaps are closed
-    in_journeys: 3
+    in_journeys: 4
   convergence/TriggerPublish:
     type: process
     description: invokes publish.ts to generate interface.yaml and changelog.yaml after convergence is confirmed
-    in_journeys: 9
+    in_journeys: 13
   convergence/TriggerCodegen:
     type: process
     description: invokes codegen.ts to generate TypeScript skeletons from the converged graph
@@ -536,25 +592,25 @@ provides:
   convergence/EnterSleepMode:
     type: process
     description: sets up fs.watch on event files and enters zero-cost sleep until a change event arrives
-    in_journeys: 5
+    in_journeys: 11
   convergence/WakeOnEvent:
     type: process
     description: wakes from sleep when fs.watch detects an event file change from a dependency
-    in_journeys: 2
+    in_journeys: 7
   convergence/TargetedReconvergence:
     type: process
     description: runs compile + audit on only the stale modules identified by sync, skipping full creation
-    in_journeys: 25
+    in_journeys: 35
   convergence/MapPerspectives:
     type: process
     description: >-
       identifies which perspectives are relevant to each module based on its content domain and assigns the bounded set
       of lenses
-    in_journeys: 2
+    in_journeys: 3
   convergence/ExamineFromPerspective:
     type: process
     description: delegates to LLM to examine a single module from a single perspective and add missing nodes and journeys
-    in_journeys: 3
+    in_journeys: 8
   convergence/RetryModuleCreation:
     type: process
     description: >-
@@ -564,15 +620,15 @@ provides:
   convergence/RollbackFailedFix:
     type: process
     description: reverts a module file to its pre-fix state when an audit fix introduced new compilation errors
-    in_journeys: 1
+    in_journeys: 3
   convergence/ResumePipeline:
     type: process
     description: reads ConvergenceState on startup to find the last completed pipeline step and resumes execution from that point
-    in_journeys: 2
+    in_journeys: 5
   convergence/DetectWorkerFailure:
     type: process
     description: detects when the LLM worker process has crashed or become unresponsive during a task
-    in_journeys: 5
+    in_journeys: 6
   convergence/RespawnWorker:
     type: process
     description: terminates the failed worker process and spawns a fresh one with the same task context
@@ -606,13 +662,13 @@ provides:
   convergence/SplitIntoChildEngines:
     type: process
     description: distributes modules to child engines and spawns independent convergence pipelines when hierarchy decides to split
-    in_journeys: 1
+    in_journeys: 3
   convergence/CollectChildResults:
     type: process
     description: >-
       waits for all child engines to converge and collects their published interfaces for parent-level cross-engine
       validation
-    in_journeys: 1
+    in_journeys: 2
   convergence/DetectSelfModification:
     type: process
     description: >-
@@ -633,14 +689,128 @@ provides:
     type: process
     description: checks that self-referential modules accurately describe the behavior of the running code they were generated from
     in_journeys: 5
+  convergence/DetectAuditCycleExhaustion:
+    type: process
+    description: >-
+      detects when audit-fix-reaudit cycles have reached the audit round limit without converging to zero gaps, halting
+      further audit cycles
+    in_journeys: 1
+  convergence/DetectWakeOscillation:
+    type: process
+    description: >-
+      detects when the sleep-wake-reconverge-publish cycle has repeated beyond the oscillation threshold, suppressing
+      further wake responses
+    in_journeys: 2
+  convergence/DetectEnrichmentExhaustion:
+    type: process
+    description: >-
+      detects when a perspective enrichment pass has exhausted its retry budget after repeated compilation failures on
+      the same module-perspective pair
+    in_journeys: 1
+  convergence/DetectPipelineStall:
+    type: process
+    description: >-
+      detects when the overall pipeline has not made measurable forward progress across consecutive cycles, indicating a
+      stuck state requiring human intervention
+    in_journeys: 5
+  convergence/VerifyReconvergenceIdempotency:
+    type: process
+    description: >-
+      runs targeted reconvergence a second time on the same stale module set and compares the resulting graph against
+      the first pass to confirm no additional changes were introduced
+    in_journeys: 3
+  convergence/VerifyAuditDeterminism:
+    type: process
+    description: >-
+      runs the same 3 auditors twice on an identical compiled graph and compares the two sets of findings to detect
+      non-deterministic audit results from LLM-based auditors
+    in_journeys: 3
+  convergence/VerifyPublishDeterminism:
+    type: process
+    description: >-
+      runs publish twice on the same converged graph and compares the interface.yaml and changelog.yaml outputs
+      byte-for-byte to confirm deterministic publish output
+    in_journeys: 5
+  convergence/VerifyEnrichmentStability:
+    type: process
+    description: >-
+      re-examines an already-enriched module from the same perspective and verifies the LLM proposes no further
+      additions, confirming the enrichment reached a stable fixpoint
+    in_journeys: 5
+  convergence/VerifyConvergenceStateDeterminism:
+    type: process
+    description: >-
+      compares two ConvergenceState snapshots produced from identical spec inputs to confirm the pipeline produces
+      deterministic end states regardless of timing or execution order
+    in_journeys: 5
+  convergence/ParallelModuleCreation:
+    type: process
+    description: >-
+      identifies modules at the same dependency depth that have no dependencies on each other and dispatches their
+      creation to separate workers concurrently, compiling after each batch completes
+    in_journeys: 5
+  convergence/ParallelPerspectiveEnrichment:
+    type: process
+    description: >-
+      identifies independent module-perspective pairs that touch no overlapping modules and dispatches their enrichment
+      to separate workers concurrently, compiling after each batch completes
+    in_journeys: 3
+  convergence/ChunkLargeSpec:
+    type: process
+    description: >-
+      splits a spec that exceeds the LLM context limit into overlapping sections with shared context headers so each
+      chunk can be processed independently while preserving cross-section references
+    in_journeys: 4
+  convergence/ThrottleWakeEvents:
+    type: process
+    description: >-
+      limits the number of concurrent wake-reconverge cycles when many dependencies publish events simultaneously,
+      queuing excess events for sequential processing after the current batch
+    in_journeys: 5
+  convergence/ValidateConvergenceStateIntegrity:
+    type: process
+    description: >-
+      reads the ConvergenceState file on startup and validates its structure including required fields, valid phase
+      values, and consistent module lists before the pipeline trusts it
+    in_journeys: 7
+  convergence/RecoverFromCorruptState:
+    type: process
+    description: >-
+      rebuilds ConvergenceState from disk artifacts when the state file is missing, corrupted, or structurally invalid
+      by scanning existing module files, compilation results, and published interfaces
+    in_journeys: 5
+  convergence/DetectPartialModuleWrite:
+    type: process
+    description: >-
+      scans module YAML files on disk for truncation or structural damage such as missing required fields or broken YAML
+      syntax that could result from a crash during a write operation
+    in_journeys: 6
+  convergence/RecoverSleepWatcher:
+    type: process
+    description: >-
+      detects that the fs.watch file watcher has stopped firing events by using a periodic heartbeat check and restarts
+      the watcher to ensure the box does not silently stop monitoring dependency changes
+    in_journeys: 5
+  convergence/RecoverFromChildEngineCrash:
+    type: process
+    description: >-
+      detects when a child engine process has crashed during a hierarchy split and restarts the child from its scoped
+      spec and last known module state or escalates to the parent for manual review
+    in_journeys: 4
+  convergence/ConcurrentChildLimit:
+    type: rule
+    description: >-
+      caps the number of child engine processes that can run simultaneously during hierarchy splits, queuing remaining
+      children until a running child completes
+    in_journeys: 3
   convergence/SpecFile:
     type: artifact
     description: the spec.md file written by the ProjectOwner as the sole human input
-    in_journeys: 6
+    in_journeys: 8
   convergence/ConvergenceState:
     type: artifact
     description: tracks current pipeline step, completed modules, audit results, and convergence status
-    in_journeys: 91
+    in_journeys: 133
   convergence/StagingDirectory:
     type: artifact
     description: temporary directory holding generated code that will replace the running code after tests pass
@@ -648,7 +818,7 @@ provides:
   convergence/ConvergenceCLI:
     type: interface
     description: command-line interface to trigger and monitor the convergence pipeline
-    in_journeys: 4
+    in_journeys: 8
   convergence/CodeOrchestratesLLMCreates:
     type: rule
     description: code decides WHEN to act, LLM only creates content when explicitly asked by code
@@ -660,11 +830,11 @@ provides:
   convergence/NeverOpenEndedLoop:
     type: rule
     description: LLM is never asked open-ended questions in a loop — bounded creation plus targeted fixes only
-    in_journeys: 3
+    in_journeys: 10
   convergence/DataDecidesWhenToStop:
     type: rule
     description: no hardcoded limits on module count or audit rounds — the data determines convergence
-    in_journeys: 5
+    in_journeys: 6
   convergence/OnlyHumanInputIsSpec:
     type: rule
     description: spec.md is the only human-written input, everything else is auto-generated
@@ -672,7 +842,7 @@ provides:
   convergence/BoundedRetryRule:
     type: rule
     description: retry attempts for any single module creation or fix are capped to prevent infinite retry loops
-    in_journeys: 5
+    in_journeys: 7
   convergence/AllPhasesCompleteRule:
     type: rule
     description: >-
@@ -683,6 +853,12 @@ provides:
     type: rule
     description: generated code must be staged and tested before replacing the running pipeline code — never overwrite in place
     in_journeys: 1
+  convergence/ReconvergenceDepthLimit:
+    type: rule
+    description: >-
+      enforces a maximum nesting depth for targeted reconvergence chains to prevent unbounded
+      reconvergence-triggers-reconvergence loops
+    in_journeys: 2
   events/RegisterEventWatchers:
     type: process
     description: sets up fs.watch on each dependency's event file directory to monitor for new publish events
@@ -690,19 +866,19 @@ provides:
   events/DetectEventFileChange:
     type: process
     description: receives a filesystem notification from fs.watch when an event file is created or modified
-    in_journeys: 11
+    in_journeys: 17
   events/ReadEventFile:
     type: process
     description: reads the contents of the changed event file to determine which dependency published and what changed
-    in_journeys: 20
+    in_journeys: 31
   events/DelegateToSync:
     type: process
     description: passes the event data to sync.ts to check dependency hashes and find affected modules
-    in_journeys: 11
+    in_journeys: 20
   events/EnterSleep:
     type: process
     description: suspends the engine process after all watchers are registered, consuming zero CPU until an event arrives
-    in_journeys: 9
+    in_journeys: 13
   events/WakeFromSleep:
     type: process
     description: resumes the engine process when fs.watch fires a callback, transitioning from sleep to active processing
@@ -714,7 +890,7 @@ provides:
   events/DebounceEvents:
     type: process
     description: batches rapid successive events into a single sync trigger to avoid redundant reconvergence
-    in_journeys: 11
+    in_journeys: 17
   events/PropagateRipple:
     type: process
     description: after this box reconverges and republishes, its own event file triggers watchers in downstream dependents
@@ -724,13 +900,13 @@ provides:
     description: >-
       checks that the event file contains valid JSON with required fields including interface hash, sequence number,
       origin chain, and changelog before passing to sync
-    in_journeys: 9
+    in_journeys: 18
   events/LogEventReceived:
     type: process
     description: >-
       records the received event with timestamp, source dependency, sequence number, and disposition into the event log
       for observability
-    in_journeys: 19
+    in_journeys: 26
   events/UpdateWatcherAfterDependencyChange:
     type: process
     description: >-
@@ -760,7 +936,7 @@ provides:
     description: >-
       catches validation failures when the event file exists but contains malformed JSON, missing required fields, or
       unparseable values and produces a structured error
-    in_journeys: 4
+    in_journeys: 5
   events/ReregisterCrashedWatcher:
     type: process
     description: >-
@@ -778,13 +954,13 @@ provides:
     description: >-
       records event processing failures with error type, source dependency, failing step, and stack trace into the event
       log for diagnosis
-    in_journeys: 7
+    in_journeys: 10
   events/RetryEventProcessing:
     type: process
     description: >-
       re-reads and re-processes a failed event file after a brief delay, attempting recovery before escalating to
       convergence
-    in_journeys: 2
+    in_journeys: 3
   events/ExtractOriginChain:
     type: process
     description: >-
@@ -796,7 +972,7 @@ provides:
     description: >-
       reads the event sequence number from the validated event payload and makes it available for ordering and dedup
       checks by sync before delegation
-    in_journeys: 4
+    in_journeys: 6
   events/SuppressUnchangedRipple:
     type: process
     description: >-
@@ -832,12 +1008,72 @@ provides:
     description: >-
       when a debounce batch contains many events, sorts them by the number of local modules each dependency affects so
       the highest-impact changes are processed first
-    in_journeys: 4
+    in_journeys: 5
   events/StreamLargeEventPayload:
     type: process
     description: >-
       reads oversized event files in a streaming fashion rather than loading the full content into memory, extracting
       only the required hash, sequence, origin chain, and changelog fields
+    in_journeys: 4
+  events/CrossCheckEventHashAgainstInterface:
+    type: process
+    description: >-
+      fetches the dependency's actual interface.yaml from disk and compares its hash against the hash claimed in the
+      event payload to detect stale or spoofed events
+    in_journeys: 2
+  events/DetectDuplicateEventSequence:
+    type: process
+    description: >-
+      compares the incoming event's sequence number against the last-processed sequence for that dependency and
+      suppresses the event if the sequence was already processed
+    in_journeys: 2
+  events/DetectMissedEventSequenceGap:
+    type: process
+    description: >-
+      compares the incoming event's sequence number against the last-processed sequence for that dependency and flags a
+      gap when numbers are not consecutive
+    in_journeys: 2
+  events/DetectPartiallyWrittenEventFile:
+    type: process
+    description: >-
+      checks that the event file is complete by verifying it ends with valid JSON closure and its byte length matches
+      the content-length header if present before parsing
+    in_journeys: 3
+  events/ValidateEventHashFormat:
+    type: process
+    description: >-
+      enforces that the interface hash field in the event payload is a non-empty string matching the expected SHA256 hex
+      format before passing to sync
+    in_journeys: 3
+  events/ReadEventFilesInParallel:
+    type: process
+    description: >-
+      reads multiple event files concurrently with a configurable concurrency limit during batch processing to reduce
+      total IO wait time when many dependencies change at once
+    in_journeys: 5
+  events/EnforceEventProcessingTimeout:
+    type: process
+    description: >-
+      applies a configurable deadline to the sync delegation and reconvergence cycle for a single event and cancels the
+      operation if the timeout is exceeded to prevent pipeline stalls
+    in_journeys: 3
+  events/ShedLowPriorityEventsUnderLoad:
+    type: process
+    description: >-
+      drops lowest-impact events from the processing queue when the pending event count exceeds a backpressure threshold
+      to maintain system responsiveness during sustained cascading ripples
+    in_journeys: 3
+  events/PartitionEventsByDependencySubgraph:
+    type: process
+    description: >-
+      groups batched events into independent partitions based on which local modules they affect so that unrelated
+      partitions can be processed concurrently without conflicting stale marks
+    in_journeys: 3
+  events/SpillBatchPayloadsToDisk:
+    type: process
+    description: >-
+      writes excess parsed event payloads to temporary disk storage when the in-memory batch exceeds a configurable
+      payload count threshold and reads them back during sync delegation
     in_journeys: 4
   events/EventWatcherSet:
     type: artifact
@@ -846,13 +1082,13 @@ provides:
   events/EventPayload:
     type: artifact
     description: the parsed content of an event file containing the source box, timestamp, and changed interface hash
-    in_journeys: 8
+    in_journeys: 13
   events/EventLog:
     type: artifact
     description: >-
       append-only log of all received events with timestamps, source boxes, sequence numbers, and disposition for
       observability and debugging
-    in_journeys: 20
+    in_journeys: 30
   events/EventDrivenNotPolling:
     type: rule
     description: event detection uses fs.watch callbacks only, never periodic polling or timer-based checks
@@ -866,7 +1102,7 @@ provides:
   events/OscillationCooldown:
     type: rule
     description: prevents infinite ripple by suppressing re-trigger if the same dependency fires again within a cooldown window
-    in_journeys: 6
+    in_journeys: 8
   events/MaxRetryExceeded:
     type: rule
     description: >-
@@ -891,52 +1127,58 @@ provides:
       enforces a maximum number of concurrent fs.watch instances per box to prevent file descriptor exhaustion on boxes
       with many dependencies
     in_journeys: 2
+  events/EventBackpressureThreshold:
+    type: rule
+    description: >-
+      enforces a maximum number of pending events in the processing queue and triggers load shedding when exceeded to
+      prevent memory exhaustion and pipeline stalls during cascading ripples
+    in_journeys: 1
   excerpt/SelectTargetModule:
     type: process
     description: identifies which module to generate an excerpt for based on the current convergence step
-    in_journeys: 20
+    in_journeys: 36
   excerpt/CollectLocalNodes:
     type: process
     description: gathers all nodes defined within the target module from the compiled index
-    in_journeys: 12
+    in_journeys: 20
   excerpt/CollectLocalJourneys:
     type: process
     description: gathers all journeys defined within the target module from the compiled index
-    in_journeys: 12
+    in_journeys: 19
   excerpt/CollectCrossModuleConnections:
     type: process
     description: finds all connections where one endpoint is in the target module and the other is in a different module
-    in_journeys: 13
+    in_journeys: 19
   excerpt/CollectReferencedActors:
     type: process
     description: finds all _actors/ references used in the target module's journeys
-    in_journeys: 5
+    in_journeys: 6
   excerpt/CollectWarnings:
     type: process
     description: gathers all compilation warnings relevant to the target module including external refs and orphans
-    in_journeys: 5
+    in_journeys: 11
   excerpt/AssembleExcerpt:
     type: process
     description: combines local nodes, journeys, cross-module connections, actors, and warnings into a single focused output
-    in_journeys: 21
+    in_journeys: 41
   excerpt/TruncateToLimit:
     type: process
     description: trims the assembled excerpt to approximately 200 lines while preserving completeness of each section
-    in_journeys: 12
+    in_journeys: 22
   excerpt/CollectModuleSource:
     type: process
     description: reads the target module's raw YAML file content for inclusion in the YOUR FILE section of the excerpt
-    in_journeys: 5
+    in_journeys: 7
   excerpt/CollectGlobalStats:
     type: process
     description: >-
       gathers global compilation statistics including total nodes, journeys, connections, orphan count, and duplicate
       count
-    in_journeys: 3
+    in_journeys: 4
   excerpt/CollectAllModuleSummaries:
     type: process
     description: gathers one-line summaries for every module showing node count, journey count, and cross-module connection count
-    in_journeys: 3
+    in_journeys: 5
   excerpt/CollectTriggeredByActors:
     type: process
     description: identifies which actors trigger journeys in the target module by scanning journey first-steps for actor references
@@ -946,7 +1188,7 @@ provides:
     description: >-
       ranks cross-module connections by relevance when the full set exceeds the budget, keeping direct dependencies and
       demoting distant transitive connections
-    in_journeys: 2
+    in_journeys: 3
   excerpt/SummarizeLargeModuleSource:
     type: process
     description: >-
@@ -958,45 +1200,165 @@ provides:
     description: >-
       when there are many modules, abbreviates the ALL MODULES section to show directly-connected modules in full detail
       and group the rest into a count line
-    in_journeys: 0
+    in_journeys: 2
   excerpt/CacheExcerptByState:
     type: process
     description: >-
       caches generated excerpts keyed by module name and compiled index hash, serving cached results when the graph has
       not changed since last generation
-    in_journeys: 3
+    in_journeys: 6
   excerpt/InvalidateExcerptCache:
     type: process
     description: >-
       clears all cached excerpts when compilation produces a new compiled index, ensuring stale context is never served
       to workers
+    in_journeys: 3
+  excerpt/ValidateCrossModuleRefIntegrity:
+    type: process
+    description: >-
+      checks that every cross-module node reference included in the excerpt resolves to an actual node in the compiled
+      index, flagging dangling references to deleted or renamed nodes
+    in_journeys: 3
+  excerpt/ValidateExcerptCompleteness:
+    type: process
+    description: >-
+      checks that the assembled excerpt contains all mandatory sections for the target module, flagging missing local
+      nodes, journeys, or cross-module connections that exist in the compiled index but were not collected
+    in_journeys: 3
+  excerpt/DetectMissingModuleSource:
+    type: process
+    description: >-
+      detects when the target module's YAML file does not exist on disk or is empty, switching to a compiled-index-only
+      excerpt that omits the YOUR FILE section
     in_journeys: 2
+  excerpt/DetectStaleExcerptAtConsumption:
+    type: process
+    description: >-
+      compares the compiled index hash embedded in a cached excerpt against the current compiled index hash at the
+      moment a worker consumes it, detecting staleness from intervening graph changes
+    in_journeys: 3
+  excerpt/ValidateExcerptSectionOrder:
+    type: process
+    description: >-
+      checks that the assembled excerpt presents sections in the expected order so the LLM worker can parse it reliably,
+      flagging misordered or duplicated sections
+    in_journeys: 2
+  excerpt/CollectSpecSectionText:
+    type: process
+    description: >-
+      reads the spec document and extracts the full text of the sections listed in the target module's spec_sections
+      field, providing the authoritative spec content the module must cover
+    in_journeys: 9
+  excerpt/MapNodesToSpecConcepts:
+    type: process
+    description: >-
+      maps each node in the target module to the spec concepts it addresses by matching node descriptions against key
+      terms and requirements from the assigned spec sections
+    in_journeys: 3
+  excerpt/DetectUncoveredSpecConcepts:
+    type: process
+    description: >-
+      compares the set of spec concepts from the assigned sections against the mapped node coverage and identifies
+      concepts that have no corresponding node or journey in the module
+    in_journeys: 3
+  excerpt/ValidateSpecSectionBoundary:
+    type: process
+    description: >-
+      checks that the target module's nodes and journeys address only concepts from its assigned spec_sections, flagging
+      content that belongs to a different module's spec scope
+    in_journeys: 2
+  excerpt/CollectSpecCoverageMapping:
+    type: process
+    description: >-
+      assembles a compact traceability section showing which spec concepts are covered by which nodes and journeys, and
+      which concepts remain uncovered
+    in_journeys: 2
+  excerpt/SortCollectedItemsDeterministically:
+    type: process
+    description: >-
+      sorts all collected nodes, journeys, connections, actors, and warnings into a stable alphabetical order before
+      assembly, ensuring identical ordering across runs regardless of map iteration or filesystem enumeration order
+    in_journeys: 4
+  excerpt/VerifyExcerptReproducibility:
+    type: process
+    description: >-
+      generates the excerpt a second time from the same inputs and compares the two outputs byte-for-byte, detecting
+      non-determinism in the generation pipeline
+    in_journeys: 3
+  excerpt/DeduplicateCacheWrite:
+    type: process
+    description: >-
+      before writing a new excerpt to the cache, checks if an identical entry already exists at the same
+      module-plus-hash key and skips the write if the content matches, preventing redundant cache churn
+    in_journeys: 3
+  excerpt/DeterministicTruncationBoundary:
+    type: process
+    description: >-
+      when truncation must cut within a section, always cuts at the last complete entry boundary rather than at an
+      arbitrary line count, ensuring the same input always produces the same truncation point
+    in_journeys: 3
+  excerpt/NormalizeSpecSectionBoundaries:
+    type: process
+    description: >-
+      normalizes spec section boundary detection by trimming whitespace, standardizing heading formats, and using exact
+      section number matching, ensuring the same spec text is extracted regardless of minor formatting variations
+    in_journeys: 3
+  excerpt/BatchGenerateExcerpts:
+    type: process
+    description: >-
+      generates excerpts for multiple target modules in a single pass, sharing the compiled index lookup and global
+      stats collection across all targets instead of repeating them per module
+    in_journeys: 1
+  excerpt/CollapseDeepHierarchyConnections:
+    type: process
+    description: >-
+      when cross-module connections span multiple hierarchy levels, collapses transitive edges into summarized paths
+      showing the chain of boxes rather than listing every intermediate connection
+    in_journeys: 3
+  excerpt/SummarizeOversizedSpecSection:
+    type: process
+    description: >-
+      when a single spec section exceeds a line threshold, produces a condensed summary of key concepts and requirements
+      instead of including the full verbatim text in the excerpt
+    in_journeys: 3
+  excerpt/PrioritizeAndCompressWarnings:
+    type: process
+    description: >-
+      when a module has accumulated many warnings, groups them by type, keeps the highest-severity warnings in full
+      detail, and compresses the rest into count-per-type summaries to fit within budget
+    in_journeys: 3
+  excerpt/TrackExcerptGenerationCost:
+    type: process
+    description: >-
+      measures the wall-clock time and compiled index traversal count for each excerpt generation, logging metrics to
+      identify modules where generation is disproportionately expensive
+    in_journeys: 3
   excerpt/ExcerptOutput:
     type: artifact
     description: the final ~200 line focused context document for a single module
-    in_journeys: 27
+    in_journeys: 45
   excerpt/ExcerptLineLimit:
     type: rule
     description: each excerpt must be approximately 200 lines to provide focused context without overwhelming the LLM
-    in_journeys: 1
+    in_journeys: 2
   excerpt/LensRelevance:
     type: rule
     description: excerpt content is scoped to what is relevant for the target module, filtering out unrelated graph data
-    in_journeys: 5
+    in_journeys: 7
   excerpt/AdaptiveBudgetAllocation:
     type: rule
     description: >-
       the ~200 line budget is allocated dynamically across sections based on module complexity, giving more space to
       cross-module connections for highly-connected modules and more to source for complex modules
-    in_journeys: 2
+    in_journeys: 5
   graph/NodeDefinition:
     type: process
     description: defines a node with one of 5 universal types (actor, process, artifact, interface, rule) plus name and description
-    in_journeys: 7
+    in_journeys: 10
   graph/JourneyDefinition:
     type: process
     description: defines a journey as an ordered sequence of steps, each with a node reference and an action description
-    in_journeys: 8
+    in_journeys: 11
   graph/StepDefinition:
     type: process
     description: defines a single journey step binding a node reference to an action, forming a connection to the next step
@@ -1004,15 +1366,15 @@ provides:
   graph/ConnectionComputation:
     type: process
     description: derives directed connections between consecutive journey steps, building the edge set of the graph
-    in_journeys: 7
+    in_journeys: 10
   graph/CrossModuleRefResolution:
     type: process
     description: resolves node references that use module/NodeName syntax to link nodes across module boundaries
-    in_journeys: 6
+    in_journeys: 9
   graph/ActorRefResolution:
     type: process
     description: resolves actor references that use _actors/ActorName syntax to link shared actors into journeys
-    in_journeys: 5
+    in_journeys: 8
   graph/PublishedInterfaceDefinition:
     type: process
     description: defines what a box provides to other boxes as a versioned, hashable set of exported nodes and journeys
@@ -1023,46 +1385,88 @@ provides:
       merges a single newly created module into the existing compiled index, adding its nodes, journeys, and connections
       without full rebuild
     in_journeys: 3
+  graph/ConnectionDeduplication:
+    type: process
+    description: >-
+      merges duplicate directed edges that appear in multiple journeys into unique entries in the ConnectionSet while
+      preserving journey provenance
+    in_journeys: 3
+  graph/BatchMerge:
+    type: process
+    description: >-
+      merges multiple newly created modules into the compiled index in a single pass, deferring validation until all
+      modules are integrated
+    in_journeys: 1
+  graph/ScopedValidation:
+    type: process
+    description: >-
+      validates only the subgraph affected by a module change, checking rules against changed nodes and their
+      connections rather than the entire graph
+    in_journeys: 2
+  graph/PartialConnectionComputation:
+    type: process
+    description: >-
+      recomputes connections only for journeys containing nodes from a changed module, reusing cached connections for
+      unchanged journeys
+    in_journeys: 1
+  graph/FieldPreservation:
+    type: process
+    description: >-
+      preserves all YAML fields including unknown or extension fields when a module file is read, modified, and written
+      back, preventing silent data loss on round-trip
+    in_journeys: 5
+  graph/ModuleSchemaRule:
+    type: rule
+    description: >-
+      enforces that every module file must have the required top-level structure (spec_sections as number array, nodes
+      as a map of name to type+description, journeys as a map of name to steps array)
+    in_journeys: 7
   graph/NodeTypeSchema:
     type: rule
     description: enforces that every node must be exactly one of the 5 universal types (actor, process, artifact, interface, rule)
-    in_journeys: 7
+    in_journeys: 9
   graph/StepFormatRule:
     type: rule
     description: enforces that every journey step must have a node field and an action field, never flat strings
-    in_journeys: 6
+    in_journeys: 9
   graph/NoIsolationRule:
     type: rule
     description: every node must participate in at least one journey — no standalone nodes allowed in the graph
-    in_journeys: 5
+    in_journeys: 6
   graph/UniqueNodeNameRule:
     type: rule
     description: every node name must be unique across all modules — no two modules may define the same node name
-    in_journeys: 3
+    in_journeys: 4
   graph/AllRefsResolveRule:
     type: rule
     description: every node reference in every journey step must resolve to a defined node, actor, or cross-module target
-    in_journeys: 3
+    in_journeys: 4
+  graph/MinimumStepsRule:
+    type: rule
+    description: >-
+      enforces that every journey must have at least 2 steps, since a single-step journey produces no connections and
+      has no graph meaning
+    in_journeys: 1
   graph/ModuleFile:
     type: artifact
     description: a YAML file containing spec_sections, nodes, and journeys that defines one scoped piece of the graph
-    in_journeys: 17
+    in_journeys: 31
   graph/CompiledIndex:
     type: artifact
     description: the merged in-memory structure of all modules containing all nodes, journeys, and computed connections
-    in_journeys: 57
+    in_journeys: 80
   graph/ConnectionSet:
     type: artifact
     description: the set of directed edges derived from consecutive journey steps across all journeys
-    in_journeys: 16
+    in_journeys: 25
   graph/NodeRegistry:
     type: artifact
     description: the deduplicated map of all node names to their type and description across all modules
-    in_journeys: 7
+    in_journeys: 10
   graph/JourneyRegistry:
     type: artifact
     description: the collection of all journeys with their steps, used for connection computation and test generation
-    in_journeys: 5
+    in_journeys: 8
   hierarchy/AnalyzeModuleIndependence:
     type: process
     description: reads ORGANIZATION.md independence section to identify which module groups could form separate child engines
@@ -1080,7 +1484,7 @@ provides:
   hierarchy/GenerateScopedSpec:
     type: process
     description: writes a scoped spec.md for each child containing only the sections relevant to that child's module group
-    in_journeys: 4
+    in_journeys: 5
   hierarchy/DistributeSharedActors:
     type: process
     description: copies the parent's _actors.yaml into each child directory so all children inherit the same shared actors
@@ -1088,19 +1492,19 @@ provides:
   hierarchy/AssignModulesToChildren:
     type: process
     description: maps each module from ORGANIZATION.md to exactly one child engine based on the grouping decision
-    in_journeys: 6
+    in_journeys: 7
   hierarchy/SpawnChildEngine:
     type: process
     description: launches a child convergence.ts process for each child directory as an independent subprocess
-    in_journeys: 11
+    in_journeys: 15
   hierarchy/WaitForAllChildren:
     type: process
     description: blocks until every spawned child engine has completed its convergence and published its interface
-    in_journeys: 9
+    in_journeys: 13
   hierarchy/CollectChildInterfaces:
     type: process
     description: reads each child's published interface.yaml to gather their exported nodes and journeys
-    in_journeys: 9
+    in_journeys: 10
   hierarchy/CreateCrossEngineJourneys:
     type: process
     description: creates journeys at the parent level that connect nodes across different children's published interfaces
@@ -1108,7 +1512,7 @@ provides:
   hierarchy/ValidateCrossEngineRefs:
     type: process
     description: checks that all external refs in children (warnings) resolve to actual nodes in sibling child interfaces
-    in_journeys: 9
+    in_journeys: 10
   hierarchy/PromoteExternalRefsToErrors:
     type: process
     description: converts unresolved external refs from warnings to errors at the parent level where all children are visible
@@ -1262,37 +1666,37 @@ provides:
   llm/SpawnWorkerProcess:
     type: process
     description: launches a persistent Claude Code subprocess that stays alive for the duration of the convergence pipeline
-    in_journeys: 5
+    in_journeys: 16
   llm/InjectSystemPrompt:
     type: process
     description: >-
       sends the genome worker system prompt to the freshly spawned worker, establishing its role, YAML format rules, and
       operational constraints
-    in_journeys: 3
+    in_journeys: 10
   llm/SendTask:
     type: process
     description: sends a structured task to the worker process via stream-json protocol with prompt, context, and expected output
-    in_journeys: 16
+    in_journeys: 24
   llm/ReceiveResult:
     type: process
     description: reads the worker's streamed response, parsing the stream-json output into structured result data
-    in_journeys: 8
+    in_journeys: 10
   llm/BuildTaskContext:
     type: process
     description: >-
       assembles task-specific context from excerpt output, compiled state snapshot, and cross-module relationship data
       before packaging into the payload
-    in_journeys: 4
+    in_journeys: 8
   llm/ValidateWorkerOutput:
     type: process
     description: >-
       confirms the worker produced expected output by checking that files exist on disk, content is valid YAML or
       TypeScript, and task requirements are met
-    in_journeys: 4
+    in_journeys: 6
   llm/WriteFile:
     type: process
     description: worker uses its native Write tool to create or overwrite a file on disk
-    in_journeys: 5
+    in_journeys: 9
   llm/ReadFile:
     type: process
     description: worker uses its native Read tool to read file contents from disk
@@ -1312,15 +1716,15 @@ provides:
   llm/ShutdownWorker:
     type: process
     description: terminates the persistent worker process after all tasks are complete or on pipeline abort
-    in_journeys: 5
+    in_journeys: 9
   llm/DetectProcessExit:
     type: process
     description: monitors the worker subprocess and detects unexpected termination via non-zero exit code or signal
-    in_journeys: 3
+    in_journeys: 4
   llm/DetectStreamInterruption:
     type: process
     description: detects when stream-json data stops mid-response indicating a broken pipe or process death
-    in_journeys: 1
+    in_journeys: 2
   llm/DetectTaskTimeout:
     type: process
     description: fires when a task exceeds the maximum expected duration without producing a complete response
@@ -1332,11 +1736,11 @@ provides:
   llm/DrainPartialOutput:
     type: process
     description: reads any files written to disk and partial stream data the worker produced before the failure occurred
-    in_journeys: 5
+    in_journeys: 6
   llm/CleanupFailedSession:
     type: process
     description: tears down the broken worker session and closes the stream-json channel so a clean respawn can proceed
-    in_journeys: 5
+    in_journeys: 10
   llm/ScopeWritesToAllowedPaths:
     type: process
     description: >-
@@ -1382,7 +1786,7 @@ provides:
     description: >-
       truncates lower-priority context sections when the assembled task payload exceeds the maximum message size,
       preserving critical instructions and target module context
-    in_journeys: 1
+    in_journeys: 2
   llm/TrackCompactionCount:
     type: process
     description: >-
@@ -1394,23 +1798,113 @@ provides:
     description: >-
       shuts down the current worker and spawns a fresh instance when compaction count exceeds the quality threshold,
       before output quality visibly degrades
-    in_journeys: 0
+    in_journeys: 1
   llm/ReinjectSystemPromptAfterCompaction:
     type: process
     description: >-
       re-sends critical system prompt instructions to the worker after heavy compaction to prevent instruction drift
       from compressed context
-    in_journeys: 1
+    in_journeys: 2
   llm/PrioritizeContextByRelevance:
     type: process
     description: >-
       when the compiled index contains many modules, selects only the modules and connections most relevant to the
       current task for payload inclusion
+    in_journeys: 6
+  llm/DetectMalformedYAMLOutput:
+    type: process
+    description: >-
+      checks worker-produced YAML files for structural schema violations beyond basic parsing, including wrong node
+      types, flat string journey steps, missing spec_sections, and absent node or action fields in steps
     in_journeys: 5
+  llm/DetectEmptyWorkerResponse:
+    type: process
+    description: >-
+      detects when a worker completes a task without producing any output file or meaningful response, a silent failure
+      mode distinct from crash or timeout where the worker simply returns nothing
+    in_journeys: 2
+  llm/RetryTaskWithFeedback:
+    type: process
+    description: >-
+      resends the same task to the worker with the specific validation errors or failure details appended to the context
+      so the worker can self-correct without requiring a full respawn
+    in_journeys: 4
+  llm/ClassifyFailureType:
+    type: process
+    description: >-
+      examines a failure report and classifies it as crash, timeout, malformed output, empty response, scope violation,
+      or quality degradation to route to the appropriate recovery strategy
+    in_journeys: 6
+  llm/TrackTaskFailureRate:
+    type: process
+    description: >-
+      tracks the ratio of failed tasks to total tasks for the current worker session and signals when the failure rate
+      exceeds the quality threshold indicating the worker should be replaced
+    in_journeys: 5
+  llm/ManageWorkerPool:
+    type: process
+    description: >-
+      coordinates multiple concurrent worker processes during parallel creation or enrichment phases, tracking each
+      worker's assigned task, session state, and compaction counter independently
+    in_journeys: 6
+  llm/RouteTaskToAvailableWorker:
+    type: process
+    description: >-
+      selects an idle worker from the active pool for the next task or queues the task if all workers are busy, ensuring
+      even distribution across available workers
+    in_journeys: 2
+  llm/HandleLargeModuleFile:
+    type: process
+    description: >-
+      detects when a target module file exceeds the Read tool line limit and reads it in offset-based chunks,
+      reassembling the full content before including it in the worker's task context
+    in_journeys: 4
+  llm/EstimateTaskContextCost:
+    type: process
+    description: >-
+      estimates the token count of the next task payload against the worker's remaining context capacity and triggers
+      proactive worker replacement if the task would exhaust the context window
+    in_journeys: 3
+  llm/CleanupParallelWorker:
+    type: process
+    description: >-
+      shuts down and cleans up a single worker from the parallel pool after its assigned task completes, freeing
+      resources without affecting other active workers in the pool
+    in_journeys: 1
+  llm/DetectStaleWorkerProcess:
+    type: process
+    description: >-
+      sends a lightweight heartbeat probe to an existing worker subprocess and waits for acknowledgment, detecting
+      zombies and sleep-corrupted processes that are alive but unresponsive
+    in_journeys: 3
+  llm/RecoverFromSpawnFailure:
+    type: process
+    description: >-
+      handles failure to launch the Claude Code subprocess by checking prerequisites such as API key availability, CLI
+      binary existence, and disk space before retrying
+    in_journeys: 4
+  llm/ValidateWorkerHealthBeforeTask:
+    type: process
+    description: >-
+      performs a pre-dispatch liveness check on the worker by sending a no-op probe via the stream-json channel and
+      confirming a response within a short timeout
+    in_journeys: 3
+  llm/DetectOrphanWorkerProcess:
+    type: process
+    description: >-
+      scans for leftover Claude Code subprocesses from a previous convergence run that were not properly shut down,
+      identifying them by process name and working directory
+    in_journeys: 3
+  llm/ReestablishStreamChannel:
+    type: process
+    description: >-
+      tears down a stale or corrupted stream-json channel and opens a fresh one to the same worker process without
+      requiring a full process respawn
+    in_journeys: 2
   llm/StreamJsonProtocol:
     type: interface
     description: the stream-json communication protocol between convergence.ts and the Claude Code worker process
-    in_journeys: 7
+    in_journeys: 18
   llm/NativeToolSet:
     type: interface
     description: the set of native tools (Read, Write, Edit, Bash) available to the worker for file and shell operations
@@ -1418,33 +1912,33 @@ provides:
   llm/WorkerSession:
     type: artifact
     description: the persistent Claude Code process state including conversation history and compacted context
-    in_journeys: 7
+    in_journeys: 13
   llm/TaskPayload:
     type: artifact
     description: the structured input sent to the worker containing prompt, relevant context, and output expectations
-    in_journeys: 14
+    in_journeys: 19
   llm/TaskResult:
     type: artifact
     description: the structured output returned by the worker containing created content and tool call results
-    in_journeys: 8
+    in_journeys: 15
   llm/SystemPrompt:
     type: artifact
     description: >-
       the instruction template sent at initialization that defines the worker's genome role, YAML format rules, node
       types, step format, and operational constraints
-    in_journeys: 4
+    in_journeys: 9
   llm/CrashReport:
     type: artifact
     description: >-
       structured failure record containing exit code, last task payload, partial output collected, error details, and
       tool call history at time of failure
-    in_journeys: 6
+    in_journeys: 12
   llm/CompactionCounter:
     type: artifact
     description: >-
       tracks the number of compaction events, estimated context quality level, and total task count for the current
       worker session
-    in_journeys: 5
+    in_journeys: 11
   llm/AlwaysOpus:
     type: rule
     description: the worker always uses Opus model with 1M context window, no model selection or fallback
@@ -1464,7 +1958,7 @@ provides:
   llm/SingleWorkerConstraint:
     type: rule
     description: only one worker process may exist at a time, cleanup must fully complete before any respawn can begin
-    in_journeys: 2
+    in_journeys: 6
   llm/AllowedWritePaths:
     type: rule
     description: >-
@@ -1488,13 +1982,19 @@ provides:
     description: >-
       task payloads must not exceed the maximum message size and context is truncated by priority to meet the budget,
       preserving system prompt and target module above all else
-    in_journeys: 2
+    in_journeys: 3
   llm/ReplaceAfterNCompactions:
     type: rule
     description: >-
       worker is proactively replaced after N compaction events to maintain output quality rather than waiting for
       observable degradation
     in_journeys: 2
+  llm/ParallelWorkerPoolLimit:
+    type: rule
+    description: >-
+      caps the maximum number of concurrent worker processes during parallel creation or enrichment operations,
+      preventing host machine resource exhaustion from too many simultaneous Claude Code subprocesses
+    in_journeys: 1
   organization/ReadSpecFile:
     type: process
     description: reads spec.md from disk as the input for organizational analysis
@@ -1554,7 +2054,7 @@ provides:
     description: >-
       supplies each module's assigned spec_sections to the excerpt generator so workers know which spec sections are
       relevant to their module
-    in_journeys: 1
+    in_journeys: 5
   organization/HandleMissingSpecFile:
     type: process
     description: >-
@@ -1624,7 +2124,7 @@ provides:
   organization/OrganizationFile:
     type: artifact
     description: the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis
-    in_journeys: 10
+    in_journeys: 11
   organization/SpecSectionIndex:
     type: artifact
     description: the parsed index of spec sections with their numbers, used by modules to declare which sections they cover
@@ -1632,11 +2132,11 @@ provides:
   organization/ModuleList:
     type: artifact
     description: the list of identified modules with names and descriptions, consumed by convergence for module creation
-    in_journeys: 17
+    in_journeys: 19
   organization/DependencyGraph:
     type: artifact
     description: the directed graph of module dependencies defining the build order for module creation
-    in_journeys: 14
+    in_journeys: 15
   organization/IndependenceClassification:
     type: artifact
     description: the classification of each module's standalone capability, used by hierarchy for split decisions
@@ -1648,31 +2148,31 @@ provides:
   publish/CollectExportedNodes:
     type: process
     description: selects which nodes from the compiled index should be exported as the box's public interface
-    in_journeys: 9
+    in_journeys: 14
   publish/CollectExportedJourneys:
     type: process
     description: selects which journeys from the compiled index should be exported as the box's public interface
-    in_journeys: 9
+    in_journeys: 13
   publish/ComputeInterfaceHash:
     type: process
     description: computes a full SHA256 hash over the exported nodes and journeys to detect changes
-    in_journeys: 19
+    in_journeys: 26
   publish/ComparePreviousHash:
     type: process
     description: compares the new interface hash against the previously published hash to determine if anything changed
-    in_journeys: 13
+    in_journeys: 16
   publish/GenerateInterfaceYaml:
     type: process
     description: writes interface.yaml containing the exported nodes, journeys, and their SHA256 hash
-    in_journeys: 15
+    in_journeys: 22
   publish/GenerateChangelogYaml:
     type: process
     description: writes changelog.yaml describing what changed between the previous and current interface
-    in_journeys: 8
+    in_journeys: 12
   publish/WriteEventFile:
     type: process
     description: writes an event file to disk signaling that this box has published a new interface
-    in_journeys: 18
+    in_journeys: 23
   publish/SkipPublishIfUnchanged:
     type: process
     description: aborts the publish pipeline if the new hash matches the previous hash, avoiding unnecessary ripple
@@ -1682,13 +2182,13 @@ provides:
     description: >-
       writes the newly computed InterfaceHash to disk as the PreviousHash, ready for comparison on the next publish
       cycle
-    in_journeys: 7
+    in_journeys: 8
   publish/ComputeChangelogDiff:
     type: process
     description: >-
       diffs the previous exported content against the current exported content, identifying specifically which nodes and
       journeys were added, removed, or modified
-    in_journeys: 10
+    in_journeys: 13
   publish/ValidateExportedInterface:
     type: process
     description: >-
@@ -1698,7 +2198,7 @@ provides:
   publish/NotifyPublishComplete:
     type: process
     description: signals convergence that publish finished successfully and the pipeline can proceed to codegen and testgen
-    in_journeys: 7
+    in_journeys: 12
   publish/DetectWriteFailure:
     type: process
     description: >-
@@ -1716,13 +2216,13 @@ provides:
     description: >-
       validates the PreviousHash file is readable, valid hex, and the expected 64-character length, flagging corruption
       if any check fails
-    in_journeys: 2
+    in_journeys: 3
   publish/ReportPublishFailure:
     type: process
     description: >-
       builds a structured failure report with the failing step, error details, and partial state, then sends it to
       convergence for retry or abort decision
-    in_journeys: 5
+    in_journeys: 13
   publish/DetectRippleOscillation:
     type: process
     description: >-
@@ -1740,49 +2240,172 @@ provides:
     description: >-
       compares the new event file's interface hash against the last written event file and skips writing if the hash is
       identical
-    in_journeys: 3
+    in_journeys: 4
   publish/EmbedChangelogInEvent:
     type: process
     description: >-
       embeds the changelog diff summary listing added, removed, and modified nodes and journeys into the event file so
       dependents can scope their reconvergence
-    in_journeys: 6
+    in_journeys: 7
   publish/SuppressNoOpRipple:
     type: process
     description: >-
       after reconvergence produces an interface hash identical to the pre-reconvergence hash, suppresses event file
       write to stop the ripple chain from propagating further
+    in_journeys: 5
+  publish/VerifyPublishedHashIntegrity:
+    type: process
+    description: >-
+      re-reads interface.yaml after write, recomputes SHA256 from the file content, and compares against the embedded
+      hash to detect silent corruption or partial write
     in_journeys: 4
+  publish/CanonicalizeHashInput:
+    type: process
+    description: >-
+      sorts exported nodes alphabetically by name and exported journeys alphabetically by name before hash computation
+      to guarantee identical content always produces identical hash regardless of collection order
+    in_journeys: 4
+  publish/CrossCheckEventInterfaceHash:
+    type: process
+    description: >-
+      after both event file and interface.yaml are written, reads the hash from each and verifies they are identical,
+      detecting divergence from non-atomic write sequences
+    in_journeys: 3
+  publish/ValidatePreviousHashBaseline:
+    type: process
+    description: >-
+      before hash comparison, reads the hash embedded in the current interface.yaml on disk and verifies it matches
+      PreviousHash, detecting baseline drift from crash between writes
+    in_journeys: 3
+  publish/ReconcileHashStateOnStartup:
+    type: process
+    description: >-
+      on startup or after crash recovery, reads PreviousHash file, interface.yaml embedded hash, and last event file
+      hash, and reconciles any disagreements to restore a consistent baseline
+    in_journeys: 5
+  publish/CanonicalizeChangelogDiffOutput:
+    type: process
+    description: >-
+      sorts added, removed, and modified lists in the changelog diff alphabetically by name so that identical diffs
+      always produce byte-identical changelog.yaml regardless of internal diff ordering
+    in_journeys: 3
+  publish/NormalizeEventTransientFields:
+    type: process
+    description: >-
+      strips or normalizes wall-clock timestamps and other transient fields from event file content before deduplication
+      comparison so re-runs on identical input are not falsely considered different
+    in_journeys: 3
+  publish/EnforceDeterministicYamlSerialization:
+    type: process
+    description: >-
+      enforces canonical YAML output for interface.yaml by using sorted keys, consistent quoting, and stable whitespace
+      so the same exported content always serializes to identical bytes
+    in_journeys: 3
+  publish/GuardSequenceCounterAgainstRetry:
+    type: process
+    description: >-
+      before incrementing EventSequenceCounter, reads the last event file and checks if its sequence number already
+      equals the expected next value, skipping the increment if this is a retry of an already-written event
+    in_journeys: 4
+  publish/VerifyPublishPipelineIdempotency:
+    type: process
+    description: >-
+      runs the full publish pipeline twice on the same compiled index and compares interface.yaml, changelog.yaml, and
+      normalized event content to confirm all outputs are byte-identical
+    in_journeys: 4
+  publish/DetectOrphanTempFiles:
+    type: process
+    description: >-
+      on cold start, scans the publish output directory for orphan temp files left by atomic write operations that
+      crashed between temp file creation and rename, and removes them to prevent disk accumulation
+    in_journeys: 3
+  publish/DetectPublishInterruptionPoint:
+    type: process
+    description: >-
+      after crash recovery, inspects the state of all publish artifacts on disk to determine exactly which pipeline step
+      was interrupted, classifying the state as pre-interface, post-interface-pre-changelog, post-changelog-pre-event,
+      post-event-pre-notification, or fully complete
+    in_journeys: 7
+  publish/RecoverMissedPublishNotification:
+    type: process
+    description: >-
+      detects that the event file on disk is newer than the last convergence-acknowledged publish, indicating the
+      process crashed after writing the event but before notifying convergence, and sends the missed notification
+      without re-running publish
+    in_journeys: 3
+  publish/RestoreSequenceCounterFromDisk:
+    type: process
+    description: >-
+      on cold start, reads the sequence number from the last event file on disk and restores the in-memory
+      EventSequenceCounter to that value so the next publish increments from the correct baseline
+    in_journeys: 3
+  publish/ResumePublishFromInterruptionPoint:
+    type: process
+    description: >-
+      given a detected interruption point, skips already-completed pipeline stages and resumes from the first incomplete
+      stage, reusing valid artifacts already on disk rather than regenerating them from scratch
+    in_journeys: 4
+  publish/ValidateInterfaceYamlSchema:
+    type: process
+    description: >-
+      validates the in-memory interface structure against the required schema before serialization, checking that hash
+      is a 64-char hex string, nodes is a non-empty map with type and description fields, and journeys is a map with
+      steps arrays
+    in_journeys: 5
+  publish/ValidateChangelogYamlSchema:
+    type: process
+    description: >-
+      validates the in-memory changelog structure against the required schema before serialization, checking that added,
+      removed, and modified are arrays where each entry has a name field and a type indicator
+    in_journeys: 4
+  publish/VerifyInterfaceYamlRoundTrip:
+    type: process
+    description: >-
+      after writing interface.yaml, parses the file back into an in-memory structure and compares each node and journey
+      field-by-field against the original export to detect silent data mangling by the YAML serializer
+    in_journeys: 4
+  publish/PreserveExtensionFieldsInInterface:
+    type: process
+    description: >-
+      when collecting nodes for export, copies all fields from the compiled index node entries including extension
+      fields like files, not just type and description, preventing silent metadata loss in the published interface
+    in_journeys: 3
+  publish/ValidateEventFileYamlParsability:
+    type: process
+    description: >-
+      after writing the event file, parses it back with a standard YAML parser and verifies all expected fields are
+      accessible including embedded changelog entries that may contain special YAML characters
+    in_journeys: 5
   publish/InterfaceYamlFile:
     type: artifact
     description: the published interface.yaml file containing exported nodes, journeys, and SHA256 hash for this box
-    in_journeys: 12
+    in_journeys: 20
   publish/ChangelogYamlFile:
     type: artifact
     description: the published changelog.yaml file describing what changed in the latest publish
-    in_journeys: 8
+    in_journeys: 10
   publish/InterfaceHash:
     type: artifact
     description: the SHA256 hash of the current interface content used for change detection by dependent boxes
-    in_journeys: 10
+    in_journeys: 16
   publish/PreviousHash:
     type: artifact
     description: the SHA256 hash from the last published interface, stored for comparison
-    in_journeys: 7
+    in_journeys: 10
   publish/EventSequenceCounter:
     type: artifact
     description: >-
       monotonically increasing integer embedded in each event file to allow dependents to detect out-of-order or
       duplicate events
-    in_journeys: 4
+    in_journeys: 6
   publish/EventFile:
     type: interface
     description: the event file written after publish that dependent boxes watch via fs.watch to trigger reconvergence
-    in_journeys: 14
+    in_journeys: 22
   publish/HashBasedChangeDetection:
     type: rule
     description: change detection uses full SHA256 hash comparison, not timestamp or file-size heuristics
-    in_journeys: 1
+    in_journeys: 2
   publish/PublishAfterConvergenceOnly:
     type: rule
     description: publish.ts only runs after convergence confirms 0 errors and 0 audit gaps
@@ -1792,7 +2415,7 @@ provides:
     description: >-
       all publish files are written atomically via write-to-temp-then-rename to prevent partial file corruption on crash
       or power loss
-    in_journeys: 1
+    in_journeys: 2
   publish/RippleDepthLimit:
     type: rule
     description: >-
@@ -1804,7 +2427,7 @@ provides:
     description: >-
       event sequence numbers must be monotonically increasing and dependents must ignore events with sequence number
       less than or equal to the last processed event
-    in_journeys: 1
+    in_journeys: 3
   publish/ChangelogScopedReconvergence:
     type: rule
     description: >-
@@ -1814,15 +2437,15 @@ provides:
   sync/ReadDependencyList:
     type: process
     description: reads the list of dependencies for a box from its configuration to know which interfaces to check
-    in_journeys: 16
+    in_journeys: 24
   sync/FetchDependencyHash:
     type: process
     description: reads the SHA256 hash from each dependency's published interface.yaml
-    in_journeys: 13
+    in_journeys: 19
   sync/CompareStoredHash:
     type: process
     description: compares each fetched dependency hash against the locally stored hash from the last sync
-    in_journeys: 16
+    in_journeys: 22
   sync/IdentifyStaleDependencies:
     type: process
     description: collects all dependencies whose hash has changed since the last sync
@@ -1830,15 +2453,15 @@ provides:
   sync/FindAffectedModules:
     type: process
     description: traces which local modules reference nodes from the changed dependencies and marks them as stale
-    in_journeys: 15
+    in_journeys: 22
   sync/MarkModulesStale:
     type: process
     description: writes stale markers on affected modules so targeted reconvergence knows which modules to reprocess
-    in_journeys: 12
+    in_journeys: 16
   sync/UpdateStoredHashes:
     type: process
     description: writes the new dependency hashes to local storage after successful reconvergence
-    in_journeys: 10
+    in_journeys: 17
   sync/SkipIfAllCurrent:
     type: process
     description: aborts the sync check early if all dependency hashes match, avoiding unnecessary work
@@ -1848,19 +2471,19 @@ provides:
     description: >-
       extracts the changelog summary, interface hash, ripple origin chain, and sequence number from the incoming event
       file
-    in_journeys: 6
+    in_journeys: 8
   sync/FilterUnrelatedChanges:
     type: process
     description: >-
       compares the changelog's changed node and journey names against local cross-module references and discards
       dependency changes that no local module references
-    in_journeys: 7
+    in_journeys: 9
   sync/ComputeStaleModuleCount:
     type: process
     description: >-
       counts the number of stale modules and records the count in the sync result for convergence logging and progress
       tracking
-    in_journeys: 5
+    in_journeys: 6
   sync/ValidateDependencyConfig:
     type: process
     description: >-
@@ -1884,7 +2507,7 @@ provides:
     description: >-
       aborts the entire sync pipeline when oscillation is detected, preventing reconvergence and republish that would
       perpetuate the cycle
-    in_journeys: 1
+    in_journeys: 2
   sync/AppendBoxToOriginChain:
     type: process
     description: >-
@@ -1902,25 +2525,133 @@ provides:
     description: >-
       rewrites the outgoing event's changelog to include only the changes that affected this box, preventing
       upstream-only changes from rippling further downstream
-    in_journeys: 7
+    in_journeys: 9
+  sync/VerifyHashAfterStore:
+    type: process
+    description: >-
+      re-reads stored hashes from DependencyHashStore after UpdateStoredHashes writes them and confirms the persisted
+      values match what was written, detecting silent write failures
+    in_journeys: 4
+  sync/CrossValidateEventHashWithFetchedHash:
+    type: process
+    description: >-
+      compares the interface hash embedded in the incoming event payload against the hash fetched directly from the
+      dependency's interface.yaml to detect race conditions or stale event data
+    in_journeys: 2
+  sync/DetectPartialHashUpdate:
+    type: process
+    description: >-
+      checks that all dependency hashes in a multi-dependency sync were successfully persisted after a batch write,
+      detecting partial writes from crashes or I/O errors
+    in_journeys: 2
+  sync/VerifyStalenessBeforeReconvergence:
+    type: process
+    description: >-
+      re-fetches dependency hashes immediately before reconvergence begins and confirms they still differ from stored
+      hashes, preventing reconvergence on already-reverted changes
+    in_journeys: 3
+  sync/EnforceDeterministicStaleOrder:
+    type: process
+    description: >-
+      sorts the stale module list into a canonical alphabetical order by module name before passing it to reconvergence,
+      ensuring re-runs produce the same processing sequence
+    in_journeys: 2
+  sync/GuardAgainstConcurrentSync:
+    type: process
+    description: >-
+      checks for an active sync lock before beginning a new sync cycle, preventing concurrent runs from mutating shared
+      state like DependencyHashStore and StaleModuleList simultaneously
+    in_journeys: 5
+  sync/VerifySyncIdempotency:
+    type: process
+    description: >-
+      after a sync cycle completes, re-runs the hash comparison and confirms it produces an empty stale list, verifying
+      the sync was effective and a re-run would be a no-op
+    in_journeys: 3
+  sync/CanonicalizeChangelogForNarrowing:
+    type: process
+    description: >-
+      sorts changelog entries into deterministic order by category then alphabetically by node or journey name before
+      narrowing, ensuring identical output regardless of input iteration order
+    in_journeys: 3
+  sync/FetchDependencyHashesConcurrently:
+    type: process
+    description: >-
+      fetches SHA256 hashes from multiple dependency interface.yaml files in parallel with a configurable concurrency
+      limit, reducing total fetch time for boxes with many dependencies
+    in_journeys: 3
+  sync/BatchMarkModulesStale:
+    type: process
+    description: >-
+      writes stale markers on all affected modules in a single batch operation instead of individual writes, reducing
+      I/O overhead when hundreds of modules are stale
+    in_journeys: 2
+  sync/ChunkAffectedModuleTracing:
+    type: process
+    description: >-
+      partitions the cross-module connection set into chunks and traces affected modules incrementally, preventing
+      memory exhaustion when the graph has thousands of edges
+    in_journeys: 4
+  sync/CheckRippleDepthLimit:
+    type: process
+    description: >-
+      reads the ripple depth from the origin chain length and compares it against a configured maximum, suppressing
+      propagation when the chain exceeds the depth limit to prevent cascade storms
+    in_journeys: 3
+  sync/DetectAndClearOrphanSyncLock:
+    type: process
+    description: >-
+      checks on startup whether a SyncLock exists from a previous crashed process, validates no sync is actually
+      running, and clears the stale lock to unblock new sync cycles
+    in_journeys: 3
+  sync/ScanForMissedEventsDuringSleep:
+    type: process
+    description: >-
+      on wake or restart, reads the current event file sequence numbers from all dependencies and compares them against
+      LastProcessedSequence to discover events that arrived while the process was not running
+    in_journeys: 4
+  sync/ValidateHashStoreIntegrityOnStartup:
+    type: process
+    description: >-
+      reads the DependencyHashStore file on cold start and validates its structural integrity including correct entry
+      count, valid SHA256 format for each hash, and no truncation from a prior crash
+    in_journeys: 3
+  sync/RecoverInterruptedStaleMarking:
+    type: process
+    description: >-
+      on startup, detects a partially-written StaleModuleList by comparing its entries against the current SyncResult
+      and re-derives the complete stale list from stored hashes to replace the incomplete one
+    in_journeys: 2
+  sync/ReconcileSequenceNumbersOnRestart:
+    type: process
+    description: >-
+      on restart after crash, compares each dependency's current event sequence number against the locally stored
+      LastProcessedSequence and fast-forwards to the latest sequence when the stored value is behind
+    in_journeys: 4
   sync/DependencyHashStore:
     type: artifact
     description: local storage of the last-known SHA256 hash for each dependency interface
-    in_journeys: 12
+    in_journeys: 24
   sync/StaleModuleList:
     type: artifact
     description: the list of local modules marked as stale due to dependency changes, consumed by targeted reconvergence
-    in_journeys: 10
+    in_journeys: 18
   sync/SyncResult:
     type: artifact
     description: the output of sync.ts containing changed dependencies, affected modules, and stale markers
-    in_journeys: 12
+    in_journeys: 28
   sync/LastProcessedSequence:
     type: artifact
     description: >-
       stores the last successfully processed event sequence number per dependency for detecting out-of-order or
       duplicate events
-    in_journeys: 8
+    in_journeys: 11
+  sync/SyncLock:
+    type: artifact
+    description: >-
+      a lock file or flag that indicates a sync cycle is in progress, consumed by GuardAgainstConcurrentSync to detect
+      and block overlapping sync runs
+    in_journeys: 5
   sync/HashMismatchMeansStale:
     type: rule
     description: any difference between stored and fetched hash means the dependency changed and affected modules are stale
@@ -1928,11 +2659,11 @@ provides:
   sync/TargetedNotFull:
     type: rule
     description: sync triggers targeted reconvergence on only the affected modules, never a full re-creation pipeline
-    in_journeys: 4
+    in_journeys: 5
   sync/SyncTriggeredByEvent:
     type: rule
     description: sync only runs in response to an event file change detected by fs.watch, never on a timer or polling loop
-    in_journeys: 2
+    in_journeys: 4
   sync/DiscardStaleEvent:
     type: rule
     description: >-
@@ -1945,6 +2676,18 @@ provides:
       if this box's ID appears in the ripple origin chain of an incoming event, sync must abort without marking any
       modules stale or triggering reconvergence
     in_journeys: 2
+  sync/EnforceAtomicHashUpdate:
+    type: rule
+    description: >-
+      requires that when multiple dependency hashes are updated in a single sync cycle, either all are persisted or none
+      are, preventing inconsistent stored state
+    in_journeys: 1
+  sync/DependencyFanOutLimit:
+    type: rule
+    description: >-
+      enforces a maximum number of dependencies a single box may declare, preventing sync from becoming unresponsive due
+      to excessive upstream watchers and hash fetches
+    in_journeys: 4
   testgen/ReadJourneySteps:
     type: process
     description: reads all journeys from the compiled index and extracts their ordered steps as the basis for test cases
@@ -2070,23 +2813,23 @@ provides:
   _actors/ProjectOwner:
     type: actor
     description: describes a project via spec.md and triggers convergence
-    in_journeys: 7
+    in_journeys: 13
   _actors/HumanDeveloper:
     type: actor
     description: reads, edits, and maintains modules and spec files directly
-    in_journeys: 6
+    in_journeys: 8
   _actors/LLMWorker:
     type: actor
     description: persistent Claude Code process that creates module content, fills code, and fills test assertions when asked
-    in_journeys: 86
+    in_journeys: 109
   _actors/Compiler:
     type: actor
     description: validates the graph by checking for duplicates, dangling refs, YAML errors, orphans, and isolated modules
-    in_journeys: 60
+    in_journeys: 101
   _actors/Auditor:
     type: actor
     description: LLM that checks coverage from a specific angle (spec, actor, or cross-module) and identifies gaps
-    in_journeys: 30
+    in_journeys: 39
   _actors/ParentEngine:
     type: actor
     description: >-
@@ -2100,11 +2843,11 @@ provides:
   _actors/DependentBox:
     type: actor
     description: a box that watches another box's event files via fs.watch and triggers targeted reconvergence on change
-    in_journeys: 14
+    in_journeys: 24
   _actors/FileSystem:
     type: actor
     description: the OS file system that delivers watch events, stores modules, and hosts event files for ripple propagation
-    in_journeys: 22
+    in_journeys: 36
   _actors/MaliciousSpecAuthor:
     type: actor
     description: injects prompt-injection or adversarial content into spec.md to manipulate LLM behavior during convergence

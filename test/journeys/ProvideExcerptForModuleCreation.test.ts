@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForModuleCreation", () => {
   it("step 1: convergence/ModuleCreation requests focused context for the next module to be created", () => {
     // Node: convergence/ModuleCreation (process)
@@ -18,7 +21,7 @@ describe("ProvideExcerptForModuleCreation", () => {
   });
 
   it("step 3: graph/CompiledIndex provides current graph state including all previously created modules", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides current graph state including all previously created modules
     // TODO: agent fills assertion
   });
@@ -54,7 +57,7 @@ describe("ProvideExcerptForModuleCreation", () => {
   });
 
   it("step 9: excerpt/AssembleExcerpt builds the focused context from relevant graph data", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds the focused context from relevant graph data
     // TODO: agent fills assertion
   });

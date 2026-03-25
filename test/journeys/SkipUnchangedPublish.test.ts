@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("SkipUnchangedPublish", () => {
   it("step 1: convergence/TriggerPublish invokes publish.ts after convergence", () => {
     // Node: convergence/TriggerPublish (process)
@@ -12,7 +14,7 @@ describe("SkipUnchangedPublish", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the compiled graph", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled graph
     // TODO: agent fills assertion
   });

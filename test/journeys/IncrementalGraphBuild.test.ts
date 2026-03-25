@@ -4,9 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("IncrementalGraphBuild", () => {
   it("step 1: graph/CompiledIndex provides the existing compiled graph before the new module", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the existing compiled graph before the new module
     // TODO: agent fills assertion
   });
@@ -72,7 +74,7 @@ describe("IncrementalGraphBuild", () => {
   });
 
   it("step 12: graph/CompiledIndex updated with the new module's content integrated into the full graph", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: updated with the new module's content integrated into the full graph
     // TODO: agent fills assertion
   });

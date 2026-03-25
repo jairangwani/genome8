@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("SafeCodegenForSelf", () => {
   it("step 1: convergence/ConvergenceState confirms convergence of a self-referential project where codegen will produce code that replaces the running pipeline", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -31,7 +33,7 @@ describe("SafeCodegenForSelf", () => {
   });
 
   it("step 5: codegen/ReadConvergedGraph extracts all nodes including those describing the pipeline itself", () => {
-    // Node: codegen/ReadConvergedGraph (process)
+    // Node: codegen/ReadConvergedGraph (process) — has code: src/codegen.ts
     // Action: extracts all nodes including those describing the pipeline itself
     // TODO: agent fills assertion
   });

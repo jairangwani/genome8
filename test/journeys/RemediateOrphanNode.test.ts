@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("RemediateOrphanNode", () => {
   it("step 1: _actors/Auditor identifies an orphan node that exists but appears in no journey", () => {
     // Node: _actors/Auditor (actor)
@@ -19,7 +21,7 @@ describe("RemediateOrphanNode", () => {
   });
 
   it("step 3: graph/CompiledIndex provides context about the orphan node's type, module, and neighboring nodes", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides context about the orphan node's type, module, and neighboring nodes
     // TODO: agent fills assertion
   });
@@ -61,7 +63,7 @@ describe("RemediateOrphanNode", () => {
   });
 
   it("step 10: graph/CompiledIndex updated with the orphan now connected through a journey", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: updated with the orphan now connected through a journey
     // TODO: agent fills assertion
   });

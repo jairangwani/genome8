@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("GenerateModuleExcerpt", () => {
   it("step 1: _actors/Compiler provides the compiled index with all nodes, journeys, and connections", () => {
     // Node: _actors/Compiler (actor)
@@ -13,7 +16,7 @@ describe("GenerateModuleExcerpt", () => {
   });
 
   it("step 2: graph/CompiledIndex supplies the full graph data for extraction", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: supplies the full graph data for extraction
     // TODO: agent fills assertion
   });
@@ -79,7 +82,7 @@ describe("GenerateModuleExcerpt", () => {
   });
 
   it("step 13: excerpt/AssembleExcerpt combines all collected sections into a structured excerpt document", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: combines all collected sections into a structured excerpt document
     // TODO: agent fills assertion
   });

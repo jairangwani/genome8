@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("VerifyGraphIntegrity", () => {
   it("step 1: _actors/Compiler initiates a full integrity check on the compiled graph", () => {
     // Node: _actors/Compiler (actor)
@@ -13,7 +15,7 @@ describe("VerifyGraphIntegrity", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the full graph for verification", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full graph for verification
     // TODO: agent fills assertion
   });

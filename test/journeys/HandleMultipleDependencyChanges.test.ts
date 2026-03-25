@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+// Implementation: src/types.ts
+
 describe("HandleMultipleDependencyChanges", () => {
   it("step 1: events/DebounceEvents batches multiple rapid event file changes into a single sync trigger", () => {
     // Node: events/DebounceEvents (process)
@@ -18,7 +21,7 @@ describe("HandleMultipleDependencyChanges", () => {
   });
 
   it("step 3: sync/ReadDependencyList reads the full dependency list for the box", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the full dependency list for the box
     // TODO: agent fills assertion
   });
@@ -54,7 +57,7 @@ describe("HandleMultipleDependencyChanges", () => {
   });
 
   it("step 9: graph/CompiledIndex provides the graph for tracing affected modules across all changed dependencies", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the graph for tracing affected modules across all changed dependencies
     // TODO: agent fills assertion
   });

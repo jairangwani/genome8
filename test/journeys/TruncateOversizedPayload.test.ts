@@ -4,9 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("TruncateOversizedPayload", () => {
   it("step 1: graph/CompiledIndex provides the full compiled state which may be very large for specs with many modules", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full compiled state which may be very large for specs with many modules
     // TODO: agent fills assertion
   });

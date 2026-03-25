@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/excerpt.ts
+
 describe("ProvideSpecSectionsForModuleCreation", () => {
   it("step 1: convergence/ModuleCreation is about to create a new module and needs to know its spec_sections", () => {
     // Node: convergence/ModuleCreation (process)
@@ -30,7 +32,7 @@ describe("ProvideSpecSectionsForModuleCreation", () => {
   });
 
   it("step 5: excerpt/AssembleExcerpt includes the relevant spec sections in the excerpt context for the LLM worker", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: includes the relevant spec sections in the excerpt context for the LLM worker
     // TODO: agent fills assertion
   });

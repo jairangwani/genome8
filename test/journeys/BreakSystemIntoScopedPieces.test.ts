@@ -5,6 +5,10 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
+// Implementation: src/compile.ts
+// Implementation: src/types.ts
+
 describe("BreakSystemIntoScopedPieces", () => {
   it("step 1: _actors/ProjectOwner writes spec.md describing a complex system that no single brain can hold", () => {
     // Node: _actors/ProjectOwner (actor)
@@ -13,7 +17,7 @@ describe("BreakSystemIntoScopedPieces", () => {
   });
 
   it("step 2: convergence/ReadSpec reads the spec as the sole human input to the pipeline", () => {
-    // Node: convergence/ReadSpec (process)
+    // Node: convergence/ReadSpec (process) — has code: src/convergence.ts
     // Action: reads the spec as the sole human input to the pipeline
     // TODO: agent fills assertion
   });
@@ -37,13 +41,13 @@ describe("BreakSystemIntoScopedPieces", () => {
   });
 
   it("step 6: compilation/YAMLParsing parses each module into structured node and journey data", () => {
-    // Node: compilation/YAMLParsing (process)
+    // Node: compilation/YAMLParsing (process) — has code: src/compile.ts
     // Action: parses each module into structured node and journey data
     // TODO: agent fills assertion
   });
 
   it("step 7: graph/CompiledIndex merges all scoped pieces into a single connected graph", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: merges all scoped pieces into a single connected graph
     // TODO: agent fills assertion
   });

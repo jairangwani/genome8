@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForPerspectiveEnrichment", () => {
   it("step 1: convergence/ExamineFromPerspective requests focused context for a perspective enrichment pass on a module", () => {
     // Node: convergence/ExamineFromPerspective (process)
@@ -18,7 +21,7 @@ describe("ProvideExcerptForPerspectiveEnrichment", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the full compiled graph with all current nodes and connections", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full compiled graph with all current nodes and connections
     // TODO: agent fills assertion
   });
@@ -72,7 +75,7 @@ describe("ProvideExcerptForPerspectiveEnrichment", () => {
   });
 
   it("step 12: excerpt/AssembleExcerpt combines all sections into a perspective-enrichment excerpt", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: combines all sections into a perspective-enrichment excerpt
     // TODO: agent fills assertion
   });

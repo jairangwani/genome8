@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("SendTaskToWorker", () => {
   it("step 1: _actors/LLMWorker is idle and waiting for the next task from the orchestrator", () => {
     // Node: _actors/LLMWorker (actor)
@@ -19,7 +21,7 @@ describe("SendTaskToWorker", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the current compiled state for cross-module reference context", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the current compiled state for cross-module reference context
     // TODO: agent fills assertion
   });

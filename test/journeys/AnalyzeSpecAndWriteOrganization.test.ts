@@ -5,9 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
+
 describe("AnalyzeSpecAndWriteOrganization", () => {
   it("step 1: convergence/ReadSpec triggers the organization step by reading spec.md", () => {
-    // Node: convergence/ReadSpec (process)
+    // Node: convergence/ReadSpec (process) — has code: src/convergence.ts
     // Action: triggers the organization step by reading spec.md
     // TODO: agent fills assertion
   });

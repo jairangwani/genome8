@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("ValidateAndConnectChildren", () => {
   it("step 1: _actors/ParentEngine all children have converged and published their interfaces", () => {
     // Node: _actors/ParentEngine (actor)
@@ -79,7 +81,7 @@ describe("ValidateAndConnectChildren", () => {
   });
 
   it("step 13: graph/CompiledIndex the parent compiled index now contains both parent-level and child-level nodes", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: the parent compiled index now contains both parent-level and child-level nodes
     // TODO: agent fills assertion
   });

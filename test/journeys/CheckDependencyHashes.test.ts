@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("CheckDependencyHashes", () => {
   it("step 1: _actors/DependentBox has received an event indicating a dependency may have changed", () => {
     // Node: _actors/DependentBox (actor)
@@ -13,7 +15,7 @@ describe("CheckDependencyHashes", () => {
   });
 
   it("step 2: sync/ReadDependencyList reads the box's dependency configuration to get the list of upstream boxes", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the box's dependency configuration to get the list of upstream boxes
     // TODO: agent fills assertion
   });

@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/cli.ts
+// Implementation: src/llm.ts
+
 describe("ResumeAfterCrash", () => {
   it("step 1: _actors/ProjectOwner restarts the convergence pipeline after a crash or interruption", () => {
     // Node: _actors/ProjectOwner (actor)
@@ -13,7 +16,7 @@ describe("ResumeAfterCrash", () => {
   });
 
   it("step 2: convergence/ConvergenceCLI receives the restart command", () => {
-    // Node: convergence/ConvergenceCLI (interface)
+    // Node: convergence/ConvergenceCLI (interface) — has code: src/cli.ts
     // Action: receives the restart command
     // TODO: agent fills assertion
   });
@@ -31,7 +34,7 @@ describe("ResumeAfterCrash", () => {
   });
 
   it("step 5: llm/SpawnWorkerProcess launches a fresh worker process to replace the one lost in the crash", () => {
-    // Node: llm/SpawnWorkerProcess (process)
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
     // Action: launches a fresh worker process to replace the one lost in the crash
     // TODO: agent fills assertion
   });

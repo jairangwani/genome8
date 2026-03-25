@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/llm.ts
+
 describe("RecoverFromWorkerCrashDuringFill", () => {
   it("step 1: llm/SendTask has sent a fill task to the LLM worker", () => {
     // Node: llm/SendTask (process)
@@ -55,7 +57,7 @@ describe("RecoverFromWorkerCrashDuringFill", () => {
   });
 
   it("step 9: llm/SpawnWorkerProcess launches a new worker process to replace the crashed one", () => {
-    // Node: llm/SpawnWorkerProcess (process)
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
     // Action: launches a new worker process to replace the crashed one
     // TODO: agent fills assertion
   });

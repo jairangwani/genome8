@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("UpdateWatchersAfterReconvergence", () => {
   it("step 1: convergence/TargetedReconvergence completes reconvergence which may have changed the dependency list", () => {
     // Node: convergence/TargetedReconvergence (process)
@@ -13,7 +15,7 @@ describe("UpdateWatchersAfterReconvergence", () => {
   });
 
   it("step 2: sync/ReadDependencyList reads the current dependency list after reconvergence", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the current dependency list after reconvergence
     // TODO: agent fills assertion
   });

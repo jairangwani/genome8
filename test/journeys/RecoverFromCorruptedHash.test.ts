@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("RecoverFromCorruptedHash", () => {
   it("step 1: publish/PreviousHash provides the hash file from disk for validation", () => {
     // Node: publish/PreviousHash (artifact)
@@ -30,7 +32,7 @@ describe("RecoverFromCorruptedHash", () => {
   });
 
   it("step 5: publish/GenerateInterfaceYaml proceeds to write interface.yaml since corrupted hash means change status is unknown", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: proceeds to write interface.yaml since corrupted hash means change status is unknown
     // TODO: agent fills assertion
   });

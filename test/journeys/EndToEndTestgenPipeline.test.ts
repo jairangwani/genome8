@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/testgen.ts
+
 describe("EndToEndTestgenPipeline", () => {
   it("step 1: codegen/ConfirmAllModulesFilled confirms all implementation files are ready from codegen", () => {
     // Node: codegen/ConfirmAllModulesFilled (process)
@@ -18,7 +21,7 @@ describe("EndToEndTestgenPipeline", () => {
   });
 
   it("step 3: graph/CompiledIndex provides all journeys for test skeleton generation", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides all journeys for test skeleton generation
     // TODO: agent fills assertion
   });
@@ -30,7 +33,7 @@ describe("EndToEndTestgenPipeline", () => {
   });
 
   it("step 5: testgen/GenerateTestFilePerJourney creates test skeletons for all journeys", () => {
-    // Node: testgen/GenerateTestFilePerJourney (process)
+    // Node: testgen/GenerateTestFilePerJourney (process) — has code: src/testgen.ts
     // Action: creates test skeletons for all journeys
     // TODO: agent fills assertion
   });

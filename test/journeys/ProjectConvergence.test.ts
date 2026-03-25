@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/cli.ts
+// Implementation: src/convergence.ts
+
 describe("ProjectConvergence", () => {
   it("step 1: _actors/ProjectOwner writes spec.md describing the project", () => {
     // Node: _actors/ProjectOwner (actor)
@@ -19,13 +22,13 @@ describe("ProjectConvergence", () => {
   });
 
   it("step 3: convergence/ConvergenceCLI receives the command to start convergence", () => {
-    // Node: convergence/ConvergenceCLI (interface)
+    // Node: convergence/ConvergenceCLI (interface) — has code: src/cli.ts
     // Action: receives the command to start convergence
     // TODO: agent fills assertion
   });
 
   it("step 4: convergence/ReadSpec reads spec.md from disk", () => {
-    // Node: convergence/ReadSpec (process)
+    // Node: convergence/ReadSpec (process) — has code: src/convergence.ts
     // Action: reads spec.md from disk
     // TODO: agent fills assertion
   });

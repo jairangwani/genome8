@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/excerpt.ts
+
 describe("AuditAuditsItself", () => {
   it("step 1: convergence/TargetedAudit dispatches auditors to check all modules including audit.yaml", () => {
     // Node: convergence/TargetedAudit (process)
@@ -37,7 +39,7 @@ describe("AuditAuditsItself", () => {
   });
 
   it("step 6: excerpt/AssembleExcerpt assembles the self-referential excerpt showing the audit module to the auditor", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: assembles the self-referential excerpt showing the audit module to the auditor
     // TODO: agent fills assertion
   });

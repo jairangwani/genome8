@@ -4,9 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("DetectDuplicates", () => {
   it("step 1: graph/CompiledIndex provides the full node registry for inspection", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full node registry for inspection
     // TODO: agent fills assertion
   });

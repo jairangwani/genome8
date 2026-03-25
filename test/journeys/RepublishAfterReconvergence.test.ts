@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/publish.ts
+
 describe("RepublishAfterReconvergence", () => {
   it("step 1: convergence/TargetedReconvergence completes targeted reconvergence on stale modules after an event", () => {
     // Node: convergence/TargetedReconvergence (process)
@@ -19,7 +22,7 @@ describe("RepublishAfterReconvergence", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the updated compiled graph", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the updated compiled graph
     // TODO: agent fills assertion
   });
@@ -73,7 +76,7 @@ describe("RepublishAfterReconvergence", () => {
   });
 
   it("step 12: publish/GenerateInterfaceYaml writes the updated interface.yaml", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the updated interface.yaml
     // TODO: agent fills assertion
   });

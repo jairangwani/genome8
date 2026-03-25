@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForAuditFix", () => {
   it("step 1: convergence/AuditGapFix requests focused context for fixing a specific audit gap in a module", () => {
     // Node: convergence/AuditGapFix (process)
@@ -18,7 +21,7 @@ describe("ProvideExcerptForAuditFix", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the compiled graph showing current state including the gap", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled graph showing current state including the gap
     // TODO: agent fills assertion
   });
@@ -54,7 +57,7 @@ describe("ProvideExcerptForAuditFix", () => {
   });
 
   it("step 9: excerpt/AssembleExcerpt builds the fix-focused excerpt combining gap details with module context", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds the fix-focused excerpt combining gap details with module context
     // TODO: agent fills assertion
   });

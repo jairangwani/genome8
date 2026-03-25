@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+// Implementation: src/sync.ts
+
 describe("TerminateRippleAtLeafBox", () => {
   it("step 1: convergence/TargetedReconvergence completes reconvergence on stale modules", () => {
     // Node: convergence/TargetedReconvergence (process)
@@ -31,13 +34,13 @@ describe("TerminateRippleAtLeafBox", () => {
   });
 
   it("step 5: publish/GenerateInterfaceYaml writes the updated interface.yaml to disk", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the updated interface.yaml to disk
     // TODO: agent fills assertion
   });
 
   it("step 6: sync/ReadDependencyList provides the dependency list which is checked for downstream dependents", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: provides the dependency list which is checked for downstream dependents
     // TODO: agent fills assertion
   });

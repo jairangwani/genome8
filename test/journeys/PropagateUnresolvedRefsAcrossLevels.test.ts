@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("PropagateUnresolvedRefsAcrossLevels", () => {
   it("step 1: _actors/ChildEngine has grandchildren with external refs that could not be resolved against grandchild siblings", () => {
     // Node: _actors/ChildEngine (actor)
@@ -43,7 +45,7 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
   });
 
   it("step 7: publish/GenerateInterfaceYaml includes the propagated warnings in the child's interface metadata", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: includes the propagated warnings in the child's interface metadata
     // TODO: agent fills assertion
   });

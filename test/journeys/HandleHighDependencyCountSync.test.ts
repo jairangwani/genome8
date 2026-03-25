@@ -5,9 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("HandleHighDependencyCountSync", () => {
   it("step 1: sync/ReadDependencyList provides the dependency list which exceeds the watcher count limit", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: provides the dependency list which exceeds the watcher count limit
     // TODO: agent fills assertion
   });

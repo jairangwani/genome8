@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("RipplePropagation", () => {
   it("step 1: convergence/ConvergenceState confirms targeted reconvergence succeeded", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -25,7 +27,7 @@ describe("RipplePropagation", () => {
   });
 
   it("step 4: publish/GenerateInterfaceYaml writes the updated interface.yaml", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the updated interface.yaml
     // TODO: agent fills assertion
   });

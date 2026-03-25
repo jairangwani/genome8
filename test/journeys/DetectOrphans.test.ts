@@ -4,9 +4,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("DetectOrphans", () => {
   it("step 1: graph/CompiledIndex provides all nodes and all journey steps", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides all nodes and all journey steps
     // TODO: agent fills assertion
   });

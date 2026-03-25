@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("HandleHighConnectionModule", () => {
   it("step 1: excerpt/SelectTargetModule identifies a module with a high number of cross-module connections", () => {
     // Node: excerpt/SelectTargetModule (process)
@@ -12,7 +15,7 @@ describe("HandleHighConnectionModule", () => {
   });
 
   it("step 2: graph/CompiledIndex provides all connections for the target module", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides all connections for the target module
     // TODO: agent fills assertion
   });
@@ -42,7 +45,7 @@ describe("HandleHighConnectionModule", () => {
   });
 
   it("step 7: excerpt/AssembleExcerpt assembles the excerpt using only the highest-relevance connections", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: assembles the excerpt using only the highest-relevance connections
     // TODO: agent fills assertion
   });

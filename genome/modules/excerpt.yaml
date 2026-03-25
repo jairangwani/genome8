@@ -53,6 +53,66 @@ nodes:
   InvalidateExcerptCache:
     type: process
     description: clears all cached excerpts when compilation produces a new compiled index, ensuring stale context is never served to workers
+  ValidateCrossModuleRefIntegrity:
+    type: process
+    description: checks that every cross-module node reference included in the excerpt resolves to an actual node in the compiled index, flagging dangling references to deleted or renamed nodes
+  ValidateExcerptCompleteness:
+    type: process
+    description: checks that the assembled excerpt contains all mandatory sections for the target module, flagging missing local nodes, journeys, or cross-module connections that exist in the compiled index but were not collected
+  DetectMissingModuleSource:
+    type: process
+    description: detects when the target module's YAML file does not exist on disk or is empty, switching to a compiled-index-only excerpt that omits the YOUR FILE section
+  DetectStaleExcerptAtConsumption:
+    type: process
+    description: compares the compiled index hash embedded in a cached excerpt against the current compiled index hash at the moment a worker consumes it, detecting staleness from intervening graph changes
+  ValidateExcerptSectionOrder:
+    type: process
+    description: checks that the assembled excerpt presents sections in the expected order so the LLM worker can parse it reliably, flagging misordered or duplicated sections
+  CollectSpecSectionText:
+    type: process
+    description: reads the spec document and extracts the full text of the sections listed in the target module's spec_sections field, providing the authoritative spec content the module must cover
+  MapNodesToSpecConcepts:
+    type: process
+    description: maps each node in the target module to the spec concepts it addresses by matching node descriptions against key terms and requirements from the assigned spec sections
+  DetectUncoveredSpecConcepts:
+    type: process
+    description: compares the set of spec concepts from the assigned sections against the mapped node coverage and identifies concepts that have no corresponding node or journey in the module
+  ValidateSpecSectionBoundary:
+    type: process
+    description: checks that the target module's nodes and journeys address only concepts from its assigned spec_sections, flagging content that belongs to a different module's spec scope
+  CollectSpecCoverageMapping:
+    type: process
+    description: assembles a compact traceability section showing which spec concepts are covered by which nodes and journeys, and which concepts remain uncovered
+  SortCollectedItemsDeterministically:
+    type: process
+    description: sorts all collected nodes, journeys, connections, actors, and warnings into a stable alphabetical order before assembly, ensuring identical ordering across runs regardless of map iteration or filesystem enumeration order
+  VerifyExcerptReproducibility:
+    type: process
+    description: generates the excerpt a second time from the same inputs and compares the two outputs byte-for-byte, detecting non-determinism in the generation pipeline
+  DeduplicateCacheWrite:
+    type: process
+    description: before writing a new excerpt to the cache, checks if an identical entry already exists at the same module-plus-hash key and skips the write if the content matches, preventing redundant cache churn
+  DeterministicTruncationBoundary:
+    type: process
+    description: when truncation must cut within a section, always cuts at the last complete entry boundary rather than at an arbitrary line count, ensuring the same input always produces the same truncation point
+  NormalizeSpecSectionBoundaries:
+    type: process
+    description: normalizes spec section boundary detection by trimming whitespace, standardizing heading formats, and using exact section number matching, ensuring the same spec text is extracted regardless of minor formatting variations
+  BatchGenerateExcerpts:
+    type: process
+    description: generates excerpts for multiple target modules in a single pass, sharing the compiled index lookup and global stats collection across all targets instead of repeating them per module
+  CollapseDeepHierarchyConnections:
+    type: process
+    description: when cross-module connections span multiple hierarchy levels, collapses transitive edges into summarized paths showing the chain of boxes rather than listing every intermediate connection
+  SummarizeOversizedSpecSection:
+    type: process
+    description: when a single spec section exceeds a line threshold, produces a condensed summary of key concepts and requirements instead of including the full verbatim text in the excerpt
+  PrioritizeAndCompressWarnings:
+    type: process
+    description: when a module has accumulated many warnings, groups them by type, keeps the highest-severity warnings in full detail, and compresses the rest into count-per-type summaries to fit within budget
+  TrackExcerptGenerationCost:
+    type: process
+    description: measures the wall-clock time and compiled index traversal count for each excerpt generation, logging metrics to identify modules where generation is disproportionately expensive
   ExcerptOutput:
     type: artifact
     description: the final ~200 line focused context document for a single module
@@ -348,3 +408,445 @@ journeys:
         action: resets the cache to empty, ready to store fresh excerpts on next generation
       - node: compilation/CompilationResult
         action: confirms the compilation is complete and excerpts are ready to be regenerated on demand
+
+  ValidateAssembledExcerpt:
+    steps:
+      - node: AssembleExcerpt
+        action: produces a structured excerpt from the collected sections
+      - node: ValidateExcerptCompleteness
+        action: checks that the YOUR NODES section is present and non-empty for modules that define nodes
+      - node: ValidateExcerptCompleteness
+        action: checks that the YOUR JOURNEYS section is present and non-empty for modules that define journeys
+      - node: ValidateExcerptCompleteness
+        action: checks that the CROSS-MODULE section is present for modules with cross-module connections in the compiled index
+      - node: ValidateExcerptSectionOrder
+        action: checks that sections appear in the expected order from MODULE STATUS through YOUR FILE
+      - node: ValidateExcerptSectionOrder
+        action: flags any duplicated or misordered sections that would confuse the LLM parser
+      - node: ExcerptOutput
+        action: stores the validated excerpt only after completeness and ordering checks pass
+
+  DetectDanglingRefsInExcerpt:
+    steps:
+      - node: CollectCrossModuleConnections
+        action: gathers all cross-module connections for the target module
+      - node: graph/CompiledIndex
+        action: provides the current compiled index as the authority on which nodes exist
+      - node: ValidateCrossModuleRefIntegrity
+        action: checks each BEFORE YOU reference to confirm the source node exists in its declared module
+      - node: ValidateCrossModuleRefIntegrity
+        action: checks each AFTER YOU reference to confirm the target node exists in its declared module
+      - node: ValidateCrossModuleRefIntegrity
+        action: flags any dangling references where the target node was deleted or renamed since the connection was established
+      - node: CollectWarnings
+        action: adds dangling cross-module reference warnings to the module's warning list
+      - node: AssembleExcerpt
+        action: includes the dangling reference warnings in the ISSUES section of the excerpt
+
+  HandleMissingModuleSourceFile:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the target module for excerpt generation
+      - node: CollectModuleSource
+        action: attempts to read the target module's YAML file from disk
+      - node: DetectMissingModuleSource
+        action: detects that the file does not exist on disk because the module has not been created yet
+      - node: DetectMissingModuleSource
+        action: switches to compiled-index-only mode, omitting the YOUR FILE section from the excerpt
+      - node: graph/CompiledIndex
+        action: provides node and journey data from the compiled index as a fallback for the missing file
+      - node: CollectLocalNodes
+        action: extracts nodes from the compiled index instead of the raw file
+      - node: CollectLocalJourneys
+        action: extracts journeys from the compiled index instead of the raw file
+      - node: AssembleExcerpt
+        action: builds the excerpt without the YOUR FILE section, using compiled index data for all content
+      - node: ExcerptOutput
+        action: stores the source-less excerpt suitable for module creation context
+
+  CompressModuleSummariesForLargeGraph:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the target module in a graph with many modules
+      - node: graph/CompiledIndex
+        action: provides the full compiled index containing all modules
+      - node: CollectAllModuleSummaries
+        action: gathers one-line summaries for every module and detects the count exceeds the budget threshold
+      - node: CollectCrossModuleConnections
+        action: identifies which modules are directly connected to the target for prioritization
+      - node: CompressModuleSummaries
+        action: retains full detail for modules directly connected to the target module
+      - node: CompressModuleSummaries
+        action: groups all remaining unconnected modules into a single count line showing their total node and journey counts
+      - node: AdaptiveBudgetAllocation
+        action: reallocates the saved lines from compressed summaries to other sections
+      - node: AssembleExcerpt
+        action: includes the compressed ALL MODULES section in the excerpt
+      - node: TruncateToLimit
+        action: trims the excerpt to the line budget with the compressed summaries
+      - node: ExcerptOutput
+        action: stores the excerpt with compressed module summaries fitting within the line budget
+
+  DetectAndRejectStaleExcerpt:
+    steps:
+      - node: convergence/ConvergenceState
+        action: prepares to send a task to a worker using a previously generated excerpt
+      - node: ExcerptOutput
+        action: provides the cached excerpt that was generated at a prior compiled index hash
+      - node: graph/CompiledIndex
+        action: provides the current compiled index which may have changed since the excerpt was generated
+      - node: DetectStaleExcerptAtConsumption
+        action: extracts the compiled index hash embedded in the excerpt at generation time
+      - node: DetectStaleExcerptAtConsumption
+        action: compares the embedded hash against the current compiled index hash
+      - node: DetectStaleExcerptAtConsumption
+        action: detects a mismatch indicating the graph changed after the excerpt was generated
+      - node: InvalidateExcerptCache
+        action: evicts the stale excerpt from the cache for this module
+      - node: SelectTargetModule
+        action: re-identifies the target module for fresh excerpt generation
+      - node: AssembleExcerpt
+        action: regenerates the excerpt from the current compiled index state
+      - node: ExcerptOutput
+        action: provides the freshly generated excerpt to the worker instead of the stale one
+
+  IncludeSpecTextInCreationExcerpt:
+    steps:
+      - node: convergence/ModuleCreation
+        action: requests context for creating a new module that must cover specific spec sections
+      - node: SelectTargetModule
+        action: identifies the module to be created and reads its spec_sections assignment
+      - node: organization/ProvideSpecSectionsToExcerpt
+        action: supplies the spec_sections list for the target module from the organization plan
+      - node: CollectSpecSectionText
+        action: reads the spec document and locates the sections matching the module's spec_sections numbers
+      - node: CollectSpecSectionText
+        action: extracts the full text of each assigned spec section as authoritative content the module must cover
+      - node: LensRelevance
+        action: prioritizes spec section text as high-relevance content that must not be truncated
+      - node: AssembleExcerpt
+        action: includes the spec section text in a dedicated SPEC SECTIONS section of the excerpt
+      - node: TruncateToLimit
+        action: trims other sections before spec text to ensure spec content is preserved
+      - node: ExcerptOutput
+        action: provides the creation excerpt with spec text so the worker knows exactly what concepts to cover
+
+  ProvideExcerptForSpecCoverageAudit:
+    steps:
+      - node: convergence/TargetedAudit
+        action: requests focused context for a spec coverage auditor to check a specific module
+      - node: SelectTargetModule
+        action: identifies the module being audited for spec coverage
+      - node: graph/CompiledIndex
+        action: provides the compiled graph for extraction
+      - node: CollectSpecSectionText
+        action: extracts the authoritative spec text for the module's assigned sections
+      - node: CollectLocalNodes
+        action: extracts the module's nodes for the auditor to compare against spec concepts
+      - node: CollectLocalJourneys
+        action: extracts the module's journeys for the auditor to compare against spec flows
+      - node: MapNodesToSpecConcepts
+        action: maps each node and journey to the spec concepts they address based on description matching
+      - node: DetectUncoveredSpecConcepts
+        action: identifies spec concepts that have no corresponding node or journey in the module
+      - node: CollectSpecCoverageMapping
+        action: assembles the traceability section showing covered and uncovered concepts
+      - node: AssembleExcerpt
+        action: builds the spec-coverage-focused excerpt with spec text, mapping, and gaps highlighted
+      - node: ExcerptOutput
+        action: provides the spec-coverage excerpt to the auditor
+      - node: _actors/Auditor
+        action: receives the excerpt with spec traceability and begins coverage checking
+
+  DetectSpecScopeCreep:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the target module and reads its spec_sections assignment
+      - node: organization/ProvideSpecSectionsToExcerpt
+        action: supplies the spec_sections list that defines this module's scope boundary
+      - node: CollectSpecSectionText
+        action: extracts the spec text for the assigned sections to define the authorized scope
+      - node: CollectLocalNodes
+        action: extracts all nodes defined in the target module
+      - node: CollectLocalJourneys
+        action: extracts all journeys defined in the target module
+      - node: ValidateSpecSectionBoundary
+        action: checks each node description against the assigned spec sections to detect concepts belonging to other modules
+      - node: ValidateSpecSectionBoundary
+        action: checks each journey's purpose against the assigned spec sections to detect out-of-scope flows
+      - node: CollectWarnings
+        action: adds spec scope violation warnings for any nodes or journeys that address concepts outside the module's assigned sections
+      - node: AssembleExcerpt
+        action: includes scope creep warnings in the ISSUES section of the excerpt
+
+  IncludeSpecCoverageMappingInEnrichment:
+    steps:
+      - node: convergence/ExamineFromPerspective
+        action: requests context for enriching a module from a specific perspective
+      - node: SelectTargetModule
+        action: identifies the module being enriched
+      - node: CollectSpecSectionText
+        action: extracts the spec text for the module's assigned sections
+      - node: CollectLocalNodes
+        action: extracts the module's current nodes
+      - node: CollectLocalJourneys
+        action: extracts the module's current journeys
+      - node: MapNodesToSpecConcepts
+        action: maps existing nodes and journeys to the spec concepts they cover
+      - node: DetectUncoveredSpecConcepts
+        action: identifies spec concepts not yet addressed by any node or journey
+      - node: CollectSpecCoverageMapping
+        action: assembles the coverage mapping showing covered and uncovered concepts
+      - node: CollectModuleSource
+        action: reads the full YAML source so the worker can write the complete updated file
+      - node: AssembleExcerpt
+        action: includes the coverage mapping so the worker can prioritize uncovered concepts during enrichment
+      - node: TruncateToLimit
+        action: trims while preserving spec coverage mapping and module source as high priority
+      - node: ExcerptOutput
+        action: provides the enrichment excerpt with spec coverage gaps highlighted for the worker
+
+  SurfaceUncoveredSpecConceptsAsWarnings:
+    steps:
+      - node: _actors/Compiler
+        action: triggers excerpt generation after compilation completes
+      - node: SelectTargetModule
+        action: identifies the target module for spec coverage checking
+      - node: CollectSpecSectionText
+        action: extracts the spec text for the module's assigned sections
+      - node: CollectLocalNodes
+        action: extracts the module's nodes from the compiled index
+      - node: CollectLocalJourneys
+        action: extracts the module's journeys from the compiled index
+      - node: MapNodesToSpecConcepts
+        action: maps each node and journey to the spec concepts they address
+      - node: DetectUncoveredSpecConcepts
+        action: identifies spec concepts with no corresponding node or journey
+      - node: CollectWarnings
+        action: adds an uncovered spec concept warning for each gap found
+      - node: AssembleExcerpt
+        action: includes the uncovered spec warnings in the ISSUES section alongside orphan and dangling ref warnings
+      - node: ExcerptOutput
+        action: stores the excerpt with spec coverage gaps surfaced as actionable warnings
+
+  EnforceDeterministicCollectionOrder:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the target module for excerpt generation
+      - node: CollectLocalNodes
+        action: gathers nodes from the compiled index in arbitrary enumeration order
+      - node: CollectLocalJourneys
+        action: gathers journeys from the compiled index in arbitrary enumeration order
+      - node: CollectCrossModuleConnections
+        action: gathers connections in arbitrary traversal order
+      - node: CollectReferencedActors
+        action: gathers actors in arbitrary discovery order
+      - node: CollectWarnings
+        action: gathers warnings in arbitrary detection order
+      - node: SortCollectedItemsDeterministically
+        action: sorts nodes alphabetically by name within each section
+      - node: SortCollectedItemsDeterministically
+        action: sorts journeys alphabetically by name within each section
+      - node: SortCollectedItemsDeterministically
+        action: sorts cross-module connections alphabetically by source module then node name
+      - node: SortCollectedItemsDeterministically
+        action: sorts warnings alphabetically by warning type then subject name
+      - node: AssembleExcerpt
+        action: receives all sections in stable sorted order and assembles the excerpt deterministically
+
+  VerifyExcerptIdempotency:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the target module for idempotency verification
+      - node: graph/CompiledIndex
+        action: provides the compiled index as the fixed input for both generation passes
+      - node: AssembleExcerpt
+        action: generates the excerpt a first time from the collected and sorted sections
+      - node: ExcerptOutput
+        action: stores the first-pass excerpt output
+      - node: VerifyExcerptReproducibility
+        action: triggers a second generation pass using the same inputs and collected data
+      - node: VerifyExcerptReproducibility
+        action: compares the second-pass output byte-for-byte against the first-pass output
+      - node: VerifyExcerptReproducibility
+        action: flags any differences as non-determinism bugs in the generation pipeline
+      - node: CollectWarnings
+        action: adds a non-determinism warning if the two passes produced different output
+
+  DeduplicateCacheWriteOnStore:
+    steps:
+      - node: AssembleExcerpt
+        action: produces a new excerpt ready to be cached
+      - node: ExcerptOutput
+        action: provides the newly generated excerpt for cache storage
+      - node: CacheExcerptByState
+        action: looks up the cache key for this module at the current compiled index hash
+      - node: DeduplicateCacheWrite
+        action: checks if an entry already exists at this cache key
+      - node: DeduplicateCacheWrite
+        action: compares the existing cached content against the new excerpt byte-for-byte
+      - node: DeduplicateCacheWrite
+        action: skips the write if the content is identical, preventing redundant cache updates
+      - node: CacheExcerptByState
+        action: writes the excerpt to cache only if no identical entry existed
+
+  EnforceDeterministicTruncation:
+    steps:
+      - node: AssembleExcerpt
+        action: produces an excerpt that exceeds the line budget and needs truncation
+      - node: ExcerptLineLimit
+        action: provides the target line count that the excerpt must not exceed
+      - node: TruncateToLimit
+        action: calculates how many lines must be removed to meet the budget
+      - node: DeterministicTruncationBoundary
+        action: identifies the section boundaries within the excerpt where cuts can occur
+      - node: DeterministicTruncationBoundary
+        action: selects the cut point at the last complete entry boundary before the line limit rather than mid-entry
+      - node: DeterministicTruncationBoundary
+        action: applies the same priority ordering every time to decide which sections shrink first
+      - node: TruncateToLimit
+        action: removes content at the determined boundary producing a reproducibly truncated excerpt
+      - node: ExcerptOutput
+        action: stores the deterministically truncated excerpt
+
+  NormalizeSpecTextExtraction:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the target module whose spec sections need extraction
+      - node: organization/ProvideSpecSectionsToExcerpt
+        action: supplies the spec_sections numbers for the target module
+      - node: CollectSpecSectionText
+        action: reads the raw spec document from disk
+      - node: NormalizeSpecSectionBoundaries
+        action: trims leading and trailing whitespace from each line of the spec document
+      - node: NormalizeSpecSectionBoundaries
+        action: standardizes section heading format to a canonical pattern for reliable boundary detection
+      - node: NormalizeSpecSectionBoundaries
+        action: matches section numbers exactly against the spec_sections list to extract the correct ranges
+      - node: CollectSpecSectionText
+        action: extracts the normalized spec section text using the standardized boundaries
+      - node: AssembleExcerpt
+        action: includes the deterministically extracted spec text in the excerpt
+
+  BatchGenerateExcerptsForParallelCreation:
+    steps:
+      - node: convergence/ParallelModuleCreation
+        action: requests excerpts for multiple modules that will be created concurrently
+      - node: graph/CompiledIndex
+        action: provides the compiled index once for all target modules in the batch
+      - node: CollectGlobalStats
+        action: gathers global stats once and shares them across all excerpts in the batch
+      - node: CollectAllModuleSummaries
+        action: gathers module summaries once and shares them across all excerpts in the batch
+      - node: BatchGenerateExcerpts
+        action: iterates over each target module in the batch using the shared global data
+      - node: SelectTargetModule
+        action: identifies the current target module within the batch iteration
+      - node: CollectLocalNodes
+        action: extracts nodes for the current target module
+      - node: CollectLocalJourneys
+        action: extracts journeys for the current target module
+      - node: CollectCrossModuleConnections
+        action: gathers cross-module connections for the current target module
+      - node: AssembleExcerpt
+        action: assembles the excerpt for the current target module using shared and module-specific data
+      - node: TruncateToLimit
+        action: trims the current module's excerpt to the line budget
+      - node: CacheExcerptByState
+        action: caches each assembled excerpt as it completes within the batch
+      - node: ExcerptOutput
+        action: provides each batch-generated excerpt to the parallel worker pool
+
+  CollapseDeepHierarchyInExcerpt:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module inside a deeply nested hierarchy box structure
+      - node: graph/CompiledIndex
+        action: provides the full connection set including transitive cross-box edges
+      - node: CollectCrossModuleConnections
+        action: gathers all cross-module connections including those spanning multiple hierarchy levels
+      - node: CollapseDeepHierarchyConnections
+        action: identifies connections that traverse more than one hierarchy level between the target and a distant module
+      - node: CollapseDeepHierarchyConnections
+        action: replaces each multi-level edge with a summarized path showing the intermediate box chain
+      - node: CollapseDeepHierarchyConnections
+        action: preserves direct same-level and one-level-up connections in full detail
+      - node: RankCrossModuleByRelevance
+        action: ranks the collapsed connections alongside direct connections by combined relevance
+      - node: AdaptiveBudgetAllocation
+        action: allocates budget based on the reduced connection count after collapsing
+      - node: AssembleExcerpt
+        action: assembles the excerpt with collapsed hierarchy paths instead of exhaustive transitive edges
+      - node: TruncateToLimit
+        action: trims to the line budget with the hierarchy-aware connection summaries
+      - node: ExcerptOutput
+        action: stores the excerpt with deep hierarchy connections collapsed into readable chain summaries
+
+  HandleOversizedSpecSection:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module whose assigned spec section is very large
+      - node: organization/ProvideSpecSectionsToExcerpt
+        action: supplies the spec_sections list for the target module
+      - node: CollectSpecSectionText
+        action: reads the spec document and extracts the assigned section which exceeds the line threshold
+      - node: SummarizeOversizedSpecSection
+        action: identifies the key concepts and requirements from the oversized section text
+      - node: SummarizeOversizedSpecSection
+        action: produces a condensed summary listing each concept with a one-line description
+      - node: SummarizeOversizedSpecSection
+        action: replaces the full spec section text with the condensed summary in the excerpt data
+      - node: LensRelevance
+        action: ensures the summarized concepts preserve the most relevant requirements for this module
+      - node: AssembleExcerpt
+        action: includes the condensed spec summary instead of the oversized verbatim text
+      - node: TruncateToLimit
+        action: trims the excerpt with the condensed spec section fitting within budget
+      - node: ExcerptOutput
+        action: stores the excerpt with the summarized spec section preserving key concepts within the line limit
+
+  CompressLargeWarningSet:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module that has accumulated many warnings from compilation and spec coverage checks
+      - node: CollectWarnings
+        action: gathers all warnings for the module and detects the count exceeds the warning budget threshold
+      - node: PrioritizeAndCompressWarnings
+        action: groups warnings by type into categories such as orphans, dangling refs, spec gaps, and scope violations
+      - node: PrioritizeAndCompressWarnings
+        action: retains the highest-severity warnings in full detail with specific node and journey names
+      - node: PrioritizeAndCompressWarnings
+        action: compresses remaining warnings in each group into a count-per-type summary line
+      - node: AdaptiveBudgetAllocation
+        action: reallocates the saved lines from warning compression to other sections
+      - node: AssembleExcerpt
+        action: includes the prioritized and compressed warnings in the ISSUES section
+      - node: TruncateToLimit
+        action: trims the excerpt with compressed warnings fitting within the line budget
+      - node: ExcerptOutput
+        action: stores the excerpt with compressed warnings preserving the most actionable issues
+
+  TrackAndLogExcerptGenerationMetrics:
+    steps:
+      - node: _actors/Compiler
+        action: triggers excerpt generation for a module after compilation
+      - node: SelectTargetModule
+        action: identifies the target module for excerpt generation
+      - node: TrackExcerptGenerationCost
+        action: records the start timestamp before collection begins
+      - node: graph/CompiledIndex
+        action: provides the compiled index for data extraction
+      - node: CollectLocalNodes
+        action: extracts nodes while the cost tracker counts index lookups
+      - node: CollectCrossModuleConnections
+        action: gathers connections while the cost tracker counts traversals
+      - node: AssembleExcerpt
+        action: assembles the excerpt while the cost tracker records assembly duration
+      - node: TruncateToLimit
+        action: trims the excerpt to budget
+      - node: ExcerptOutput
+        action: stores the final excerpt
+      - node: TrackExcerptGenerationCost
+        action: records the end timestamp and computes total duration and traversal count
+      - node: TrackExcerptGenerationCost
+        action: logs the metrics identifying this module as a potential optimization target if generation exceeded the time threshold

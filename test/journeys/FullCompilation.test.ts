@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
+
 describe("FullCompilation", () => {
   it("step 1: _actors/Compiler initiates a full compilation run", () => {
     // Node: _actors/Compiler (actor)
@@ -13,7 +15,7 @@ describe("FullCompilation", () => {
   });
 
   it("step 2: compilation/YAMLParsing parses all module YAML files", () => {
-    // Node: compilation/YAMLParsing (process)
+    // Node: compilation/YAMLParsing (process) — has code: src/compile.ts
     // Action: parses all module YAML files
     // TODO: agent fills assertion
   });
@@ -72,19 +74,31 @@ describe("FullCompilation", () => {
     // TODO: agent fills assertion
   });
 
-  it("step 12: compilation/ValidationAggregation collects all errors and warnings into a single result", () => {
+  it("step 12: compilation/StaleConnectionDetection checks for connections referencing nodes no longer in the registry", () => {
+    // Node: compilation/StaleConnectionDetection (process)
+    // Action: checks for connections referencing nodes no longer in the registry
+    // TODO: agent fills assertion
+  });
+
+  it("step 13: compilation/ValidationAggregation collects all errors and warnings into a single result", () => {
     // Node: compilation/ValidationAggregation (process)
     // Action: collects all errors and warnings into a single result
     // TODO: agent fills assertion
   });
 
-  it("step 13: compilation/CompilationResult outputs final counts of errors, warnings, orphans, duplicates, and dangling refs", () => {
+  it("step 14: compilation/DeterministicOrdering sorts all error, warning, orphan, and duplicate lists by canonical key before output", () => {
+    // Node: compilation/DeterministicOrdering (rule)
+    // Action: sorts all error, warning, orphan, and duplicate lists by canonical key before output
+    // TODO: agent fills assertion
+  });
+
+  it("step 15: compilation/CompilationResult outputs final counts of errors, warnings, orphans, duplicates, and dangling refs", () => {
     // Node: compilation/CompilationResult (artifact)
     // Action: outputs final counts of errors, warnings, orphans, duplicates, and dangling refs
     // TODO: agent fills assertion
   });
 
-  it("step 14: compilation/ZeroErrorConvergence determines whether the result meets the 0-error 0-orphan threshold for convergence", () => {
+  it("step 16: compilation/ZeroErrorConvergence determines whether the result meets the 0-error 0-orphan threshold for convergence", () => {
     // Node: compilation/ZeroErrorConvergence (rule)
     // Action: determines whether the result meets the 0-error 0-orphan threshold for convergence
     // TODO: agent fills assertion

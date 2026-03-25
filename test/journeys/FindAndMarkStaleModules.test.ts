@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("FindAndMarkStaleModules", () => {
   it("step 1: sync/SyncResult provides the list of changed dependencies", () => {
     // Node: sync/SyncResult (artifact)
@@ -12,7 +14,7 @@ describe("FindAndMarkStaleModules", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the full graph with all cross-module connections", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full graph with all cross-module connections
     // TODO: agent fills assertion
   });

@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/llm.ts
+
 describe("RecoverFromWorkerCrash", () => {
   it("step 1: _actors/LLMWorker becomes unresponsive or crashes during a task", () => {
     // Node: _actors/LLMWorker (actor)
@@ -37,7 +39,7 @@ describe("RecoverFromWorkerCrash", () => {
   });
 
   it("step 6: llm/SpawnWorkerProcess launches the new persistent worker subprocess", () => {
-    // Node: llm/SpawnWorkerProcess (process)
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
     // Action: launches the new persistent worker subprocess
     // TODO: agent fills assertion
   });

@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/testgen.ts
+
 describe("GenerateTestSkeletons", () => {
   it("step 1: convergence/TriggerTestgen invokes testgen.ts after codegen has generated and filled implementation files", () => {
     // Node: convergence/TriggerTestgen (process)
@@ -12,7 +15,7 @@ describe("GenerateTestSkeletons", () => {
   });
 
   it("step 2: graph/CompiledIndex provides all journeys with their ordered steps", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides all journeys with their ordered steps
     // TODO: agent fills assertion
   });
@@ -36,7 +39,7 @@ describe("GenerateTestSkeletons", () => {
   });
 
   it("step 6: testgen/GenerateTestFilePerJourney creates a test file with a describe block for the first journey", () => {
-    // Node: testgen/GenerateTestFilePerJourney (process)
+    // Node: testgen/GenerateTestFilePerJourney (process) — has code: src/testgen.ts
     // Action: creates a test file with a describe block for the first journey
     // TODO: agent fills assertion
   });

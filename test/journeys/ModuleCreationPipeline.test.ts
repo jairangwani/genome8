@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/excerpt.ts
+
 describe("ModuleCreationPipeline", () => {
   it("step 1: convergence/ConvergenceState provides the list of modules in build order from ORGANIZATION.md", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -31,7 +33,7 @@ describe("ModuleCreationPipeline", () => {
   });
 
   it("step 5: excerpt/AssembleExcerpt builds a focused excerpt of the existing graph for the LLM to reference", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds a focused excerpt of the existing graph for the LLM to reference
     // TODO: agent fills assertion
   });

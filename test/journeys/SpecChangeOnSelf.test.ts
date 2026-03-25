@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
+
 describe("SpecChangeOnSelf", () => {
   it("step 1: _actors/ReturningOwner edits spec.md for a project whose graph describes its own convergence pipeline", () => {
     // Node: _actors/ReturningOwner (actor)
@@ -19,7 +21,7 @@ describe("SpecChangeOnSelf", () => {
   });
 
   it("step 3: convergence/ReadSpec reads the changed spec from disk", () => {
-    // Node: convergence/ReadSpec (process)
+    // Node: convergence/ReadSpec (process) — has code: src/convergence.ts
     // Action: reads the changed spec from disk
     // TODO: agent fills assertion
   });

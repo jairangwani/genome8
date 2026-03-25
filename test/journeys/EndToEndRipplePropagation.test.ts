@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+// Implementation: src/types.ts
+
 describe("EndToEndRipplePropagation", () => {
   it("step 1: _actors/FileSystem detects a dependency event file change via fs.watch", () => {
     // Node: _actors/FileSystem (actor)
@@ -43,7 +46,7 @@ describe("EndToEndRipplePropagation", () => {
   });
 
   it("step 7: sync/ReadDependencyList reads the dependency configuration", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the dependency configuration
     // TODO: agent fills assertion
   });
@@ -79,7 +82,7 @@ describe("EndToEndRipplePropagation", () => {
   });
 
   it("step 13: graph/CompiledIndex provides the graph for affected module tracing", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the graph for affected module tracing
     // TODO: agent fills assertion
   });

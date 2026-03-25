@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
+// Implementation: src/types.ts
+
 describe("HandlePartialParseFailure", () => {
   it("step 1: _actors/Compiler begins parsing all module YAML files", () => {
     // Node: _actors/Compiler (actor)
@@ -13,7 +16,7 @@ describe("HandlePartialParseFailure", () => {
   });
 
   it("step 2: compilation/YAMLParsing attempts to parse each module file", () => {
-    // Node: compilation/YAMLParsing (process)
+    // Node: compilation/YAMLParsing (process) — has code: src/compile.ts
     // Action: attempts to parse each module file
     // TODO: agent fills assertion
   });
@@ -49,7 +52,7 @@ describe("HandlePartialParseFailure", () => {
   });
 
   it("step 8: graph/CompiledIndex builds a partial compiled index from the parseable modules", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: builds a partial compiled index from the parseable modules
     // TODO: agent fills assertion
   });

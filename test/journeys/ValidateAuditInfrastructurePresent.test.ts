@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("ValidateAuditInfrastructurePresent", () => {
   it("step 1: convergence/CompileCheck triggers compilation as a prerequisite for the audit pipeline", () => {
     // Node: convergence/CompileCheck (process)
@@ -19,7 +21,7 @@ describe("ValidateAuditInfrastructurePresent", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the compiled index with all registered modules", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled index with all registered modules
     // TODO: agent fills assertion
   });

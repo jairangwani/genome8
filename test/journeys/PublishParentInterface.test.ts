@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("PublishParentInterface", () => {
   it("step 1: _actors/ParentEngine has collected all child interfaces after hierarchy split", () => {
     // Node: _actors/ParentEngine (actor)
@@ -43,7 +45,7 @@ describe("PublishParentInterface", () => {
   });
 
   it("step 7: publish/GenerateInterfaceYaml writes the parent's interface.yaml combining child interfaces", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the parent's interface.yaml combining child interfaces
     // TODO: agent fills assertion
   });

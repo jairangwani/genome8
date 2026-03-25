@@ -56,6 +56,57 @@ nodes:
   NarrowOutgoingChangelog:
     type: process
     description: rewrites the outgoing event's changelog to include only the changes that affected this box, preventing upstream-only changes from rippling further downstream
+  VerifyHashAfterStore:
+    type: process
+    description: re-reads stored hashes from DependencyHashStore after UpdateStoredHashes writes them and confirms the persisted values match what was written, detecting silent write failures
+  CrossValidateEventHashWithFetchedHash:
+    type: process
+    description: compares the interface hash embedded in the incoming event payload against the hash fetched directly from the dependency's interface.yaml to detect race conditions or stale event data
+  DetectPartialHashUpdate:
+    type: process
+    description: checks that all dependency hashes in a multi-dependency sync were successfully persisted after a batch write, detecting partial writes from crashes or I/O errors
+  VerifyStalenessBeforeReconvergence:
+    type: process
+    description: re-fetches dependency hashes immediately before reconvergence begins and confirms they still differ from stored hashes, preventing reconvergence on already-reverted changes
+  EnforceDeterministicStaleOrder:
+    type: process
+    description: sorts the stale module list into a canonical alphabetical order by module name before passing it to reconvergence, ensuring re-runs produce the same processing sequence
+  GuardAgainstConcurrentSync:
+    type: process
+    description: checks for an active sync lock before beginning a new sync cycle, preventing concurrent runs from mutating shared state like DependencyHashStore and StaleModuleList simultaneously
+  VerifySyncIdempotency:
+    type: process
+    description: after a sync cycle completes, re-runs the hash comparison and confirms it produces an empty stale list, verifying the sync was effective and a re-run would be a no-op
+  CanonicalizeChangelogForNarrowing:
+    type: process
+    description: sorts changelog entries into deterministic order by category then alphabetically by node or journey name before narrowing, ensuring identical output regardless of input iteration order
+  FetchDependencyHashesConcurrently:
+    type: process
+    description: fetches SHA256 hashes from multiple dependency interface.yaml files in parallel with a configurable concurrency limit, reducing total fetch time for boxes with many dependencies
+  BatchMarkModulesStale:
+    type: process
+    description: writes stale markers on all affected modules in a single batch operation instead of individual writes, reducing I/O overhead when hundreds of modules are stale
+  ChunkAffectedModuleTracing:
+    type: process
+    description: partitions the cross-module connection set into chunks and traces affected modules incrementally, preventing memory exhaustion when the graph has thousands of edges
+  CheckRippleDepthLimit:
+    type: process
+    description: reads the ripple depth from the origin chain length and compares it against a configured maximum, suppressing propagation when the chain exceeds the depth limit to prevent cascade storms
+  DetectAndClearOrphanSyncLock:
+    type: process
+    description: checks on startup whether a SyncLock exists from a previous crashed process, validates no sync is actually running, and clears the stale lock to unblock new sync cycles
+  ScanForMissedEventsDuringSleep:
+    type: process
+    description: on wake or restart, reads the current event file sequence numbers from all dependencies and compares them against LastProcessedSequence to discover events that arrived while the process was not running
+  ValidateHashStoreIntegrityOnStartup:
+    type: process
+    description: reads the DependencyHashStore file on cold start and validates its structural integrity including correct entry count, valid SHA256 format for each hash, and no truncation from a prior crash
+  RecoverInterruptedStaleMarking:
+    type: process
+    description: on startup, detects a partially-written StaleModuleList by comparing its entries against the current SyncResult and re-derives the complete stale list from stored hashes to replace the incomplete one
+  ReconcileSequenceNumbersOnRestart:
+    type: process
+    description: on restart after crash, compares each dependency's current event sequence number against the locally stored LastProcessedSequence and fast-forwards to the latest sequence when the stored value is behind
   DependencyHashStore:
     type: artifact
     description: local storage of the last-known SHA256 hash for each dependency interface
@@ -68,6 +119,9 @@ nodes:
   LastProcessedSequence:
     type: artifact
     description: stores the last successfully processed event sequence number per dependency for detecting out-of-order or duplicate events
+  SyncLock:
+    type: artifact
+    description: a lock file or flag that indicates a sync cycle is in progress, consumed by GuardAgainstConcurrentSync to detect and block overlapping sync runs
   HashMismatchMeansStale:
     type: rule
     description: any difference between stored and fetched hash means the dependency changed and affected modules are stale
@@ -83,6 +137,12 @@ nodes:
   OscillationBlocksSync:
     type: rule
     description: if this box's ID appears in the ripple origin chain of an incoming event, sync must abort without marking any modules stale or triggering reconvergence
+  EnforceAtomicHashUpdate:
+    type: rule
+    description: requires that when multiple dependency hashes are updated in a single sync cycle, either all are persisted or none are, preventing inconsistent stored state
+  DependencyFanOutLimit:
+    type: rule
+    description: enforces a maximum number of dependencies a single box may declare, preventing sync from becoming unresponsive due to excessive upstream watchers and hash fetches
 
 journeys:
   CheckDependencyHashes:
@@ -548,3 +608,413 @@ journeys:
         action: merges all incoming origin chains and appends this box's ID to the combined chain
       - node: NarrowOutgoingChangelog
         action: produces a single narrowed outgoing changelog combining locally-relevant changes from all dependencies
+
+  VerifyHashIntegrityAfterStore:
+    steps:
+      - node: UpdateStoredHashes
+        action: writes new dependency hashes to DependencyHashStore after reconvergence
+      - node: DependencyHashStore
+        action: receives the hash values and persists them to disk
+      - node: VerifyHashAfterStore
+        action: re-reads each stored hash value back from disk
+      - node: VerifyHashAfterStore
+        action: compares each re-read value against the value that was originally written
+      - node: VerifyHashAfterStore
+        action: flags any hash where the re-read value does not match the written value as a write integrity failure
+      - node: SyncResult
+        action: records whether all hashes verified successfully or logs the specific write failures
+
+  CrossValidateEventAndInterfaceHash:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification via fs.watch
+      - node: events/ReadEventFile
+        action: reads the incoming event file from disk
+      - node: ParseEventPayload
+        action: extracts the interface hash embedded in the event payload
+      - node: FetchDependencyHash
+        action: reads the current SHA256 hash directly from the dependency's interface.yaml
+      - node: CrossValidateEventHashWithFetchedHash
+        action: compares the event-embedded hash against the freshly fetched interface hash
+      - node: CrossValidateEventHashWithFetchedHash
+        action: confirms the hashes match, validating the event is consistent with the current interface state
+      - node: DependencyHashStore
+        action: provides the stored hash for the staleness comparison step
+      - node: CompareStoredHash
+        action: compares the validated fetched hash against the stored hash to detect actual staleness
+      - node: SyncResult
+        action: records the cross-validation result alongside the staleness determination
+
+  DetectAndRecoverPartialHashWrite:
+    steps:
+      - node: UpdateStoredHashes
+        action: attempts to write new hashes for multiple changed dependencies in a single batch
+      - node: DependencyHashStore
+        action: receives the batch of hash values for persistence
+      - node: DetectPartialHashUpdate
+        action: re-reads all dependency hashes that should have been updated in the batch
+      - node: DetectPartialHashUpdate
+        action: identifies which hashes were successfully persisted and which are missing or stale
+      - node: EnforceAtomicHashUpdate
+        action: enforces that partial writes are not acceptable and must be completed
+      - node: UpdateStoredHashes
+        action: retries writing the missing or failed hashes to complete the batch
+      - node: DependencyHashStore
+        action: updated with the complete set of hashes after recovery
+      - node: VerifyHashAfterStore
+        action: confirms all hashes including the retried ones are now correctly stored
+
+  RevalidateStalenessBeforeReconvergence:
+    steps:
+      - node: StaleModuleList
+        action: provides the list of modules marked stale from the initial hash comparison
+      - node: VerifyStalenessBeforeReconvergence
+        action: re-fetches the dependency hash from each changed dependency's interface.yaml
+      - node: publish/InterfaceHash
+        action: provides the current hash at the moment reconvergence would begin
+      - node: DependencyHashStore
+        action: provides the stored hash for re-comparison
+      - node: VerifyStalenessBeforeReconvergence
+        action: compares re-fetched hashes against stored hashes and confirms staleness still holds
+      - node: VerifyStalenessBeforeReconvergence
+        action: removes any dependencies whose hashes now match from the stale list, indicating the change was reverted
+      - node: FindAffectedModules
+        action: recomputes affected modules based on the confirmed-still-stale dependencies only
+      - node: StaleModuleList
+        action: updated with only the confirmed-still-stale modules
+      - node: convergence/TargetedReconvergence
+        action: receives the re-validated stale list and begins reprocessing only confirmed changes
+
+  SuppressFalseRippleOnNoActualChange:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: completes reconvergence on stale modules after a dependency change
+      - node: _actors/Compiler
+        action: confirms zero errors in the reconverged modules
+      - node: publish/ComputeInterfaceHash
+        action: computes the new interface hash after reconvergence
+      - node: publish/ComparePreviousHash
+        action: compares the new hash against the pre-reconvergence hash
+      - node: publish/ComparePreviousHash
+        action: finds the hashes are identical, meaning reconvergence produced no interface change
+      - node: UpdateStoredHashes
+        action: writes the confirmed-unchanged dependency hashes to prevent re-triggering on next event
+      - node: DependencyHashStore
+        action: updated with the latest hashes despite no outgoing ripple being needed
+      - node: SyncResult
+        action: records that reconvergence produced no interface change and no outgoing event was written
+
+  EnforceDeterministicStaleModuleOrder:
+    steps:
+      - node: FindAffectedModules
+        action: produces the set of affected modules from connection tracing in iteration-dependent order
+      - node: MarkModulesStale
+        action: marks each affected module with a stale flag
+      - node: StaleModuleList
+        action: receives the unordered set of stale modules
+      - node: EnforceDeterministicStaleOrder
+        action: reads the stale module list and sorts entries alphabetically by module name
+      - node: EnforceDeterministicStaleOrder
+        action: writes the sorted list back ensuring reconvergence processes modules in the same order on every run
+      - node: StaleModuleList
+        action: updated with the canonically ordered stale modules
+      - node: convergence/TargetedReconvergence
+        action: receives the deterministically ordered stale list for reproducible processing
+
+  PreventConcurrentSyncRuns:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification during an already-active sync cycle
+      - node: SyncTriggeredByEvent
+        action: confirms the trigger came from an event file change
+      - node: GuardAgainstConcurrentSync
+        action: checks the SyncLock for an active sync indicator
+      - node: SyncLock
+        action: indicates an existing sync cycle is already in progress
+      - node: GuardAgainstConcurrentSync
+        action: blocks the new sync from proceeding to prevent concurrent mutation of shared state
+      - node: SyncResult
+        action: records that the sync was deferred due to an active concurrent sync cycle
+
+  VerifySyncProducesNoOpOnRerun:
+    steps:
+      - node: UpdateStoredHashes
+        action: completes writing new hashes after successful reconvergence
+      - node: DependencyHashStore
+        action: provides the just-updated stored hashes
+      - node: VerifySyncIdempotency
+        action: initiates a post-sync verification by re-reading the dependency list
+      - node: ReadDependencyList
+        action: provides the full dependency list for re-checking
+      - node: FetchDependencyHash
+        action: re-fetches current hashes from all dependency interfaces
+      - node: VerifySyncIdempotency
+        action: compares all re-fetched hashes against the just-updated stored hashes
+      - node: VerifySyncIdempotency
+        action: confirms all hashes match, proving a re-run would produce an empty stale list and no reconvergence
+      - node: SyncResult
+        action: records that idempotency verification passed with zero drift detected
+
+  EnforceCanonicalChangelogOrder:
+    steps:
+      - node: publish/ComputeChangelogDiff
+        action: produces the raw changelog diff with entries in arbitrary iteration order
+      - node: CanonicalizeChangelogForNarrowing
+        action: reads all changelog entries including added, removed, and modified items
+      - node: CanonicalizeChangelogForNarrowing
+        action: sorts entries by category then alphabetically by node or journey name
+      - node: CanonicalizeChangelogForNarrowing
+        action: writes the canonically ordered changelog for downstream consumption
+      - node: NarrowOutgoingChangelog
+        action: narrows the canonically ordered changelog using local cross-module references
+      - node: NarrowOutgoingChangelog
+        action: produces the narrowed changelog in the same deterministic order regardless of input iteration order
+
+  AcquireAndReleaseSyncLock:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification triggering a new sync cycle
+      - node: SyncTriggeredByEvent
+        action: confirms the sync was triggered by an event file change
+      - node: GuardAgainstConcurrentSync
+        action: checks the SyncLock and finds no active sync in progress
+      - node: SyncLock
+        action: is acquired, marking this sync cycle as active to block concurrent runs
+      - node: ReadDependencyList
+        action: reads the dependency configuration to begin the sync pipeline
+      - node: CompareStoredHash
+        action: runs the hash comparison to determine staleness
+      - node: SyncResult
+        action: records the sync outcome after reconvergence completes
+      - node: UpdateStoredHashes
+        action: persists new hashes after successful reconvergence
+      - node: SyncLock
+        action: is released after the sync cycle completes including all hash updates
+      - node: GuardAgainstConcurrentSync
+        action: confirms the lock was cleanly released and new sync cycles may proceed
+
+  FetchHashesInParallelForManyDependencies:
+    steps:
+      - node: _actors/DependentBox
+        action: initiates sync for a box with a large number of upstream dependencies
+      - node: ReadDependencyList
+        action: reads the full dependency list and finds it contains many entries
+      - node: DependencyFanOutLimit
+        action: validates the dependency count is within the configured maximum
+      - node: FetchDependencyHashesConcurrently
+        action: partitions the dependency list into concurrency-limited batches
+      - node: FetchDependencyHashesConcurrently
+        action: dispatches parallel hash reads for each batch up to the concurrency limit
+      - node: FetchDependencyHashesConcurrently
+        action: collects all fetched hashes as each parallel batch completes
+      - node: publish/InterfaceHash
+        action: provides the current hash from each dependency's published interface
+      - node: DependencyHashStore
+        action: provides stored hashes for all dependencies
+      - node: CompareStoredHash
+        action: compares all fetched hashes against their stored counterparts
+      - node: SyncResult
+        action: records the comparison results for all dependencies
+
+  BatchMarkStaleModulesAtScale:
+    steps:
+      - node: SyncResult
+        action: provides the list of changed dependencies affecting many local modules
+      - node: graph/CompiledIndex
+        action: provides the full graph with thousands of cross-module connections
+      - node: graph/ConnectionSet
+        action: provides the edge set for tracing references
+      - node: FindAffectedModules
+        action: traces connections and identifies a large number of affected local modules
+      - node: FilterUnrelatedChanges
+        action: narrows the affected set using the changelog
+      - node: BatchMarkModulesStale
+        action: collects all affected module names into a single batch
+      - node: BatchMarkModulesStale
+        action: writes stale markers for all affected modules in one atomic I/O operation
+      - node: ComputeStaleModuleCount
+        action: counts the batch-marked stale modules
+      - node: StaleModuleList
+        action: stores the complete stale list produced by the batch operation
+      - node: TargetedNotFull
+        action: ensures the large stale set enters targeted reconvergence, not full rebuild
+
+  ChunkLargeGraphTracingForAffectedModules:
+    steps:
+      - node: SyncResult
+        action: provides the changed dependency list for affected module tracing
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph which may contain thousands of nodes
+      - node: graph/ConnectionSet
+        action: provides the full edge set which may contain thousands of directed edges
+      - node: ChunkAffectedModuleTracing
+        action: reads the total edge count and determines a chunk size based on available memory
+      - node: ChunkAffectedModuleTracing
+        action: partitions the connection set into chunks of edges to process incrementally
+      - node: ChunkAffectedModuleTracing
+        action: traces affected modules for the first chunk and stores partial results
+      - node: ChunkAffectedModuleTracing
+        action: processes each subsequent chunk, merging newly discovered affected modules into the partial result
+      - node: FindAffectedModules
+        action: receives the merged set of affected modules from all chunks
+      - node: FilterUnrelatedChanges
+        action: narrows the chunked result using the changelog
+      - node: StaleModuleList
+        action: stores the final narrowed stale list after chunked tracing completes
+
+  EnforceRippleDepthLimit:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification via fs.watch
+      - node: events/ReadEventFile
+        action: reads the incoming event file from disk
+      - node: ParseEventPayload
+        action: extracts the ripple origin chain from the event payload
+      - node: CheckRippleDepthLimit
+        action: counts the number of box IDs in the origin chain to determine current ripple depth
+      - node: CheckRippleDepthLimit
+        action: compares the depth against the configured maximum ripple depth
+      - node: CheckRippleDepthLimit
+        action: determines the depth exceeds the limit, indicating a cascade storm risk
+      - node: SuppressSyncOnOscillation
+        action: aborts the sync pipeline to stop the cascade from propagating further
+      - node: SyncResult
+        action: records that sync was suppressed due to ripple depth exceeding the configured maximum
+      - node: convergence/ConvergenceState
+        action: receives the suppressed result and does not trigger reconvergence or republish
+
+  RejectExcessiveDependencyFanOut:
+    steps:
+      - node: _actors/DependentBox
+        action: attempts to sync a box whose configuration declares many dependencies
+      - node: ReadDependencyList
+        action: reads the dependency list from the box configuration
+      - node: DependencyFanOutLimit
+        action: counts the number of declared dependencies
+      - node: DependencyFanOutLimit
+        action: compares the count against the configured maximum fan-out limit
+      - node: DependencyFanOutLimit
+        action: rejects the sync because the dependency count exceeds the maximum allowed
+      - node: SyncResult
+        action: records the rejection with the dependency count and the configured limit
+      - node: convergence/ConvergenceState
+        action: receives the sync failure and blocks until the dependency configuration is reduced
+
+  ClearOrphanSyncLockOnStartup:
+    steps:
+      - node: _actors/DependentBox
+        action: starts the sync subsystem after a process restart or cold boot
+      - node: SyncLock
+        action: is found on disk from a previous process that crashed mid-sync
+      - node: DetectAndClearOrphanSyncLock
+        action: reads the lock file and extracts the process ID or timestamp of the previous holder
+      - node: DetectAndClearOrphanSyncLock
+        action: checks whether the previous holder process is still running
+      - node: DetectAndClearOrphanSyncLock
+        action: determines the previous holder is dead and the lock is orphaned
+      - node: SyncLock
+        action: is cleared by removing the stale lock file from disk
+      - node: GuardAgainstConcurrentSync
+        action: confirms the lock is now available for new sync cycles
+      - node: SyncResult
+        action: records that an orphan sync lock was detected and cleared during startup
+
+  ScanForMissedEventsOnWake:
+    steps:
+      - node: _actors/DependentBox
+        action: wakes from sleep or restarts after a period of being offline
+      - node: ReadDependencyList
+        action: reads the full dependency list to identify all upstream boxes
+      - node: ScanForMissedEventsDuringSleep
+        action: reads the current event file from each dependency on disk
+      - node: ScanForMissedEventsDuringSleep
+        action: extracts the sequence number from each dependency's current event file
+      - node: LastProcessedSequence
+        action: provides the last processed sequence number for each dependency
+      - node: ScanForMissedEventsDuringSleep
+        action: compares each dependency's current sequence against the stored sequence and identifies dependencies with newer events
+      - node: ScanForMissedEventsDuringSleep
+        action: queues the missed events for processing as if they had just arrived via fs.watch
+      - node: FetchDependencyHash
+        action: fetches current hashes from all dependencies with missed events
+      - node: DependencyHashStore
+        action: provides stored hashes for comparison against the missed events
+      - node: CompareStoredHash
+        action: compares fetched hashes against stored to identify which missed events caused actual changes
+      - node: SyncResult
+        action: records the missed events discovered during wake and their staleness status
+
+  ValidateHashStoreOnColdStart:
+    steps:
+      - node: _actors/DependentBox
+        action: starts the sync subsystem and needs to verify stored state integrity
+      - node: DependencyHashStore
+        action: provides the raw hash store file from disk for validation
+      - node: ValidateHashStoreIntegrityOnStartup
+        action: checks that the hash store file is not truncated by comparing its size against the expected entry count
+      - node: ValidateHashStoreIntegrityOnStartup
+        action: validates that each stored hash value matches SHA256 format
+      - node: ValidateHashStoreIntegrityOnStartup
+        action: detects corruption and flags the hash store as invalid
+      - node: ReadDependencyList
+        action: reads the dependency list to know how many hashes should be stored
+      - node: FetchDependencyHash
+        action: re-fetches current hashes from all dependencies to rebuild the store
+      - node: UpdateStoredHashes
+        action: writes the freshly fetched hashes to replace the corrupted store
+      - node: DependencyHashStore
+        action: rebuilt with valid hashes from all dependency interfaces
+      - node: SyncResult
+        action: records that hash store corruption was detected and the store was rebuilt on cold start
+
+  RecoverInterruptedStaleMarkingOnRestart:
+    steps:
+      - node: _actors/DependentBox
+        action: restarts and needs to check for interrupted sync state
+      - node: StaleModuleList
+        action: provides the potentially incomplete stale list from disk
+      - node: RecoverInterruptedStaleMarking
+        action: reads the stale module list and detects it may be incomplete by checking for a pending SyncResult
+      - node: SyncResult
+        action: provides the list of changed dependencies from the interrupted sync cycle
+      - node: RecoverInterruptedStaleMarking
+        action: re-derives the full set of affected modules from the stored changed dependencies
+      - node: graph/CompiledIndex
+        action: provides the current graph for re-tracing affected modules
+      - node: graph/ConnectionSet
+        action: provides edges for re-tracing connections
+      - node: FindAffectedModules
+        action: re-traces connections from the changed dependencies to local modules
+      - node: MarkModulesStale
+        action: writes the complete set of stale markers replacing the partial list
+      - node: StaleModuleList
+        action: updated with the fully recovered stale module list
+      - node: convergence/TargetedReconvergence
+        action: receives the recovered stale list and begins reconvergence on all affected modules
+
+  ReconcileSequenceNumbersAfterCrash:
+    steps:
+      - node: _actors/DependentBox
+        action: restarts after a crash that may have interrupted sequence number updates
+      - node: ReadDependencyList
+        action: reads the full dependency list to identify all upstream boxes
+      - node: LastProcessedSequence
+        action: provides the stored sequence numbers which may be behind due to the crash
+      - node: ReconcileSequenceNumbersOnRestart
+        action: reads the current event file from each dependency to get the latest sequence number
+      - node: ReconcileSequenceNumbersOnRestart
+        action: compares each dependency's current sequence against the stored value
+      - node: ReconcileSequenceNumbersOnRestart
+        action: identifies dependencies where the stored sequence is behind the current event
+      - node: ReconcileSequenceNumbersOnRestart
+        action: fast-forwards each behind sequence to the current value to prevent reprocessing already-handled events
+      - node: LastProcessedSequence
+        action: updated with the reconciled sequence numbers for all dependencies
+      - node: FetchDependencyHash
+        action: fetches current hashes to check if the fast-forwarded events represent actual changes
+      - node: DependencyHashStore
+        action: provides stored hashes for comparison against the reconciled state
+      - node: CompareStoredHash
+        action: compares fetched hashes against stored to determine if reconvergence is needed for missed changes
+      - node: SyncResult
+        action: records the sequence reconciliation results and whether any missed changes require sync

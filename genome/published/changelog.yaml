@@ -1,1902 +1,630 @@
-previous_hash: none
-current_hash: sha256:3fac18f704364b040db103148dcab488d7f93ccc9415009c4d547621ebd3f16d
+previous_hash: sha256:3fac18f704364b040db103148dcab488d7f93ccc9415009c4d547621ebd3f16d
+current_hash: sha256:6e1bc3867a252899a80719ebf58a531731d550972337da581fd6f3d055e1af92
 changes:
-  - node: actors/DiscoverFromActivities
+  - node: compilation/StaleConnectionDetection
     type: added
     impact: >-
-      New process: analyzes the spec to find actors from the activities perspective — who uses, creates, operates,
-      governs, and visits the system
-  - node: actors/DiscoverFromThreats
+      New process: validates that every edge in the ConnectionSet has both source and target nodes present in the
+      NodeRegistry, catching connections left stale after node removal or module rewrite
+  - node: compilation/CompilationResultComparison
     type: added
     impact: >-
-      New process: analyzes the spec to find threat actors — attackers, abusers, failure scenarios, and exploitation
-      vectors
-  - node: actors/DiscoverFromLifecycle
+      New process: compares two CompilationResults or CompiledIndexes field by field for structural equality, flagging
+      any differences as non-determinism or merge-order drift
+  - node: compilation/ParallelValidationDispatch
     type: added
     impact: >-
-      New process: analyzes the spec to find lifecycle actors — first visit, onboarding, power use, decline, exit, and
-      return
-  - node: actors/MergeAndDeduplicate
-    type: added
-    impact: 'New process: combines actors from all 3 angles, removes duplicates, and keeps the best description for each'
-  - node: actors/WriteActorsFile
-    type: added
-    impact: 'New process: writes the merged actor list to _actors.yaml in the modules directory'
-  - node: actors/InheritActorsFromParent
-    type: added
-    impact: 'New process: copies the parent''s _actors.yaml into a child engine directory so children share the same actor set'
-  - node: actors/ValidateActorCoverage
-    type: added
-    impact: 'New process: checks that every discovered actor appears in at least one journey across all modules'
-  - node: actors/ValidateThreeAngleCompleteness
+      New process: dispatches independent validation checks (duplicates, dangling refs, orphans, isolation, stale
+      connections) concurrently on the same CompiledIndex and collects their ErrorReports when all complete
+  - node: compilation/DirtyModuleTracking
     type: added
     impact: >-
-      New process: checks that all 3 discovery angles produced at least one actor each, preventing partial discovery
-      from proceeding to merge
-  - node: actors/ProvideActorsForModuleCreation
+      New process: tracks which modules changed since the last successful compilation and identifies their cross-module
+      dependents, enabling targeted revalidation instead of full recompilation
+  - node: compilation/SchemaViolationDetection
     type: added
     impact: >-
-      New process: supplies the actor list to the excerpt generator so module workers know which _actors/ references are
-      valid during module creation
-  - node: actors/RediscoverActorsOnSpecChange
+      New process: validates each parsed module file has the required top-level structure (spec_sections as number
+      array, nodes as map, journeys as map) before content parsing proceeds
+  - node: compilation/FieldLossDetection
     type: added
     impact: >-
-      New process: re-runs 3-angle discovery when the spec changes during reconvergence, producing a diff of added and
-      removed actors against the existing set
-  - node: actors/UpdateActorsFileAfterRediscovery
+      New process: compares a module file before and after an LLM rewrite to detect any fields (including extension
+      fields like files) that were silently dropped during the edit
+  - node: compilation/ValidateDescriptionQuality
     type: added
     impact: >-
-      New process: merges newly discovered actors with the existing set, adding new actors and flagging removed ones for
-      orphan detection rather than deleting immediately
-  - node: actors/ValidateActorYAMLStructure
-    type: added
-    impact: >-
-      New process: checks that each entry in _actors.yaml has type actor and a non-empty description before the file is
-      passed to compilation
-  - node: actors/ActorsFile
-    type: added
-    impact: 'New artifact: the _actors.yaml file containing all discovered actors with type and description'
-  - node: actors/ActivitiesActorList
-    type: added
-    impact: 'New artifact: the list of actors discovered from the activities perspective before merging'
-  - node: actors/ThreatsActorList
-    type: added
-    impact: 'New artifact: the list of actors discovered from the threats perspective before merging'
-  - node: actors/LifecycleActorList
-    type: added
-    impact: 'New artifact: the list of actors discovered from the lifecycle perspective before merging'
-  - node: actors/MergedActorList
-    type: added
-    impact: 'New artifact: the deduplicated combined actor list from all 3 discovery angles'
-  - node: actors/ThreeAngleDiscovery
-    type: added
-    impact: >-
-      New rule: actors must be discovered from exactly 3 angles (activities, threats, lifecycle) to ensure comprehensive
-      coverage
-  - node: actors/ParentDiscoversChildrenInherit
-    type: added
-    impact: 'New rule: only the parent engine discovers actors — children inherit them to prevent duplication'
-  - node: actors/DetectActorImpersonation
-    type: added
-    impact: >-
-      New process: checks that every _actors/ reference in journey steps resolves to a validated actor in the registry,
-      flagging references to non-existent or removed actors
-  - node: actors/DetectActorDescriptionPoisoning
-    type: added
-    impact: >-
-      New process: scans actor descriptions for adversarial content patterns such as prompt injection fragments, encoded
-      instructions, or excessively long text before they are included in excerpt context
-  - node: actors/DetectChildActorTampering
-    type: added
-    impact: >-
-      New process: compares a child engine's _actors.yaml content against the parent's original hash to detect
-      unauthorized additions, removals, or description modifications
-  - node: actors/DetectDiscoveryAngleBias
-    type: added
-    impact: >-
-      New process: checks that no single discovery angle produced more than a threshold proportion of total actors,
-      flagging potential angle suppression or spec manipulation
-  - node: actors/EnforceActorCountLimit
-    type: added
-    impact: >-
-      New process: caps the maximum number of actors that can be stored in _actors.yaml to prevent graph bloat and
-      context window exhaustion from adversarial specs
-  - node: audit/CheckSpecCoverage
-    type: added
-    impact: >-
-      New process: auditor 1 compares spec sections against the graph to find sections not represented by any node or
-      journey
-  - node: audit/CheckActorCoverage
-    type: added
-    impact: >-
-      New process: auditor 2 checks that every actor in _actors.yaml participates in at least one journey across all
-      modules
-  - node: audit/CheckCrossModuleCoverage
-    type: added
-    impact: >-
-      New process: auditor 3 verifies that every module has at least one cross-module connection and no module is an
-      island
-  - node: audit/GenerateAuditPrompt
-    type: added
-    impact: >-
-      New process: builds a focused prompt for each auditor containing the compiled graph excerpt and the specific
-      coverage angle to check
-  - node: audit/CollectAuditFindings
-    type: added
-    impact: >-
-      New process: gathers findings from all 3 auditors into a single list of coverage gaps with locations and
+      New process: checks that every node has a meaningful description string, flagging nodes with empty or too-short
       descriptions
-  - node: audit/PrioritizeGaps
+  - node: compilation/DeterministicOrdering
     type: added
-    impact: 'New process: ranks the collected gaps by severity so the most critical coverage issues are fixed first'
-  - node: audit/BuildGapFixPrompt
-    type: added
-    impact: >-
-      New process: builds a targeted fix prompt for each gap specifying exactly which module to edit and what coverage
-      to add
-  - node: audit/ApplyFix
-    type: added
-    impact: 'New process: delegates to LLM to edit the specific module YAML file to close the identified coverage gap'
-  - node: audit/VerifyFixCompiles
-    type: added
-    impact: 'New process: runs compile.ts after each fix to ensure the edit did not introduce new errors'
-  - node: audit/VerifyGapClosed
-    type: added
-    impact: 'New process: re-runs the specific auditor that found the gap to confirm the fix actually closed it'
-  - node: audit/DeclareConverged
-    type: added
-    impact: 'New process: marks the graph as CONVERGED after all 3 auditors report zero gaps and compilation shows zero errors'
-  - node: audit/SelectNextGapToFix
-    type: added
-    impact: >-
-      New process: picks the highest-priority unfixed gap from the prioritized list and advances the pointer to the next
-      gap
-  - node: audit/ProvideFixContext
-    type: added
-    impact: >-
-      New process: assembles the target module excerpt, the specific gap description, and surrounding graph context into
-      a complete fix payload for the LLM worker
-  - node: audit/MergeAuditReports
-    type: added
-    impact: >-
-      New process: combines the 3 individual coverage reports into a unified view with normalized gap format before
-      feeding into findings collection
-  - node: audit/ConfirmAllGapsResolved
-    type: added
-    impact: >-
-      New process: checks that the re-audit findings list is empty and compilation is clean before allowing convergence
-      declaration to proceed
-  - node: audit/DetectFixInducedErrors
-    type: added
-    impact: >-
-      New process: compares pre-fix and post-fix compilation results to detect new orphans, duplicates, or dangling refs
-      that did not exist before the fix was applied
-  - node: audit/DetectFixInducedGaps
-    type: added
-    impact: >-
-      New process: compares pre-fix and post-fix audit findings to detect new coverage gaps opened by a fix that closed
-      a different gap
-  - node: audit/RejectAndRevertFix
-    type: added
-    impact: >-
-      New process: restores the target module to its pre-fix state when a fix introduced new errors or failed to close
-      the target gap
-  - node: audit/ValidateGraphInvariantsPostFix
-    type: added
-    impact: >-
-      New process: checks all convergence invariants after a fix round including zero errors, zero orphans, zero
-      duplicates, and zero isolated modules
-  - node: audit/DetectSelfAuditTarget
-    type: added
-    impact: >-
-      New process: detects when a coverage gap targets audit.yaml itself, flagging the meta-circular dependency so the
-      fix process applies extra safeguards
-  - node: audit/ValidateAuditModulePresence
-    type: added
-    impact: >-
-      New process: checks that audit.yaml exists as a compiled module in the index since it is infrastructure required
-      for the convergence pipeline to function
-  - node: audit/DetectSpecChangeToAuditSections
-    type: added
-    impact: >-
-      New process: detects when spec sections referenced by audit.yaml have changed, triggering re-evaluation of audit
-      coverage requirements against the updated spec
-  - node: audit/ScopeFixToAvoidAuditBreak
-    type: added
-    impact: >-
-      New process: when a fix targets audit.yaml, validates that the proposed edit does not remove or break existing
-      audit processes like CheckSpecCoverage, VerifyFixCompiles, or DeclareConverged
-  - node: audit/ReauditAfterSelfFix
-    type: added
-    impact: >-
-      New process: after a fix modifies audit.yaml, re-runs the full audit pipeline from scratch to verify the self-fix
-      did not invalidate audit's own integrity
-  - node: audit/AuditFindingsList
-    type: added
-    impact: 'New artifact: the collected list of coverage gaps from all 3 auditors with gap type, location, and description'
-  - node: audit/SpecCoverageReport
-    type: added
-    impact: >-
-      New artifact: auditor 1's report listing which spec sections are covered and which have no representation in the
-      graph
-  - node: audit/ActorCoverageReport
-    type: added
-    impact: 'New artifact: auditor 2''s report listing which actors participate in journeys and which are orphaned'
-  - node: audit/CrossModuleCoverageReport
-    type: added
-    impact: 'New artifact: auditor 3''s report listing which modules have cross-module connections and which are isolated'
-  - node: audit/TrackAuditRound
-    type: added
-    impact: >-
-      New artifact: records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking
-      and termination decisions
-  - node: audit/ExactlyThreeAuditors
-    type: added
-    impact: >-
-      New rule: depth audit always uses exactly 3 auditors checking spec coverage, actor coverage, and cross-module
-      coverage
-  - node: audit/TargetedFixesOnly
-    type: added
-    impact: >-
-      New rule: audit gaps are fixed with targeted edits to specific modules, never by re-running the full creation
-      pipeline
-  - node: audit/AuditAfterZeroErrors
-    type: added
-    impact: 'New rule: audit only runs after compile.ts reports 0 errors and 0 orphans — never on a broken graph'
-  - node: audit/AuditRoundLimit
-    type: added
-    impact: >-
-      New rule: audit-fix-reaudit cycles are capped at a maximum number of rounds to prevent infinite loops when gaps
-      cannot be resolved
-  - node: codegen/ReadConvergedGraph
-    type: added
-    impact: >-
-      New process: reads the compiled index after convergence to extract all nodes with their types and descriptions for
-      skeleton generation
-  - node: codegen/GenerateProcessSkeletons
-    type: added
-    impact: >-
-      New process: creates TypeScript function stubs for each process node with name, parameters inferred from
-      connections, and return type
-  - node: codegen/GenerateArtifactSkeletons
-    type: added
-    impact: >-
-      New process: creates TypeScript interface and class stubs for each artifact node with fields inferred from journey
-      usage
-  - node: codegen/GenerateInterfaceSkeletons
-    type: added
-    impact: 'New process: creates TypeScript API endpoint or handler stubs for each interface node'
-  - node: codegen/GenerateRuleSkeletons
-    type: added
-    impact: 'New process: creates TypeScript validation function stubs for each rule node with the constraint logic left empty'
-  - node: codegen/MapConnectionsToImports
-    type: added
-    impact: 'New process: reads cross-module connections to generate import statements linking skeleton files across modules'
-  - node: codegen/AssembleModuleFile
-    type: added
-    impact: >-
-      New process: combines all skeletons for a single module into one TypeScript file with imports, types, and function
-      stubs
-  - node: codegen/FillImplementation
-    type: added
-    impact: >-
-      New process: delegates to LLM to fill the empty function bodies and class methods in a skeleton file with working
-      code
-  - node: codegen/WriteGeneratedFile
-    type: added
-    impact: 'New process: writes the filled TypeScript file to disk in the generated code output directory'
-  - node: codegen/ValidateFilledSyntax
-    type: added
-    impact: >-
-      New process: runs a TypeScript syntax and type check on the filled source file to catch LLM-generated errors
-      before staging
-  - node: codegen/StageFilledModule
-    type: added
-    impact: >-
-      New process: writes the validated filled file to the staging directory rather than directly to the final output,
-      allowing review before commit
-  - node: codegen/SelectNextModuleToFill
-    type: added
-    impact: 'New process: picks the next unfilled module from the dependency-ordered build list and advances the pointer'
-  - node: codegen/ConfirmAllModulesFilled
-    type: added
-    impact: >-
-      New process: checks that every module in the dependency-ordered build list has a filled source file on disk before
-      signaling codegen completion
-  - node: codegen/ProvideCodegenExcerpt
-    type: added
-    impact: >-
-      New process: assembles codegen-specific excerpt context including node descriptions, journey flows, and
-      cross-module imports to guide the LLM fill
-  - node: codegen/RetryFillWithErrorFeedback
-    type: added
-    impact: >-
-      New process: sends the syntax or type errors from a failed fill back to the LLM as feedback and re-requests the
-      fill with the original skeleton plus the error context
-  - node: codegen/DetectWorkerCrashDuringFill
-    type: added
-    impact: >-
-      New process: detects that the LLM worker process crashed, timed out, or disconnected during a fill task before the
-      result was fully received
-  - node: codegen/ResumeFromLastFilledModule
-    type: added
-    impact: >-
-      New process: on restart after a partial crash, scans the generated code directory to find which modules already
-      have filled files and resumes from the next unfilled module in build order
-  - node: codegen/SkipAndDeferFailedModule
-    type: added
-    impact: >-
-      New process: when a module fill fails after retries, skips it and continues with independent modules that do not
-      depend on the failed one, deferring it for a later attempt
-  - node: codegen/RollbackCorruptedFill
-    type: added
-    impact: >-
-      New process: reverts a filled file back to its skeleton state when the fill passes syntax check but causes type
-      errors in dependent modules downstream
-  - node: codegen/SkeletonFile
-    type: added
-    impact: 'New artifact: a TypeScript file containing empty stubs for all nodes in a module, ready for LLM to fill'
-  - node: codegen/FilledSourceFile
-    type: added
-    impact: 'New artifact: a TypeScript file with LLM-filled implementations for all node stubs in a module'
-  - node: codegen/GeneratedCodeDirectory
-    type: added
-    impact: 'New artifact: the output directory containing all generated TypeScript files organized by module'
-  - node: codegen/CodeComesFromNodes
-    type: added
-    impact: >-
-      New rule: every generated function, class, or interface maps directly to a node in the graph — no code exists
-      without a node
-  - node: codegen/SkeletonBeforeFill
-    type: added
-    impact: >-
-      New rule: code generation always produces empty skeletons first, then LLM fills — never asks LLM to generate from
-      scratch
-  - node: compilation/YAMLParsing
-    type: added
-    impact: 'New process: reads raw YAML module files from disk and parses them into structured data'
-  - node: compilation/DuplicateDetection
-    type: added
-    impact: 'New process: scans the node registry for duplicate node names across all modules'
-  - node: compilation/DanglingRefDetection
-    type: added
-    impact: 'New process: checks every journey step node reference and flags those that resolve to no known node'
-  - node: compilation/OrphanDetection
-    type: added
-    impact: 'New process: identifies nodes that are defined but never referenced in any journey step'
-  - node: compilation/IsolatedModuleDetection
-    type: added
-    impact: 'New process: finds modules whose nodes have zero connections to nodes in any other module'
-  - node: compilation/ExternalRefClassification
-    type: added
-    impact: 'New process: classifies unresolved refs as external sibling-engine references and emits warnings instead of errors'
-  - node: compilation/YAMLErrorReporting
-    type: added
-    impact: 'New process: catches and reports YAML syntax errors with file name and line number for each malformed module'
-  - node: compilation/ValidationAggregation
-    type: added
-    impact: 'New process: collects all errors and warnings from all validation checks into a single compilation result'
-  - node: compilation/IncrementalValidation
-    type: added
-    impact: >-
-      New process: validates only the newly added module against the existing graph, checking for new duplicates,
-      dangling refs, and type errors without full rebuild
-  - node: compilation/SkipMalformedModule
-    type: added
-    impact: >-
-      New process: excludes a module with fatal YAML parse errors from the compiled index, allowing compilation of
-      remaining modules to continue
-  - node: compilation/ValidateModuleCompleteness
-    type: added
-    impact: >-
-      New process: checks that every module listed in ORGANIZATION.md exists as a compiled module in the index, ensuring
-      no module was missed during bounded creation
-  - node: compilation/CompilationResult
-    type: added
-    impact: >-
-      New artifact: the output of compile.ts containing error count, warning count, orphan list, duplicate list, and
-      dangling ref list
-  - node: compilation/ErrorReport
-    type: added
-    impact: 'New artifact: structured list of all validation errors with type, location, and message for each'
-  - node: compilation/WarningReport
-    type: added
-    impact: 'New artifact: structured list of all warnings including external refs that parent will validate later'
-  - node: compilation/CompileCLI
-    type: added
-    impact: 'New interface: command-line interface to run compile.ts and receive validation output'
-  - node: compilation/ZeroErrorConvergence
-    type: added
-    impact: 'New rule: convergence requires compile.ts to report exactly 0 errors and 0 orphans before proceeding'
-  - node: compilation/ExternalRefsAreWarnings
-    type: added
-    impact: 'New rule: unresolved refs to sibling engines are warnings in children, errors only at parent level'
-  - node: convergence/ReadSpec
-    type: added
-    impact: 'New process: reads spec.md from disk as the sole human input to the convergence pipeline'
-  - node: convergence/WriteOrganization
-    type: added
-    impact: >-
-      New process: delegates to LLM to analyze the spec and write ORGANIZATION.md with modules, dependencies, and
-      independence
-  - node: convergence/DiscoverActors
-    type: added
-    impact: >-
-      New process: delegates to LLM to discover actors from 3 angles (activities, threats, lifecycle) and write
-      _actors.yaml
-  - node: convergence/HierarchyDecision
-    type: added
-    impact: >-
-      New process: delegates to LLM to decide whether the module set should split into child engines based on
-      independence analysis
-  - node: convergence/ModuleCreation
-    type: added
-    impact: 'New process: iterates over modules from ORGANIZATION.md, making one LLM call per module with compile between each'
-  - node: convergence/BoundedCreationLoop
-    type: added
-    impact: 'New process: creates modules in build-order rounds, compiling after each to catch errors before the next module'
-  - node: convergence/CompileCheck
-    type: added
-    impact: 'New process: invokes compile.ts after each module creation and after all modules to verify 0 errors and 0 orphans'
-  - node: convergence/TargetedAudit
-    type: added
-    impact: >-
-      New process: dispatches 3 auditors to check spec coverage, actor coverage, and cross-module coverage after
-      compilation passes
-  - node: convergence/AuditGapFix
-    type: added
-    impact: >-
-      New process: takes audit findings and makes targeted LLM calls to fix specific coverage gaps without re-creating
-      from scratch
-  - node: convergence/RecompileAfterFix
-    type: added
-    impact: 'New process: runs compile.ts again after audit fixes to verify the fixes did not introduce new errors'
-  - node: convergence/ReauditAfterFix
-    type: added
-    impact: 'New process: runs targeted audit again after successful recompile to verify gaps are closed'
-  - node: convergence/TriggerPublish
-    type: added
-    impact: 'New process: invokes publish.ts to generate interface.yaml and changelog.yaml after convergence is confirmed'
-  - node: convergence/TriggerCodegen
-    type: added
-    impact: 'New process: invokes codegen.ts to generate TypeScript skeletons from the converged graph'
-  - node: convergence/TriggerTestgen
-    type: added
-    impact: 'New process: invokes testgen.ts to generate test skeletons from journey steps'
-  - node: convergence/ExecuteTests
-    type: added
-    impact: 'New process: executes generated tests and collects pass/fail results'
-  - node: convergence/FixTestFailures
-    type: added
-    impact: 'New process: delegates to LLM to fix failing tests and re-runs until all pass'
-  - node: convergence/EnterSleepMode
-    type: added
-    impact: 'New process: sets up fs.watch on event files and enters zero-cost sleep until a change event arrives'
-  - node: convergence/WakeOnEvent
-    type: added
-    impact: 'New process: wakes from sleep when fs.watch detects an event file change from a dependency'
-  - node: convergence/TargetedReconvergence
-    type: added
-    impact: 'New process: runs compile + audit on only the stale modules identified by sync, skipping full creation'
-  - node: convergence/MapPerspectives
-    type: added
-    impact: >-
-      New process: identifies which perspectives are relevant to each module based on its content domain and assigns the
-      bounded set of lenses
-  - node: convergence/ExamineFromPerspective
-    type: added
-    impact: >-
-      New process: delegates to LLM to examine a single module from a single perspective and add missing nodes and
-      journeys
-  - node: convergence/RetryModuleCreation
-    type: added
-    impact: >-
-      New process: retries module creation by passing the compilation error report to the LLM so it can fix the specific
-      problems in its output
-  - node: convergence/RollbackFailedFix
-    type: added
-    impact: 'New process: reverts a module file to its pre-fix state when an audit fix introduced new compilation errors'
-  - node: convergence/ResumePipeline
-    type: added
-    impact: >-
-      New process: reads ConvergenceState on startup to find the last completed pipeline step and resumes execution from
-      that point
-  - node: convergence/DetectWorkerFailure
-    type: added
-    impact: 'New process: detects when the LLM worker process has crashed or become unresponsive during a task'
-  - node: convergence/RespawnWorker
-    type: added
-    impact: 'New process: terminates the failed worker process and spawns a fresh one with the same task context'
-  - node: convergence/ValidateCreationCompleteness
-    type: added
-    impact: >-
-      New process: checks that every module listed in ORGANIZATION.md exists as a YAML file on disk after the creation
-      pipeline finishes
-  - node: convergence/ValidatePerspectiveCompleteness
-    type: added
-    impact: 'New process: checks that every module-perspective pair in the mapping was examined during the enrichment pipeline'
-  - node: convergence/ValidateActorCompleteness
-    type: added
-    impact: >-
-      New process: checks that all 3 actor discovery angles produced results and the merged _actors.yaml covers
-      activities, threats, and lifecycle
-  - node: convergence/PipelineInvariantCheck
-    type: added
-    impact: >-
-      New process: verifies that all pipeline phases completed in the correct order before allowing convergence to be
-      declared
-  - node: convergence/HandleWorkerCompaction
-    type: added
-    impact: >-
-      New process: orchestrates context compaction in the LLM worker during long creation or enrichment loops so the
-      pipeline continues without losing progress
-  - node: convergence/SplitIntoChildEngines
-    type: added
-    impact: >-
-      New process: distributes modules to child engines and spawns independent convergence pipelines when hierarchy
-      decides to split
-  - node: convergence/CollectChildResults
-    type: added
-    impact: >-
-      New process: waits for all child engines to converge and collects their published interfaces for parent-level
-      cross-engine validation
-  - node: convergence/DetectSelfModification
-    type: added
-    impact: >-
-      New process: detects when reconvergence would modify modules that describe the currently running pipeline such as
-      convergence, compilation, or graph
-  - node: convergence/StageGeneratedCode
-    type: added
-    impact: >-
-      New process: writes codegen output to a staging directory instead of overwriting the running code, so the active
-      pipeline is not modified mid-run
-  - node: convergence/SwapGeneratedCode
-    type: added
-    impact: >-
-      New process: atomically replaces the running code with the staged generated code after all tests pass on the
-      staged version
-  - node: convergence/ValidateSelfConsistency
-    type: added
-    impact: >-
-      New process: checks that self-referential modules accurately describe the behavior of the running code they were
-      generated from
-  - node: convergence/SpecFile
-    type: added
-    impact: 'New artifact: the spec.md file written by the ProjectOwner as the sole human input'
-  - node: convergence/ConvergenceState
-    type: added
-    impact: 'New artifact: tracks current pipeline step, completed modules, audit results, and convergence status'
-  - node: convergence/StagingDirectory
-    type: added
-    impact: 'New artifact: temporary directory holding generated code that will replace the running code after tests pass'
-  - node: convergence/ConvergenceCLI
-    type: added
-    impact: 'New interface: command-line interface to trigger and monitor the convergence pipeline'
-  - node: convergence/CodeOrchestratesLLMCreates
-    type: added
-    impact: 'New rule: code decides WHEN to act, LLM only creates content when explicitly asked by code'
-  - node: convergence/BoundedCreationRule
-    type: added
-    impact: 'New rule: creation is bounded by modules times relevant lenses, never an open-ended loop'
-  - node: convergence/NeverOpenEndedLoop
-    type: added
-    impact: 'New rule: LLM is never asked open-ended questions in a loop — bounded creation plus targeted fixes only'
-  - node: convergence/DataDecidesWhenToStop
-    type: added
-    impact: 'New rule: no hardcoded limits on module count or audit rounds — the data determines convergence'
-  - node: convergence/OnlyHumanInputIsSpec
-    type: added
-    impact: 'New rule: spec.md is the only human-written input, everything else is auto-generated'
-  - node: convergence/BoundedRetryRule
-    type: added
-    impact: 'New rule: retry attempts for any single module creation or fix are capped to prevent infinite retry loops'
-  - node: convergence/AllPhasesCompleteRule
-    type: added
-    impact: >-
-      New rule: convergence requires organization, actors, hierarchy, creation, perspectives, compilation, and audit all
-      recorded as complete in ConvergenceState
-  - node: convergence/NeverModifyRunningCode
-    type: added
-    impact: >-
-      New rule: generated code must be staged and tested before replacing the running pipeline code — never overwrite in
-      place
-  - node: events/RegisterEventWatchers
-    type: added
-    impact: 'New process: sets up fs.watch on each dependency''s event file directory to monitor for new publish events'
-  - node: events/DetectEventFileChange
-    type: added
-    impact: 'New process: receives a filesystem notification from fs.watch when an event file is created or modified'
-  - node: events/ReadEventFile
-    type: added
-    impact: 'New process: reads the contents of the changed event file to determine which dependency published and what changed'
-  - node: events/DelegateToSync
-    type: added
-    impact: 'New process: passes the event data to sync.ts to check dependency hashes and find affected modules'
-  - node: events/EnterSleep
-    type: added
-    impact: >-
-      New process: suspends the engine process after all watchers are registered, consuming zero CPU until an event
-      arrives
-  - node: events/WakeFromSleep
-    type: added
-    impact: >-
-      New process: resumes the engine process when fs.watch fires a callback, transitioning from sleep to active
-      processing
-  - node: events/DeregisterEventWatchers
-    type: added
-    impact: 'New process: tears down all fs.watch watchers when the engine shuts down or the box is removed'
-  - node: events/DebounceEvents
-    type: added
-    impact: 'New process: batches rapid successive events into a single sync trigger to avoid redundant reconvergence'
-  - node: events/PropagateRipple
-    type: added
-    impact: >-
-      New process: after this box reconverges and republishes, its own event file triggers watchers in downstream
-      dependents
-  - node: events/ValidateEventFileFormat
-    type: added
-    impact: >-
-      New process: checks that the event file contains valid JSON with required fields including interface hash,
-      sequence number, origin chain, and changelog before passing to sync
-  - node: events/LogEventReceived
-    type: added
-    impact: >-
-      New process: records the received event with timestamp, source dependency, sequence number, and disposition into
-      the event log for observability
-  - node: events/UpdateWatcherAfterDependencyChange
-    type: added
-    impact: >-
-      New process: adds fs.watch instances for newly added dependencies and removes instances for dropped dependencies
-      without tearing down existing watchers
-  - node: events/ConfirmWatcherHealth
-    type: added
-    impact: >-
-      New process: checks that all registered fs.watch instances are still active and responsive, detecting any that
-      were silently dropped by the OS
-  - node: events/DetectWatcherCrash
-    type: added
-    impact: >-
-      New process: detects when an fs.watch instance emits an error event or throws an exception instead of delivering a
-      normal change notification
-  - node: events/HandleEventReadFailure
-    type: added
-    impact: >-
-      New process: catches IO errors when reading an event file from disk including file deleted between notification
-      and read, permission denied, or disk IO error
-  - node: events/HandleInvalidEventPayload
-    type: added
-    impact: >-
-      New process: catches validation failures when the event file exists but contains malformed JSON, missing required
-      fields, or unparseable values and produces a structured error
-  - node: events/ReregisterCrashedWatcher
-    type: added
-    impact: >-
-      New process: tears down the failed fs.watch instance, releases its kernel handle, and creates a replacement
-      watcher for the same dependency event file path
-  - node: events/DetectSyncDelegationFailure
-    type: added
-    impact: >-
-      New process: catches errors thrown by sync.ts when it fails to process the delegated event such as unreachable
-      dependency interface or hash store corruption
-  - node: events/LogEventFailure
-    type: added
-    impact: >-
-      New process: records event processing failures with error type, source dependency, failing step, and stack trace
-      into the event log for diagnosis
-  - node: events/RetryEventProcessing
-    type: added
-    impact: >-
-      New process: re-reads and re-processes a failed event file after a brief delay, attempting recovery before
-      escalating to convergence
-  - node: events/ExtractOriginChain
-    type: added
-    impact: >-
-      New process: reads the ripple origin chain from the validated event payload and makes it available for oscillation
-      detection by sync before delegation
-  - node: events/ExtractEventSequenceNumber
-    type: added
-    impact: >-
-      New process: reads the event sequence number from the validated event payload and makes it available for ordering
-      and dedup checks by sync before delegation
-  - node: events/SuppressUnchangedRipple
-    type: added
-    impact: >-
-      New process: blocks event file write and outgoing propagation when publish reports that the interface hash did not
-      change after reconvergence, absorbing the ripple at this box
-  - node: events/AdjustCooldownWindow
-    type: added
-    impact: >-
-      New process: widens the oscillation cooldown window when multiple events arrive in rapid succession and narrows it
-      back during stable periods with no events
-  - node: events/TrackRippleDepth
-    type: added
     impact: >-
-      New process: reads the origin chain length from the incoming event and records the current ripple depth for
-      logging and enforcement by downstream propagation checks
-  - node: events/BatchWatcherRegistration
+      New rule: all output lists in CompilationResult, ErrorReport, and WarningReport are sorted by a canonical key
+      (module name, then node name, then journey name) so file system read order and check execution order never affect
+      the output
+  - node: compilation/EarlyTerminationRule
     type: added
     impact: >-
-      New process: registers fs.watch instances in batches with a configurable concurrency limit to avoid overwhelming
-      the OS kernel when a box has many dependencies
-  - node: events/TruncateEventLog
+      New rule: halts remaining validation checks when accumulated error count exceeds a configurable threshold,
+      returning the partial result immediately to avoid wasted work on a clearly failing compilation
+  - node: compilation/ValidateActionQuality
     type: added
     impact: >-
-      New process: removes the oldest entries from the event log when it exceeds a configured maximum entry count,
-      preserving only the most recent entries
-  - node: events/PrioritizeEventsByImpact
+      New process: checks that every journey step has a meaningful action description, flagging steps with empty or
+      too-short actions
+  - node: convergence/DetectAuditCycleExhaustion
     type: added
     impact: >-
-      New process: when a debounce batch contains many events, sorts them by the number of local modules each dependency
-      affects so the highest-impact changes are processed first
-  - node: events/StreamLargeEventPayload
+      New process: detects when audit-fix-reaudit cycles have reached the audit round limit without converging to zero
+      gaps, halting further audit cycles
+  - node: convergence/DetectWakeOscillation
     type: added
     impact: >-
-      New process: reads oversized event files in a streaming fashion rather than loading the full content into memory,
-      extracting only the required hash, sequence, origin chain, and changelog fields
-  - node: events/EventWatcherSet
+      New process: detects when the sleep-wake-reconverge-publish cycle has repeated beyond the oscillation threshold,
+      suppressing further wake responses
+  - node: convergence/DetectEnrichmentExhaustion
     type: added
-    impact: 'New artifact: the set of active fs.watch instances monitoring dependency event file paths'
-  - node: events/EventPayload
-    type: added
-    impact: 'New artifact: the parsed content of an event file containing the source box, timestamp, and changed interface hash'
-  - node: events/EventLog
-    type: added
-    impact: >-
-      New artifact: append-only log of all received events with timestamps, source boxes, sequence numbers, and
-      disposition for observability and debugging
-  - node: events/EventDrivenNotPolling
-    type: added
-    impact: 'New rule: event detection uses fs.watch callbacks only, never periodic polling or timer-based checks'
-  - node: events/ZeroCostAtRest
-    type: added
-    impact: >-
-      New rule: when no events are pending the engine consumes zero CPU and zero network, only fs.watch kernel handles
-      remain active
-  - node: events/OscillationCooldown
-    type: added
-    impact: >-
-      New rule: prevents infinite ripple by suppressing re-trigger if the same dependency fires again within a cooldown
-      window
-  - node: events/MaxRetryExceeded
-    type: added
-    impact: >-
-      New rule: after a configured number of retry attempts for the same event file, stop retrying and escalate the
-      failure to convergence for operator review
-  - node: events/RippleAbsorbedAtLeaf
-    type: added
-    impact: >-
-      New rule: when a box has no downstream dependents the ripple terminates naturally and no event file is written
-      regardless of whether the interface changed
-  - node: events/EventLogSizeLimit
-    type: added
-    impact: >-
-      New rule: the event log must not grow beyond a configured maximum number of entries to prevent unbounded disk
-      usage during sustained ripple activity
-  - node: events/WatcherCountLimit
-    type: added
-    impact: >-
-      New rule: enforces a maximum number of concurrent fs.watch instances per box to prevent file descriptor exhaustion
-      on boxes with many dependencies
-  - node: excerpt/SelectTargetModule
-    type: added
-    impact: 'New process: identifies which module to generate an excerpt for based on the current convergence step'
-  - node: excerpt/CollectLocalNodes
-    type: added
-    impact: 'New process: gathers all nodes defined within the target module from the compiled index'
-  - node: excerpt/CollectLocalJourneys
-    type: added
-    impact: 'New process: gathers all journeys defined within the target module from the compiled index'
-  - node: excerpt/CollectCrossModuleConnections
-    type: added
-    impact: >-
-      New process: finds all connections where one endpoint is in the target module and the other is in a different
-      module
-  - node: excerpt/CollectReferencedActors
-    type: added
-    impact: 'New process: finds all _actors/ references used in the target module''s journeys'
-  - node: excerpt/CollectWarnings
-    type: added
-    impact: 'New process: gathers all compilation warnings relevant to the target module including external refs and orphans'
-  - node: excerpt/AssembleExcerpt
-    type: added
-    impact: >-
-      New process: combines local nodes, journeys, cross-module connections, actors, and warnings into a single focused
-      output
-  - node: excerpt/TruncateToLimit
-    type: added
-    impact: 'New process: trims the assembled excerpt to approximately 200 lines while preserving completeness of each section'
-  - node: excerpt/CollectModuleSource
-    type: added
-    impact: 'New process: reads the target module''s raw YAML file content for inclusion in the YOUR FILE section of the excerpt'
-  - node: excerpt/CollectGlobalStats
-    type: added
-    impact: >-
-      New process: gathers global compilation statistics including total nodes, journeys, connections, orphan count, and
-      duplicate count
-  - node: excerpt/CollectAllModuleSummaries
-    type: added
-    impact: >-
-      New process: gathers one-line summaries for every module showing node count, journey count, and cross-module
-      connection count
-  - node: excerpt/CollectTriggeredByActors
-    type: added
-    impact: >-
-      New process: identifies which actors trigger journeys in the target module by scanning journey first-steps for
-      actor references
-  - node: excerpt/RankCrossModuleByRelevance
-    type: added
-    impact: >-
-      New process: ranks cross-module connections by relevance when the full set exceeds the budget, keeping direct
-      dependencies and demoting distant transitive connections
-  - node: excerpt/SummarizeLargeModuleSource
-    type: added
-    impact: >-
-      New process: when the module YAML exceeds a line threshold, produces a compact summary listing node names with
-      types and journey names instead of the raw source
-  - node: excerpt/CompressModuleSummaries
-    type: added
-    impact: >-
-      New process: when there are many modules, abbreviates the ALL MODULES section to show directly-connected modules
-      in full detail and group the rest into a count line
-  - node: excerpt/CacheExcerptByState
-    type: added
-    impact: >-
-      New process: caches generated excerpts keyed by module name and compiled index hash, serving cached results when
-      the graph has not changed since last generation
-  - node: excerpt/InvalidateExcerptCache
-    type: added
-    impact: >-
-      New process: clears all cached excerpts when compilation produces a new compiled index, ensuring stale context is
-      never served to workers
-  - node: excerpt/ExcerptOutput
-    type: added
-    impact: 'New artifact: the final ~200 line focused context document for a single module'
-  - node: excerpt/ExcerptLineLimit
-    type: added
-    impact: 'New rule: each excerpt must be approximately 200 lines to provide focused context without overwhelming the LLM'
-  - node: excerpt/LensRelevance
-    type: added
-    impact: 'New rule: excerpt content is scoped to what is relevant for the target module, filtering out unrelated graph data'
-  - node: excerpt/AdaptiveBudgetAllocation
-    type: added
-    impact: >-
-      New rule: the ~200 line budget is allocated dynamically across sections based on module complexity, giving more
-      space to cross-module connections for highly-connected modules and more to source for complex modules
-  - node: graph/NodeDefinition
-    type: added
-    impact: >-
-      New process: defines a node with one of 5 universal types (actor, process, artifact, interface, rule) plus name
-      and description
-  - node: graph/JourneyDefinition
-    type: added
-    impact: >-
-      New process: defines a journey as an ordered sequence of steps, each with a node reference and an action
-      description
-  - node: graph/StepDefinition
-    type: added
-    impact: >-
-      New process: defines a single journey step binding a node reference to an action, forming a connection to the next
-      step
-  - node: graph/ConnectionComputation
-    type: added
-    impact: 'New process: derives directed connections between consecutive journey steps, building the edge set of the graph'
-  - node: graph/CrossModuleRefResolution
-    type: added
-    impact: 'New process: resolves node references that use module/NodeName syntax to link nodes across module boundaries'
-  - node: graph/ActorRefResolution
-    type: added
-    impact: 'New process: resolves actor references that use _actors/ActorName syntax to link shared actors into journeys'
-  - node: graph/PublishedInterfaceDefinition
-    type: added
-    impact: >-
-      New process: defines what a box provides to other boxes as a versioned, hashable set of exported nodes and
-      journeys
-  - node: graph/IncrementalMerge
-    type: added
-    impact: >-
-      New process: merges a single newly created module into the existing compiled index, adding its nodes, journeys,
-      and connections without full rebuild
-  - node: graph/NodeTypeSchema
-    type: added
-    impact: >-
-      New rule: enforces that every node must be exactly one of the 5 universal types (actor, process, artifact,
-      interface, rule)
-  - node: graph/StepFormatRule
-    type: added
-    impact: 'New rule: enforces that every journey step must have a node field and an action field, never flat strings'
-  - node: graph/NoIsolationRule
-    type: added
-    impact: 'New rule: every node must participate in at least one journey — no standalone nodes allowed in the graph'
-  - node: graph/UniqueNodeNameRule
-    type: added
-    impact: 'New rule: every node name must be unique across all modules — no two modules may define the same node name'
-  - node: graph/AllRefsResolveRule
-    type: added
-    impact: 'New rule: every node reference in every journey step must resolve to a defined node, actor, or cross-module target'
-  - node: graph/ModuleFile
-    type: added
-    impact: 'New artifact: a YAML file containing spec_sections, nodes, and journeys that defines one scoped piece of the graph'
-  - node: graph/CompiledIndex
-    type: added
-    impact: >-
-      New artifact: the merged in-memory structure of all modules containing all nodes, journeys, and computed
-      connections
-  - node: graph/ConnectionSet
-    type: added
-    impact: 'New artifact: the set of directed edges derived from consecutive journey steps across all journeys'
-  - node: graph/NodeRegistry
-    type: added
-    impact: 'New artifact: the deduplicated map of all node names to their type and description across all modules'
-  - node: graph/JourneyRegistry
-    type: added
-    impact: 'New artifact: the collection of all journeys with their steps, used for connection computation and test generation'
-  - node: hierarchy/AnalyzeModuleIndependence
-    type: added
-    impact: >-
-      New process: reads ORGANIZATION.md independence section to identify which module groups could form separate child
-      engines
-  - node: hierarchy/DecideSplit
-    type: added
-    impact: >-
-      New process: LLM-based decision on whether to split, using module count, independence, and coupling analysis — no
-      hardcoded threshold
-  - node: hierarchy/CreateChildDirectory
-    type: added
-    impact: 'New process: creates a new directory for each child engine with its own modules/ folder structure'
-  - node: hierarchy/GenerateScopedSpec
-    type: added
-    impact: >-
-      New process: writes a scoped spec.md for each child containing only the sections relevant to that child's module
-      group
-  - node: hierarchy/DistributeSharedActors
-    type: added
-    impact: >-
-      New process: copies the parent's _actors.yaml into each child directory so all children inherit the same shared
-      actors
-  - node: hierarchy/AssignModulesToChildren
-    type: added
-    impact: 'New process: maps each module from ORGANIZATION.md to exactly one child engine based on the grouping decision'
-  - node: hierarchy/SpawnChildEngine
-    type: added
-    impact: 'New process: launches a child convergence.ts process for each child directory as an independent subprocess'
-  - node: hierarchy/WaitForAllChildren
-    type: added
-    impact: 'New process: blocks until every spawned child engine has completed its convergence and published its interface'
-  - node: hierarchy/CollectChildInterfaces
-    type: added
-    impact: 'New process: reads each child''s published interface.yaml to gather their exported nodes and journeys'
-  - node: hierarchy/CreateCrossEngineJourneys
-    type: added
-    impact: >-
-      New process: creates journeys at the parent level that connect nodes across different children's published
-      interfaces
-  - node: hierarchy/ValidateCrossEngineRefs
-    type: added
-    impact: >-
-      New process: checks that all external refs in children (warnings) resolve to actual nodes in sibling child
-      interfaces
-  - node: hierarchy/PromoteExternalRefsToErrors
-    type: added
-    impact: >-
-      New process: converts unresolved external refs from warnings to errors at the parent level where all children are
-      visible
-  - node: hierarchy/ContinueWithoutSplit
-    type: added
-    impact: >-
-      New process: bypasses the entire hierarchy pipeline and proceeds directly to bounded module creation when the LLM
-      decides not to split
-  - node: hierarchy/MonitorChildConvergence
-    type: added
-    impact: >-
-      New process: polls each child engine's published output directory to track whether it has completed convergence or
-      is still running
-  - node: hierarchy/MergeChildGraphsIntoParent
-    type: added
-    impact: >-
-      New process: incorporates all child interface nodes and journeys into the parent's compiled index as resolved
-      external references
-  - node: hierarchy/GenerateChildOrganization
-    type: added
-    impact: >-
-      New process: creates a scoped ORGANIZATION.md for each child listing only the modules assigned to that child's
-      group
-  - node: hierarchy/TrackHierarchyDepth
-    type: added
-    impact: >-
-      New process: reads the depth parameter passed at spawn time and records the current nesting level for this engine
-      instance
-  - node: hierarchy/EnforceMaxDepth
-    type: added
-    impact: >-
-      New process: compares the current hierarchy depth against the maximum allowed and forces a no-split decision if
-      the limit is reached
-  - node: hierarchy/FlattenGrandchildInterfaces
-    type: added
-    impact: >-
-      New process: when a child engine has split into grandchildren, merges all grandchild published interfaces into the
-      child's own interface as a flat node and journey set
-  - node: hierarchy/PropagateUnresolvedRefsUpward
-    type: added
-    impact: >-
-      New process: collects external ref warnings that a child could not resolve against its own grandchildren and
-      passes them up to the parent level for cross-engine resolution
-  - node: hierarchy/NarrowScopedSpec
-    type: added
-    impact: >-
-      New process: further narrows an already-scoped spec when a child itself splits, producing sub-scoped specs
-      containing only sections relevant to each grandchild group
-  - node: hierarchy/LimitConcurrentChildren
-    type: added
-    impact: >-
-      New process: caps the number of simultaneously running child engine subprocesses by maintaining a queue and
-      spawning the next child only when a running one completes
-  - node: hierarchy/BatchChildDirectoryCreation
-    type: added
-    impact: >-
-      New process: creates all child directories, scoped specs, scoped organizations, and actor copies in a single batch
-      pass to reduce disk I/O overhead when child count is high
-  - node: hierarchy/StreamingInterfaceMerge
-    type: added
-    impact: >-
-      New process: merges child interfaces into the parent compiled index one at a time in sequence instead of loading
-      all interfaces into memory simultaneously
-  - node: hierarchy/DetectChildTimeout
-    type: added
-    impact: >-
-      New process: compares each running child engine's wall-clock elapsed time against the configured timeout threshold
-      and flags children that exceed it
-  - node: hierarchy/CompactSplitDecisionContext
-    type: added
-    impact: >-
-      New process: summarizes the organization and independence analysis into a compact form that fits within LLM
-      context limits when the full module list and coupling data is too large
-  - node: hierarchy/IndexChildNodesForRefLookup
-    type: added
-    impact: >-
-      New process: builds a hash-indexed lookup table of all child interface node names to accelerate cross-engine ref
-      validation when child count is high
-  - node: hierarchy/ChildDirectory
-    type: added
-    impact: 'New artifact: a directory containing scoped spec.md, shared _actors.yaml, and modules/ for one child engine'
-  - node: hierarchy/ScopedSpecFile
-    type: added
-    impact: 'New artifact: a child-specific spec.md containing only the sections relevant to that child''s module group'
-  - node: hierarchy/CrossEngineJourneySet
-    type: added
-    impact: 'New artifact: the set of parent-level journeys connecting nodes across children''s published interfaces'
-  - node: hierarchy/ChildInterfaceCollection
-    type: added
-    impact: 'New artifact: the collected interface.yaml files from all children, used for cross-engine validation'
-  - node: hierarchy/ChildConvergenceStatus
-    type: added
-    impact: >-
-      New artifact: tracks the current state of each child engine — running, converged, or failed — used by the parent
-      to determine when all children are done
-  - node: hierarchy/ChildOrganizationFile
-    type: added
-    impact: 'New artifact: a child-specific ORGANIZATION.md listing only the modules assigned to that child engine'
-  - node: hierarchy/HierarchyDepthCounter
-    type: added
-    impact: >-
-      New artifact: the current nesting depth passed to each engine at spawn time — 0 for root, 1 for child, 2 for
-      grandchild, and so on
-  - node: hierarchy/SameCodeEveryLevel
-    type: added
-    impact: 'New rule: convergence.ts is the exact same code at parent, child, and grandchild levels — no level-specific logic'
-  - node: hierarchy/SharedActorsNoduplicates
-    type: added
-    impact: 'New rule: parent discovers actors once, children inherit them — no child re-discovers or duplicates actors'
-  - node: hierarchy/ExternalRefsWarningsInChildrenErrorsInParent
-    type: added
-    impact: >-
-      New rule: children emit warnings for unresolved cross-engine refs, parent promotes them to errors if they remain
-      unresolved
-  - node: hierarchy/MaxDepthLimit
-    type: added
-    impact: >-
-      New rule: hierarchy depth is bounded to a configurable maximum to prevent infinite recursive splitting — engines
-      at the limit always choose no-split
-  - node: hierarchy/ChildConcurrencyLimit
-    type: added
-    impact: >-
-      New rule: maximum number of child engine subprocesses that may run simultaneously — additional children are queued
-      until a running child completes
-  - node: hierarchy/ChildTimeoutThreshold
-    type: added
-    impact: >-
-      New rule: maximum wall-clock time a child engine may run before being flagged as timed out and reported to the
-      parent
-  - node: llm/SpawnWorkerProcess
-    type: added
-    impact: >-
-      New process: launches a persistent Claude Code subprocess that stays alive for the duration of the convergence
-      pipeline
-  - node: llm/InjectSystemPrompt
-    type: added
     impact: >-
-      New process: sends the genome worker system prompt to the freshly spawned worker, establishing its role, YAML
-      format rules, and operational constraints
-  - node: llm/SendTask
+      New process: detects when a perspective enrichment pass has exhausted its retry budget after repeated compilation
+      failures on the same module-perspective pair
+  - node: convergence/DetectPipelineStall
     type: added
     impact: >-
-      New process: sends a structured task to the worker process via stream-json protocol with prompt, context, and
-      expected output
-  - node: llm/ReceiveResult
-    type: added
-    impact: 'New process: reads the worker''s streamed response, parsing the stream-json output into structured result data'
-  - node: llm/BuildTaskContext
-    type: added
-    impact: >-
-      New process: assembles task-specific context from excerpt output, compiled state snapshot, and cross-module
-      relationship data before packaging into the payload
-  - node: llm/ValidateWorkerOutput
-    type: added
-    impact: >-
-      New process: confirms the worker produced expected output by checking that files exist on disk, content is valid
-      YAML or TypeScript, and task requirements are met
-  - node: llm/WriteFile
-    type: added
-    impact: 'New process: worker uses its native Write tool to create or overwrite a file on disk'
-  - node: llm/ReadFile
-    type: added
-    impact: 'New process: worker uses its native Read tool to read file contents from disk'
-  - node: llm/EditFile
+      New process: detects when the overall pipeline has not made measurable forward progress across consecutive cycles,
+      indicating a stuck state requiring human intervention
+  - node: convergence/VerifyReconvergenceIdempotency
     type: added
-    impact: 'New process: worker uses its native Edit tool to make targeted edits to an existing file'
-  - node: llm/RunBash
-    type: added
-    impact: 'New process: worker uses its native Bash tool to execute shell commands'
-  - node: llm/HandleCompaction
-    type: added
-    impact: 'New process: Claude automatically compacts prior messages as the conversation approaches context limits'
-  - node: llm/ShutdownWorker
-    type: added
-    impact: 'New process: terminates the persistent worker process after all tasks are complete or on pipeline abort'
-  - node: llm/DetectProcessExit
-    type: added
-    impact: 'New process: monitors the worker subprocess and detects unexpected termination via non-zero exit code or signal'
-  - node: llm/DetectStreamInterruption
-    type: added
-    impact: 'New process: detects when stream-json data stops mid-response indicating a broken pipe or process death'
-  - node: llm/DetectTaskTimeout
-    type: added
-    impact: 'New process: fires when a task exceeds the maximum expected duration without producing a complete response'
-  - node: llm/HandleToolCallFailure
-    type: added
     impact: >-
-      New process: captures when a worker native tool call returns an error and records the tool name, arguments, and
-      error message
-  - node: llm/DrainPartialOutput
+      New process: runs targeted reconvergence a second time on the same stale module set and compares the resulting
+      graph against the first pass to confirm no additional changes were introduced
+  - node: convergence/VerifyAuditDeterminism
     type: added
     impact: >-
-      New process: reads any files written to disk and partial stream data the worker produced before the failure
-      occurred
-  - node: llm/CleanupFailedSession
+      New process: runs the same 3 auditors twice on an identical compiled graph and compares the two sets of findings
+      to detect non-deterministic audit results from LLM-based auditors
+  - node: convergence/VerifyPublishDeterminism
     type: added
     impact: >-
-      New process: tears down the broken worker session and closes the stream-json channel so a clean respawn can
-      proceed
-  - node: llm/ScopeWritesToAllowedPaths
+      New process: runs publish twice on the same converged graph and compares the interface.yaml and changelog.yaml
+      outputs byte-for-byte to confirm deterministic publish output
+  - node: convergence/VerifyEnrichmentStability
     type: added
     impact: >-
-      New process: validates every Write tool call targets only the allowed path for the current task, rejecting path
-      traversal or out-of-scope writes
-  - node: llm/ScopeReadsToProjectDir
+      New process: re-examines an already-enriched module from the same perspective and verifies the LLM proposes no
+      further additions, confirming the enrichment reached a stable fixpoint
+  - node: convergence/VerifyConvergenceStateDeterminism
     type: added
     impact: >-
-      New process: validates every Read tool call targets only files within the project directory, blocking reads of
-      credentials, env files, or system files
-  - node: llm/FilterBashCommands
+      New process: compares two ConvergenceState snapshots produced from identical spec inputs to confirm the pipeline
+      produces deterministic end states regardless of timing or execution order
+  - node: convergence/ParallelModuleCreation
     type: added
     impact: >-
-      New process: inspects every Bash tool call and blocks dangerous commands including network access, process
-      spawning, file deletion, and permission changes
-  - node: llm/DetectPromptInjection
+      New process: identifies modules at the same dependency depth that have no dependencies on each other and
+      dispatches their creation to separate workers concurrently, compiling after each batch completes
+  - node: convergence/ParallelPerspectiveEnrichment
     type: added
     impact: >-
-      New process: scans task context for prompt injection patterns before sending to the worker, flagging content that
-      attempts to override system prompt instructions
-  - node: llm/ValidateOutputScope
+      New process: identifies independent module-perspective pairs that touch no overlapping modules and dispatches
+      their enrichment to separate workers concurrently, compiling after each batch completes
+  - node: convergence/ChunkLargeSpec
     type: added
     impact: >-
-      New process: after task completion verifies the worker only modified the assigned target file and no other files
-      in the project were changed
-  - node: llm/DetectToolCallLoop
+      New process: splits a spec that exceeds the LLM context limit into overlapping sections with shared context
+      headers so each chunk can be processed independently while preserving cross-section references
+  - node: convergence/ThrottleWakeEvents
     type: added
     impact: >-
-      New process: monitors tool call count and pattern during task execution, terminating the worker if it enters a
-      repetitive unbounded loop
-  - node: llm/EnforceFileSizeLimit
+      New process: limits the number of concurrent wake-reconverge cycles when many dependencies publish events
+      simultaneously, queuing excess events for sequential processing after the current batch
+  - node: convergence/ValidateConvergenceStateIntegrity
     type: added
     impact: >-
-      New process: rejects Write tool calls that would create files exceeding the maximum allowed size, preventing disk
-      exhaustion
-  - node: llm/TruncatePayloadToFit
+      New process: reads the ConvergenceState file on startup and validates its structure including required fields,
+      valid phase values, and consistent module lists before the pipeline trusts it
+  - node: convergence/RecoverFromCorruptState
     type: added
     impact: >-
-      New process: truncates lower-priority context sections when the assembled task payload exceeds the maximum message
-      size, preserving critical instructions and target module context
-  - node: llm/TrackCompactionCount
+      New process: rebuilds ConvergenceState from disk artifacts when the state file is missing, corrupted, or
+      structurally invalid by scanning existing module files, compilation results, and published interfaces
+  - node: convergence/DetectPartialModuleWrite
     type: added
     impact: >-
-      New process: counts compaction events for the current worker and signals when the degradation threshold is
-      reached, indicating the worker should be replaced
-  - node: llm/ProactiveWorkerReplacement
+      New process: scans module YAML files on disk for truncation or structural damage such as missing required fields
+      or broken YAML syntax that could result from a crash during a write operation
+  - node: convergence/RecoverSleepWatcher
     type: added
     impact: >-
-      New process: shuts down the current worker and spawns a fresh instance when compaction count exceeds the quality
-      threshold, before output quality visibly degrades
-  - node: llm/ReinjectSystemPromptAfterCompaction
+      New process: detects that the fs.watch file watcher has stopped firing events by using a periodic heartbeat check
+      and restarts the watcher to ensure the box does not silently stop monitoring dependency changes
+  - node: convergence/RecoverFromChildEngineCrash
     type: added
     impact: >-
-      New process: re-sends critical system prompt instructions to the worker after heavy compaction to prevent
-      instruction drift from compressed context
-  - node: llm/PrioritizeContextByRelevance
+      New process: detects when a child engine process has crashed during a hierarchy split and restarts the child from
+      its scoped spec and last known module state or escalates to the parent for manual review
+  - node: convergence/ConcurrentChildLimit
     type: added
     impact: >-
-      New process: when the compiled index contains many modules, selects only the modules and connections most relevant
-      to the current task for payload inclusion
-  - node: llm/StreamJsonProtocol
+      New rule: caps the number of child engine processes that can run simultaneously during hierarchy splits, queuing
+      remaining children until a running child completes
+  - node: convergence/ReconvergenceDepthLimit
     type: added
-    impact: 'New interface: the stream-json communication protocol between convergence.ts and the Claude Code worker process'
-  - node: llm/NativeToolSet
-    type: added
     impact: >-
-      New interface: the set of native tools (Read, Write, Edit, Bash) available to the worker for file and shell
-      operations
-  - node: llm/WorkerSession
-    type: added
-    impact: 'New artifact: the persistent Claude Code process state including conversation history and compacted context'
-  - node: llm/TaskPayload
-    type: added
-    impact: 'New artifact: the structured input sent to the worker containing prompt, relevant context, and output expectations'
-  - node: llm/TaskResult
+      New rule: enforces a maximum nesting depth for targeted reconvergence chains to prevent unbounded
+      reconvergence-triggers-reconvergence loops
+  - node: events/CrossCheckEventHashAgainstInterface
     type: added
-    impact: 'New artifact: the structured output returned by the worker containing created content and tool call results'
-  - node: llm/SystemPrompt
-    type: added
     impact: >-
-      New artifact: the instruction template sent at initialization that defines the worker's genome role, YAML format
-      rules, node types, step format, and operational constraints
-  - node: llm/CrashReport
+      New process: fetches the dependency's actual interface.yaml from disk and compares its hash against the hash
+      claimed in the event payload to detect stale or spoofed events
+  - node: events/DetectDuplicateEventSequence
     type: added
     impact: >-
-      New artifact: structured failure record containing exit code, last task payload, partial output collected, error
-      details, and tool call history at time of failure
-  - node: llm/CompactionCounter
+      New process: compares the incoming event's sequence number against the last-processed sequence for that dependency
+      and suppresses the event if the sequence was already processed
+  - node: events/DetectMissedEventSequenceGap
     type: added
     impact: >-
-      New artifact: tracks the number of compaction events, estimated context quality level, and total task count for
-      the current worker session
-  - node: llm/AlwaysOpus
-    type: added
-    impact: 'New rule: the worker always uses Opus model with 1M context window, no model selection or fallback'
-  - node: llm/NoSessionManagement
-    type: added
-    impact: 'New rule: convergence.ts does not manage sessions — Claude handles its own context compaction transparently'
-  - node: llm/NoPrintMode
-    type: added
-    impact: 'New rule: worker uses interactive mode with native tools, never --print mode which lacks tool access'
-  - node: llm/WorkerCreatesCodeOrchestrates
+      New process: compares the incoming event's sequence number against the last-processed sequence for that dependency
+      and flags a gap when numbers are not consecutive
+  - node: events/DetectPartiallyWrittenEventFile
     type: added
     impact: >-
-      New rule: the worker only creates content when asked — it never decides when to act, code orchestrates all
-      decisions
-  - node: llm/SingleWorkerConstraint
+      New process: checks that the event file is complete by verifying it ends with valid JSON closure and its byte
+      length matches the content-length header if present before parsing
+  - node: events/ValidateEventHashFormat
     type: added
-    impact: 'New rule: only one worker process may exist at a time, cleanup must fully complete before any respawn can begin'
-  - node: llm/AllowedWritePaths
-    type: added
     impact: >-
-      New rule: worker may only write to genome/modules/ during creation and enrichment, genome/generated/ during
-      codegen, and genome/tests/ during testgen — all other paths are rejected
-  - node: llm/NoBashNetworkAccess
+      New process: enforces that the interface hash field in the event payload is a non-empty string matching the
+      expected SHA256 hex format before passing to sync
+  - node: events/ReadEventFilesInParallel
     type: added
     impact: >-
-      New rule: worker Bash tool calls must never use network commands (curl, wget, nc, ssh) or spawn background
-      processes or delete files outside the output directory
-  - node: llm/SingleFilePerTask
+      New process: reads multiple event files concurrently with a configurable concurrency limit during batch processing
+      to reduce total IO wait time when many dependencies change at once
+  - node: events/EnforceEventProcessingTimeout
     type: added
     impact: >-
-      New rule: each task assigns the worker exactly one target file to create or edit, any write to a different path is
-      treated as a scope violation
-  - node: llm/PayloadSizeBudget
+      New process: applies a configurable deadline to the sync delegation and reconvergence cycle for a single event and
+      cancels the operation if the timeout is exceeded to prevent pipeline stalls
+  - node: events/ShedLowPriorityEventsUnderLoad
     type: added
     impact: >-
-      New rule: task payloads must not exceed the maximum message size and context is truncated by priority to meet the
-      budget, preserving system prompt and target module above all else
-  - node: llm/ReplaceAfterNCompactions
+      New process: drops lowest-impact events from the processing queue when the pending event count exceeds a
+      backpressure threshold to maintain system responsiveness during sustained cascading ripples
+  - node: events/PartitionEventsByDependencySubgraph
     type: added
     impact: >-
-      New rule: worker is proactively replaced after N compaction events to maintain output quality rather than waiting
-      for observable degradation
-  - node: organization/ReadSpecFile
-    type: added
-    impact: 'New process: reads spec.md from disk as the input for organizational analysis'
-  - node: organization/ParseSpecSections
-    type: added
-    impact: 'New process: splits the spec into numbered sections so each module can reference which sections it covers'
-  - node: organization/IdentifyScope
+      New process: groups batched events into independent partitions based on which local modules they affect so that
+      unrelated partitions can be processed concurrently without conflicting stale marks
+  - node: events/SpillBatchPayloadsToDisk
     type: added
-    impact: 'New process: extracts a 1-2 sentence scope statement describing what the project is and does'
-  - node: organization/IdentifyModules
-    type: added
     impact: >-
-      New process: analyzes the spec to discover all independent concerns, each becoming a named module with a
-      description
-  - node: organization/AnalyzeDependencies
-    type: added
-    impact: 'New process: determines which modules depend on which others and produces a build order'
-  - node: organization/AnalyzeIndependence
+      New process: writes excess parsed event payloads to temporary disk storage when the in-memory batch exceeds a
+      configurable payload count threshold and reads them back during sync delegation
+  - node: events/EventBackpressureThreshold
     type: added
     impact: >-
-      New process: classifies modules by how standalone they are — fully independent, standalone with dependencies, or
-      tightly coupled
-  - node: organization/AssembleOrganization
-    type: added
-    impact: 'New process: combines scope, modules, dependencies, and independence into the final ORGANIZATION.md structure'
-  - node: organization/WriteOrganizationFile
-    type: added
-    impact: 'New process: writes the assembled organization to ORGANIZATION.md on disk'
-  - node: organization/AssignSpecSectionsToModules
+      New rule: enforces a maximum number of pending events in the processing queue and triggers load shedding when
+      exceeded to prevent memory exhaustion and pipeline stalls during cascading ripples
+  - node: excerpt/ValidateCrossModuleRefIntegrity
     type: added
     impact: >-
-      New process: maps each identified module to the spec section numbers it covers based on the module's domain and
-      the section content
-  - node: organization/ValidateBuildOrder
+      New process: checks that every cross-module node reference included in the excerpt resolves to an actual node in
+      the compiled index, flagging dangling references to deleted or renamed nodes
+  - node: excerpt/ValidateExcerptCompleteness
     type: added
     impact: >-
-      New process: checks the dependency graph for circular dependencies and confirms a valid topological ordering
-      exists
-  - node: organization/ValidateSpecCoverage
+      New process: checks that the assembled excerpt contains all mandatory sections for the target module, flagging
+      missing local nodes, journeys, or cross-module connections that exist in the compiled index but were not collected
+  - node: excerpt/DetectMissingModuleSource
     type: added
     impact: >-
-      New process: checks that every numbered spec section is covered by at least one module ensuring no requirements
-      are dropped
-  - node: organization/DetectNewModulesInSpec
+      New process: detects when the target module's YAML file does not exist on disk or is empty, switching to a
+      compiled-index-only excerpt that omits the YOUR FILE section
+  - node: excerpt/DetectStaleExcerptAtConsumption
     type: added
     impact: >-
-      New process: compares the current module list against the spec to find newly added concerns that would require new
-      modules during reconvergence
-  - node: organization/ProvideSpecSectionsToExcerpt
+      New process: compares the compiled index hash embedded in a cached excerpt against the current compiled index hash
+      at the moment a worker consumes it, detecting staleness from intervening graph changes
+  - node: excerpt/ValidateExcerptSectionOrder
     type: added
     impact: >-
-      New process: supplies each module's assigned spec_sections to the excerpt generator so workers know which spec
-      sections are relevant to their module
-  - node: organization/HandleMissingSpecFile
+      New process: checks that the assembled excerpt presents sections in the expected order so the LLM worker can parse
+      it reliably, flagging misordered or duplicated sections
+  - node: excerpt/CollectSpecSectionText
     type: added
     impact: >-
-      New process: detects that spec.md does not exist or is unreadable on disk and reports a fatal error blocking the
-      convergence pipeline
-  - node: organization/ValidateLLMOrganizationOutput
+      New process: reads the spec document and extracts the full text of the sections listed in the target module's
+      spec_sections field, providing the authoritative spec content the module must cover
+  - node: excerpt/MapNodesToSpecConcepts
     type: added
     impact: >-
-      New process: checks that the LLM-produced organization contains all required sections — scope, module list with
-      names and descriptions, dependency graph, and independence classification
-  - node: organization/RepairCircularDependency
+      New process: maps each node in the target module to the spec concepts it addresses by matching node descriptions
+      against key terms and requirements from the assigned spec sections
+  - node: excerpt/DetectUncoveredSpecConcepts
     type: added
     impact: >-
-      New process: sends the detected cycle path back to the LLM with an error message so it can propose a corrected
-      dependency ordering
-  - node: organization/RepairSpecCoverageGap
+      New process: compares the set of spec concepts from the assigned sections against the mapped node coverage and
+      identifies concepts that have no corresponding node or journey in the module
+  - node: excerpt/ValidateSpecSectionBoundary
     type: added
     impact: >-
-      New process: sends the list of uncovered spec sections back to the LLM to either assign them to existing modules
-      or propose new modules to cover them
-  - node: organization/HandleEmptyModuleList
+      New process: checks that the target module's nodes and journeys address only concepts from its assigned
+      spec_sections, flagging content that belongs to a different module's spec scope
+  - node: excerpt/CollectSpecCoverageMapping
     type: added
     impact: >-
-      New process: detects that the LLM identified zero modules from the spec and retries with an explicit prompt
-      explaining the expected output format
-  - node: organization/HandleOrganizationWriteFailure
+      New process: assembles a compact traceability section showing which spec concepts are covered by which nodes and
+      journeys, and which concepts remain uncovered
+  - node: excerpt/SortCollectedItemsDeterministically
     type: added
     impact: >-
-      New process: detects a disk write failure when creating ORGANIZATION.md and retries the write or reports the error
-      to convergence
-  - node: organization/DetectSelfReferentialModules
+      New process: sorts all collected nodes, journeys, connections, actors, and warnings into a stable alphabetical
+      order before assembly, ensuring identical ordering across runs regardless of map iteration or filesystem
+      enumeration order
+  - node: excerpt/VerifyExcerptReproducibility
     type: added
     impact: >-
-      New process: identifies modules in the list that describe parts of the convergence pipeline itself such as
-      organization, convergence, compilation, and graph
-  - node: organization/ValidateMetaModulePresence
+      New process: generates the excerpt a second time from the same inputs and compares the two outputs byte-for-byte,
+      detecting non-determinism in the generation pipeline
+  - node: excerpt/DeduplicateCacheWrite
     type: added
     impact: >-
-      New process: checks that all required infrastructure modules are present in the module list when the spec
-      describes a self-referential system like genome
-  - node: organization/DetectSpecChangeToOwnSections
+      New process: before writing a new excerpt to the cache, checks if an identical entry already exists at the same
+      module-plus-hash key and skips the write if the content matches, preventing redundant cache churn
+  - node: excerpt/DeterministicTruncationBoundary
     type: added
     impact: >-
-      New process: determines whether changed spec sections overlap with the sections organization itself covers,
-      indicating the organization step must re-analyze its own structure
-  - node: organization/DiffModuleListAgainstExisting
+      New process: when truncation must cut within a section, always cuts at the last complete entry boundary rather
+      than at an arbitrary line count, ensuring the same input always produces the same truncation point
+  - node: excerpt/NormalizeSpecSectionBoundaries
     type: added
     impact: >-
-      New process: compares the newly identified module list against module YAML files already on disk to detect
-      additions, removals, and renames
-  - node: organization/PreserveExistingModulesOnReorganize
+      New process: normalizes spec section boundary detection by trimming whitespace, standardizing heading formats, and
+      using exact section number matching, ensuring the same spec text is extracted regardless of minor formatting
+      variations
+  - node: excerpt/BatchGenerateExcerpts
     type: added
     impact: >-
-      New process: ensures existing module YAML files are not deleted when the module list changes during reconvergence,
-      flagging removed modules for human review instead
-  - node: organization/OrganizationFile
+      New process: generates excerpts for multiple target modules in a single pass, sharing the compiled index lookup
+      and global stats collection across all targets instead of repeating them per module
+  - node: excerpt/CollapseDeepHierarchyConnections
     type: added
-    impact: 'New artifact: the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis'
-  - node: organization/SpecSectionIndex
-    type: added
     impact: >-
-      New artifact: the parsed index of spec sections with their numbers, used by modules to declare which sections they
-      cover
-  - node: organization/ModuleList
+      New process: when cross-module connections span multiple hierarchy levels, collapses transitive edges into
+      summarized paths showing the chain of boxes rather than listing every intermediate connection
+  - node: excerpt/SummarizeOversizedSpecSection
     type: added
     impact: >-
-      New artifact: the list of identified modules with names and descriptions, consumed by convergence for module
-      creation
-  - node: organization/DependencyGraph
-    type: added
-    impact: 'New artifact: the directed graph of module dependencies defining the build order for module creation'
-  - node: organization/IndependenceClassification
-    type: added
-    impact: 'New artifact: the classification of each module''s standalone capability, used by hierarchy for split decisions'
-  - node: organization/ModuleSpecSectionMap
+      New process: when a single spec section exceeds a line threshold, produces a condensed summary of key concepts and
+      requirements instead of including the full verbatim text in the excerpt
+  - node: excerpt/PrioritizeAndCompressWarnings
     type: added
     impact: >-
-      New artifact: the mapping from each module name to its assigned spec section numbers used in each module's
-      spec_sections field
-  - node: publish/CollectExportedNodes
+      New process: when a module has accumulated many warnings, groups them by type, keeps the highest-severity warnings
+      in full detail, and compresses the rest into count-per-type summaries to fit within budget
+  - node: excerpt/TrackExcerptGenerationCost
     type: added
-    impact: 'New process: selects which nodes from the compiled index should be exported as the box''s public interface'
-  - node: publish/CollectExportedJourneys
-    type: added
-    impact: 'New process: selects which journeys from the compiled index should be exported as the box''s public interface'
-  - node: publish/ComputeInterfaceHash
-    type: added
-    impact: 'New process: computes a full SHA256 hash over the exported nodes and journeys to detect changes'
-  - node: publish/ComparePreviousHash
-    type: added
     impact: >-
-      New process: compares the new interface hash against the previously published hash to determine if anything
-      changed
-  - node: publish/GenerateInterfaceYaml
-    type: added
-    impact: 'New process: writes interface.yaml containing the exported nodes, journeys, and their SHA256 hash'
-  - node: publish/GenerateChangelogYaml
+      New process: measures the wall-clock time and compiled index traversal count for each excerpt generation, logging
+      metrics to identify modules where generation is disproportionately expensive
+  - node: graph/ConnectionDeduplication
     type: added
-    impact: 'New process: writes changelog.yaml describing what changed between the previous and current interface'
-  - node: publish/WriteEventFile
-    type: added
-    impact: 'New process: writes an event file to disk signaling that this box has published a new interface'
-  - node: publish/SkipPublishIfUnchanged
-    type: added
-    impact: 'New process: aborts the publish pipeline if the new hash matches the previous hash, avoiding unnecessary ripple'
-  - node: publish/StorePreviousHash
-    type: added
     impact: >-
-      New process: writes the newly computed InterfaceHash to disk as the PreviousHash, ready for comparison on the next
-      publish cycle
-  - node: publish/ComputeChangelogDiff
+      New process: merges duplicate directed edges that appear in multiple journeys into unique entries in the
+      ConnectionSet while preserving journey provenance
+  - node: graph/BatchMerge
     type: added
     impact: >-
-      New process: diffs the previous exported content against the current exported content, identifying specifically
-      which nodes and journeys were added, removed, or modified
-  - node: publish/ValidateExportedInterface
+      New process: merges multiple newly created modules into the compiled index in a single pass, deferring validation
+      until all modules are integrated
+  - node: graph/ScopedValidation
     type: added
     impact: >-
-      New process: checks that the exported subset is self-consistent with all journey refs resolving to exported nodes
-      or explicitly marked external refs
-  - node: publish/NotifyPublishComplete
+      New process: validates only the subgraph affected by a module change, checking rules against changed nodes and
+      their connections rather than the entire graph
+  - node: graph/PartialConnectionComputation
     type: added
     impact: >-
-      New process: signals convergence that publish finished successfully and the pipeline can proceed to codegen and
-      testgen
-  - node: publish/DetectWriteFailure
+      New process: recomputes connections only for journeys containing nodes from a changed module, reusing cached
+      connections for unchanged journeys
+  - node: graph/FieldPreservation
     type: added
     impact: >-
-      New process: detects when any file write operation during publish fails due to disk full, permission denied, or IO
-      error and captures the specific error details
-  - node: publish/RollbackPartialPublish
+      New process: preserves all YAML fields including unknown or extension fields when a module file is read, modified,
+      and written back, preventing silent data loss on round-trip
+  - node: graph/ModuleSchemaRule
     type: added
     impact: >-
-      New process: removes partially written publish artifacts from disk to restore the pre-publish state after a
-      mid-pipeline failure
-  - node: publish/DetectCorruptedPreviousHash
+      New rule: enforces that every module file must have the required top-level structure (spec_sections as number
+      array, nodes as a map of name to type+description, journeys as a map of name to steps array)
+  - node: graph/MinimumStepsRule
     type: added
     impact: >-
-      New process: validates the PreviousHash file is readable, valid hex, and the expected 64-character length,
-      flagging corruption if any check fails
-  - node: publish/ReportPublishFailure
+      New rule: enforces that every journey must have at least 2 steps, since a single-step journey produces no
+      connections and has no graph meaning
+  - node: llm/DetectMalformedYAMLOutput
     type: added
     impact: >-
-      New process: builds a structured failure report with the failing step, error details, and partial state, then
-      sends it to convergence for retry or abort decision
-  - node: publish/DetectRippleOscillation
+      New process: checks worker-produced YAML files for structural schema violations beyond basic parsing, including
+      wrong node types, flat string journey steps, missing spec_sections, and absent node or action fields in steps
+  - node: llm/DetectEmptyWorkerResponse
     type: added
     impact: >-
-      New process: reads the ripple origin chain from an incoming event and checks whether the current box ID already
-      appears in it, detecting A→B→A publish cycles
-  - node: publish/TrackRippleOrigin
+      New process: detects when a worker completes a task without producing any output file or meaningful response, a
+      silent failure mode distinct from crash or timeout where the worker simply returns nothing
+  - node: llm/RetryTaskWithFeedback
     type: added
     impact: >-
-      New process: appends the current box ID and event sequence number to the ripple origin chain before writing the
-      outgoing event file
-  - node: publish/DeduplicateEventFile
+      New process: resends the same task to the worker with the specific validation errors or failure details appended
+      to the context so the worker can self-correct without requiring a full respawn
+  - node: llm/ClassifyFailureType
     type: added
     impact: >-
-      New process: compares the new event file's interface hash against the last written event file and skips writing if
-      the hash is identical
-  - node: publish/EmbedChangelogInEvent
+      New process: examines a failure report and classifies it as crash, timeout, malformed output, empty response,
+      scope violation, or quality degradation to route to the appropriate recovery strategy
+  - node: llm/TrackTaskFailureRate
     type: added
     impact: >-
-      New process: embeds the changelog diff summary listing added, removed, and modified nodes and journeys into the
-      event file so dependents can scope their reconvergence
-  - node: publish/SuppressNoOpRipple
+      New process: tracks the ratio of failed tasks to total tasks for the current worker session and signals when the
+      failure rate exceeds the quality threshold indicating the worker should be replaced
+  - node: llm/ManageWorkerPool
     type: added
     impact: >-
-      New process: after reconvergence produces an interface hash identical to the pre-reconvergence hash, suppresses
-      event file write to stop the ripple chain from propagating further
-  - node: publish/InterfaceYamlFile
-    type: added
-    impact: 'New artifact: the published interface.yaml file containing exported nodes, journeys, and SHA256 hash for this box'
-  - node: publish/ChangelogYamlFile
-    type: added
-    impact: 'New artifact: the published changelog.yaml file describing what changed in the latest publish'
-  - node: publish/InterfaceHash
-    type: added
-    impact: 'New artifact: the SHA256 hash of the current interface content used for change detection by dependent boxes'
-  - node: publish/PreviousHash
-    type: added
-    impact: 'New artifact: the SHA256 hash from the last published interface, stored for comparison'
-  - node: publish/EventSequenceCounter
+      New process: coordinates multiple concurrent worker processes during parallel creation or enrichment phases,
+      tracking each worker's assigned task, session state, and compaction counter independently
+  - node: llm/RouteTaskToAvailableWorker
     type: added
     impact: >-
-      New artifact: monotonically increasing integer embedded in each event file to allow dependents to detect
-      out-of-order or duplicate events
-  - node: publish/EventFile
+      New process: selects an idle worker from the active pool for the next task or queues the task if all workers are
+      busy, ensuring even distribution across available workers
+  - node: llm/HandleLargeModuleFile
     type: added
     impact: >-
-      New interface: the event file written after publish that dependent boxes watch via fs.watch to trigger
-      reconvergence
-  - node: publish/HashBasedChangeDetection
+      New process: detects when a target module file exceeds the Read tool line limit and reads it in offset-based
+      chunks, reassembling the full content before including it in the worker's task context
+  - node: llm/EstimateTaskContextCost
     type: added
-    impact: 'New rule: change detection uses full SHA256 hash comparison, not timestamp or file-size heuristics'
-  - node: publish/PublishAfterConvergenceOnly
-    type: added
-    impact: 'New rule: publish.ts only runs after convergence confirms 0 errors and 0 audit gaps'
-  - node: publish/AtomicFileWrite
-    type: added
     impact: >-
-      New rule: all publish files are written atomically via write-to-temp-then-rename to prevent partial file
-      corruption on crash or power loss
-  - node: publish/RippleDepthLimit
+      New process: estimates the token count of the next task payload against the worker's remaining context capacity
+      and triggers proactive worker replacement if the task would exhaust the context window
+  - node: llm/CleanupParallelWorker
     type: added
     impact: >-
-      New rule: enforces a maximum ripple depth to prevent unbounded propagation chains, blocking further event writes
-      when the origin chain exceeds the configured limit
-  - node: publish/MonotonicEventSequencing
+      New process: shuts down and cleans up a single worker from the parallel pool after its assigned task completes,
+      freeing resources without affecting other active workers in the pool
+  - node: llm/DetectStaleWorkerProcess
     type: added
     impact: >-
-      New rule: event sequence numbers must be monotonically increasing and dependents must ignore events with sequence
-      number less than or equal to the last processed event
-  - node: publish/ChangelogScopedReconvergence
+      New process: sends a lightweight heartbeat probe to an existing worker subprocess and waits for acknowledgment,
+      detecting zombies and sleep-corrupted processes that are alive but unresponsive
+  - node: llm/RecoverFromSpawnFailure
     type: added
     impact: >-
-      New rule: dependents must use the embedded changelog in the event file to scope reconvergence to only the modules
-      affected by upstream changes rather than full reconvergence
-  - node: sync/ReadDependencyList
-    type: added
-    impact: 'New process: reads the list of dependencies for a box from its configuration to know which interfaces to check'
-  - node: sync/FetchDependencyHash
-    type: added
-    impact: 'New process: reads the SHA256 hash from each dependency''s published interface.yaml'
-  - node: sync/CompareStoredHash
-    type: added
-    impact: 'New process: compares each fetched dependency hash against the locally stored hash from the last sync'
-  - node: sync/IdentifyStaleDependencies
-    type: added
-    impact: 'New process: collects all dependencies whose hash has changed since the last sync'
-  - node: sync/FindAffectedModules
-    type: added
-    impact: 'New process: traces which local modules reference nodes from the changed dependencies and marks them as stale'
-  - node: sync/MarkModulesStale
+      New process: handles failure to launch the Claude Code subprocess by checking prerequisites such as API key
+      availability, CLI binary existence, and disk space before retrying
+  - node: llm/ValidateWorkerHealthBeforeTask
     type: added
-    impact: 'New process: writes stale markers on affected modules so targeted reconvergence knows which modules to reprocess'
-  - node: sync/UpdateStoredHashes
-    type: added
-    impact: 'New process: writes the new dependency hashes to local storage after successful reconvergence'
-  - node: sync/SkipIfAllCurrent
-    type: added
-    impact: 'New process: aborts the sync check early if all dependency hashes match, avoiding unnecessary work'
-  - node: sync/ParseEventPayload
-    type: added
     impact: >-
-      New process: extracts the changelog summary, interface hash, ripple origin chain, and sequence number from the
-      incoming event file
-  - node: sync/FilterUnrelatedChanges
+      New process: performs a pre-dispatch liveness check on the worker by sending a no-op probe via the stream-json
+      channel and confirming a response within a short timeout
+  - node: llm/DetectOrphanWorkerProcess
     type: added
     impact: >-
-      New process: compares the changelog's changed node and journey names against local cross-module references and
-      discards dependency changes that no local module references
-  - node: sync/ComputeStaleModuleCount
+      New process: scans for leftover Claude Code subprocesses from a previous convergence run that were not properly
+      shut down, identifying them by process name and working directory
+  - node: llm/ReestablishStreamChannel
     type: added
     impact: >-
-      New process: counts the number of stale modules and records the count in the sync result for convergence logging
-      and progress tracking
-  - node: sync/ValidateDependencyConfig
+      New process: tears down a stale or corrupted stream-json channel and opens a fresh one to the same worker process
+      without requiring a full process respawn
+  - node: llm/ParallelWorkerPoolLimit
     type: added
     impact: >-
-      New process: checks that each entry in the dependency list points to a real box directory with a reachable
-      interface.yaml file before attempting any hash fetch
-  - node: sync/DetectOscillationInOriginChain
+      New rule: caps the maximum number of concurrent worker processes during parallel creation or enrichment
+      operations, preventing host machine resource exhaustion from too many simultaneous Claude Code subprocesses
+  - node: publish/VerifyPublishedHashIntegrity
     type: added
     impact: >-
-      New process: reads the ripple origin chain from the parsed event payload and checks whether this box's ID already
-      appears in the chain, detecting A→B→A sync loops
-  - node: sync/CheckEventSequenceNumber
+      New process: re-reads interface.yaml after write, recomputes SHA256 from the file content, and compares against
+      the embedded hash to detect silent corruption or partial write
+  - node: publish/CanonicalizeHashInput
     type: added
     impact: >-
-      New process: compares the incoming event's sequence number against the last processed sequence number for that
-      dependency and rejects events that are stale or duplicate
-  - node: sync/SuppressSyncOnOscillation
+      New process: sorts exported nodes alphabetically by name and exported journeys alphabetically by name before hash
+      computation to guarantee identical content always produces identical hash regardless of collection order
+  - node: publish/CrossCheckEventInterfaceHash
     type: added
     impact: >-
-      New process: aborts the entire sync pipeline when oscillation is detected, preventing reconvergence and republish
-      that would perpetuate the cycle
-  - node: sync/AppendBoxToOriginChain
+      New process: after both event file and interface.yaml are written, reads the hash from each and verifies they are
+      identical, detecting divergence from non-atomic write sequences
+  - node: publish/ValidatePreviousHashBaseline
     type: added
     impact: >-
-      New process: adds this box's ID to the ripple origin chain before the outgoing event is written so downstream
-      boxes can detect cycles that include this box
-  - node: sync/ComputeRippleScope
+      New process: before hash comparison, reads the hash embedded in the current interface.yaml on disk and verifies it
+      matches PreviousHash, detecting baseline drift from crash between writes
+  - node: publish/ReconcileHashStateOnStartup
     type: added
     impact: >-
-      New process: determines the minimal set of interface nodes that actually crossed into this box by intersecting the
-      incoming changelog with local cross-module references
-  - node: sync/NarrowOutgoingChangelog
+      New process: on startup or after crash recovery, reads PreviousHash file, interface.yaml embedded hash, and last
+      event file hash, and reconciles any disagreements to restore a consistent baseline
+  - node: publish/CanonicalizeChangelogDiffOutput
     type: added
     impact: >-
-      New process: rewrites the outgoing event's changelog to include only the changes that affected this box,
-      preventing upstream-only changes from rippling further downstream
-  - node: sync/DependencyHashStore
+      New process: sorts added, removed, and modified lists in the changelog diff alphabetically by name so that
+      identical diffs always produce byte-identical changelog.yaml regardless of internal diff ordering
+  - node: publish/NormalizeEventTransientFields
     type: added
-    impact: 'New artifact: local storage of the last-known SHA256 hash for each dependency interface'
-  - node: sync/StaleModuleList
-    type: added
     impact: >-
-      New artifact: the list of local modules marked as stale due to dependency changes, consumed by targeted
-      reconvergence
-  - node: sync/SyncResult
-    type: added
-    impact: 'New artifact: the output of sync.ts containing changed dependencies, affected modules, and stale markers'
-  - node: sync/LastProcessedSequence
+      New process: strips or normalizes wall-clock timestamps and other transient fields from event file content before
+      deduplication comparison so re-runs on identical input are not falsely considered different
+  - node: publish/EnforceDeterministicYamlSerialization
     type: added
     impact: >-
-      New artifact: stores the last successfully processed event sequence number per dependency for detecting
-      out-of-order or duplicate events
-  - node: sync/HashMismatchMeansStale
+      New process: enforces canonical YAML output for interface.yaml by using sorted keys, consistent quoting, and
+      stable whitespace so the same exported content always serializes to identical bytes
+  - node: publish/GuardSequenceCounterAgainstRetry
     type: added
     impact: >-
-      New rule: any difference between stored and fetched hash means the dependency changed and affected modules are
-      stale
-  - node: sync/TargetedNotFull
+      New process: before incrementing EventSequenceCounter, reads the last event file and checks if its sequence number
+      already equals the expected next value, skipping the increment if this is a retry of an already-written event
+  - node: publish/VerifyPublishPipelineIdempotency
     type: added
-    impact: 'New rule: sync triggers targeted reconvergence on only the affected modules, never a full re-creation pipeline'
-  - node: sync/SyncTriggeredByEvent
-    type: added
     impact: >-
-      New rule: sync only runs in response to an event file change detected by fs.watch, never on a timer or polling
-      loop
-  - node: sync/DiscardStaleEvent
+      New process: runs the full publish pipeline twice on the same compiled index and compares interface.yaml,
+      changelog.yaml, and normalized event content to confirm all outputs are byte-identical
+  - node: publish/DetectOrphanTempFiles
     type: added
     impact: >-
-      New rule: events with sequence number less than or equal to the last processed sequence for that dependency must
-      be silently discarded without triggering sync
-  - node: sync/OscillationBlocksSync
+      New process: on cold start, scans the publish output directory for orphan temp files left by atomic write
+      operations that crashed between temp file creation and rename, and removes them to prevent disk accumulation
+  - node: publish/DetectPublishInterruptionPoint
     type: added
     impact: >-
-      New rule: if this box's ID appears in the ripple origin chain of an incoming event, sync must abort without
-      marking any modules stale or triggering reconvergence
-  - node: testgen/ReadJourneySteps
+      New process: after crash recovery, inspects the state of all publish artifacts on disk to determine exactly which
+      pipeline step was interrupted, classifying the state as pre-interface, post-interface-pre-changelog,
+      post-changelog-pre-event, post-event-pre-notification, or fully complete
+  - node: publish/RecoverMissedPublishNotification
     type: added
     impact: >-
-      New process: reads all journeys from the compiled index and extracts their ordered steps as the basis for test
-      cases
-  - node: testgen/GenerateTestFilePerJourney
-    type: added
-    impact: 'New process: creates one TypeScript test file per journey with a describe block and one test case per step'
-  - node: testgen/GenerateStepTestCase
+      New process: detects that the event file on disk is newer than the last convergence-acknowledged publish,
+      indicating the process crashed after writing the event but before notifying convergence, and sends the missed
+      notification without re-running publish
+  - node: publish/RestoreSequenceCounterFromDisk
     type: added
-    impact: 'New process: creates an empty test case for a single journey step with the step''s node and action as the test name'
-  - node: testgen/GenerateConnectionAssertions
-    type: added
     impact: >-
-      New process: creates assertion stubs for each consecutive step pair verifying the output of one step feeds into
-      the next
-  - node: testgen/MapTestImports
+      New process: on cold start, reads the sequence number from the last event file on disk and restores the in-memory
+      EventSequenceCounter to that value so the next publish increments from the correct baseline
+  - node: publish/ResumePublishFromInterruptionPoint
     type: added
     impact: >-
-      New process: reads the generated code files from codegen to produce import statements linking tests to
-      implementations
-  - node: testgen/FillTestAssertions
+      New process: given a detected interruption point, skips already-completed pipeline stages and resumes from the
+      first incomplete stage, reusing valid artifacts already on disk rather than regenerating them from scratch
+  - node: publish/ValidateInterfaceYamlSchema
     type: added
     impact: >-
-      New process: delegates to LLM to fill empty assertion bodies with concrete checks based on the step actions and
-      node types
-  - node: testgen/WriteTestFile
-    type: added
-    impact: 'New process: writes the filled test file to disk in the test output directory'
-  - node: testgen/RunTests
-    type: added
-    impact: 'New process: executes all generated test files and collects pass/fail results for each test case'
-  - node: testgen/CollectFailures
+      New process: validates the in-memory interface structure against the required schema before serialization,
+      checking that hash is a 64-char hex string, nodes is a non-empty map with type and description fields, and
+      journeys is a map with steps arrays
+  - node: publish/ValidateChangelogYamlSchema
     type: added
-    impact: 'New process: gathers all failing test cases with their error messages and stack traces'
-  - node: testgen/GenerateFixPrompt
-    type: added
     impact: >-
-      New process: builds a targeted prompt for each failure specifying the test, the implementation, and the error to
-      fix
-  - node: testgen/ApplyTestFix
-    type: added
-    impact: 'New process: delegates to LLM to fix either the test assertion or the implementation code based on the failure'
-  - node: testgen/RerunAfterFix
+      New process: validates the in-memory changelog structure against the required schema before serialization,
+      checking that added, removed, and modified are arrays where each entry has a name field and a type indicator
+  - node: publish/VerifyInterfaceYamlRoundTrip
     type: added
-    impact: 'New process: re-executes only the previously failing tests to verify the fix worked'
-  - node: testgen/SelectNextTestToFill
-    type: added
     impact: >-
-      New process: picks the next unfilled test skeleton from the journey list and advances the pointer through the fill
-      sequence
-  - node: testgen/ProvideTestgenExcerpt
+      New process: after writing interface.yaml, parses the file back into an in-memory structure and compares each node
+      and journey field-by-field against the original export to detect silent data mangling by the YAML serializer
+  - node: publish/PreserveExtensionFieldsInInterface
     type: added
     impact: >-
-      New process: assembles testgen-specific excerpt context including node behaviors, journey flows, and
-      implementation code to guide LLM assertion writing
-  - node: testgen/ConfirmAllTestsFilled
-    type: added
-    impact: 'New process: verifies that every journey has a filled test file on disk before proceeding to test execution'
-  - node: testgen/ConfirmAllTestsPassing
+      New process: when collecting nodes for export, copies all fields from the compiled index node entries including
+      extension fields like files, not just type and description, preventing silent metadata loss in the published
+      interface
+  - node: publish/ValidateEventFileYamlParsability
     type: added
-    impact: 'New process: verifies that the test result report shows zero failures as a gate for pipeline completion'
-  - node: testgen/SelectNextFailureToFix
-    type: added
-    impact: 'New process: picks the next unfixed failure from the prioritized failure list and advances through the fix queue'
-  - node: testgen/ValidateFilledTestSyntax
-    type: added
     impact: >-
-      New process: runs a TypeScript syntax check on the filled test file to catch LLM-generated compilation errors
-      before test execution
-  - node: testgen/RetryFillWithAssertionErrors
+      New process: after writing the event file, parses it back with a standard YAML parser and verifies all expected
+      fields are accessible including embedded changelog entries that may contain special YAML characters
+  - node: sync/VerifyHashAfterStore
     type: added
     impact: >-
-      New process: sends the syntax or compilation errors from a failed test fill back to the LLM as feedback and
-      re-requests the fill with the original skeleton plus error context
-  - node: testgen/DetectTestExecutionCrash
+      New process: re-reads stored hashes from DependencyHashStore after UpdateStoredHashes writes them and confirms the
+      persisted values match what was written, detecting silent write failures
+  - node: sync/CrossValidateEventHashWithFetchedHash
     type: added
     impact: >-
-      New process: detects when the test runner process itself crashes or exits abnormally rather than producing a clean
-      pass/fail result, distinguishing runner failures from test failures
-  - node: testgen/DetectFixInducedRegression
+      New process: compares the interface hash embedded in the incoming event payload against the hash fetched directly
+      from the dependency's interface.yaml to detect race conditions or stale event data
+  - node: sync/DetectPartialHashUpdate
     type: added
     impact: >-
-      New process: compares pre-fix and post-fix test results to detect new failures that did not exist before the fix
-      was applied
-  - node: testgen/RevertFailedTestFix
+      New process: checks that all dependency hashes in a multi-dependency sync were successfully persisted after a
+      batch write, detecting partial writes from crashes or I/O errors
+  - node: sync/VerifyStalenessBeforeReconvergence
     type: added
     impact: >-
-      New process: restores the test or implementation file to its pre-fix state when a fix introduced regressions or
-      failed to resolve the targeted failure
-  - node: testgen/TestSkeletonFile
-    type: added
-    impact: 'New artifact: a TypeScript test file with empty assertion bodies for all steps in a journey'
-  - node: testgen/FilledTestFile
-    type: added
-    impact: 'New artifact: a TypeScript test file with LLM-filled assertions ready to execute'
-  - node: testgen/TestResultReport
-    type: added
-    impact: 'New artifact: the collected pass/fail results from running all test files with error details for failures'
-  - node: testgen/FailureFixList
-    type: added
-    impact: 'New artifact: the list of failing tests with error messages, used to drive targeted LLM fixes'
-  - node: testgen/TestsFromJourneys
-    type: added
-    impact: 'New rule: every test case maps directly to a journey step — no tests exist without a corresponding journey'
-  - node: testgen/StepsAreTestCases
+      New process: re-fetches dependency hashes immediately before reconvergence begins and confirms they still differ
+      from stored hashes, preventing reconvergence on already-reverted changes
+  - node: sync/EnforceDeterministicStaleOrder
     type: added
-    impact: 'New rule: each journey step with its node and action becomes exactly one test case, ensuring 1-to-1 coverage'
-  - node: _actors/ProjectOwner
-    type: added
-    impact: 'New actor: describes a project via spec.md and triggers convergence'
-  - node: _actors/HumanDeveloper
-    type: added
-    impact: 'New actor: reads, edits, and maintains modules and spec files directly'
-  - node: _actors/LLMWorker
-    type: added
     impact: >-
-      New actor: persistent Claude Code process that creates module content, fills code, and fills test assertions when
-      asked
-  - node: _actors/Compiler
+      New process: sorts the stale module list into a canonical alphabetical order by module name before passing it to
+      reconvergence, ensuring re-runs produce the same processing sequence
+  - node: sync/GuardAgainstConcurrentSync
     type: added
     impact: >-
-      New actor: validates the graph by checking for duplicates, dangling refs, YAML errors, orphans, and isolated
-      modules
-  - node: _actors/Auditor
+      New process: checks for an active sync lock before beginning a new sync cycle, preventing concurrent runs from
+      mutating shared state like DependencyHashStore and StaleModuleList simultaneously
+  - node: sync/VerifySyncIdempotency
     type: added
-    impact: 'New actor: LLM that checks coverage from a specific angle (spec, actor, or cross-module) and identifies gaps'
-  - node: _actors/ParentEngine
-    type: added
     impact: >-
-      New actor: convergence.ts instance that splits organization into children, validates cross-engine refs, and
-      publishes parent interface
-  - node: _actors/ChildEngine
-    type: added
-    impact: 'New actor: convergence.ts instance running at a scoped level with inherited actors, converging independently'
-  - node: _actors/DependentBox
+      New process: after a sync cycle completes, re-runs the hash comparison and confirms it produces an empty stale
+      list, verifying the sync was effective and a re-run would be a no-op
+  - node: sync/CanonicalizeChangelogForNarrowing
     type: added
-    impact: 'New actor: a box that watches another box''s event files via fs.watch and triggers targeted reconvergence on change'
-  - node: _actors/FileSystem
-    type: added
     impact: >-
-      New actor: the OS file system that delivers watch events, stores modules, and hosts event files for ripple
-      propagation
-  - node: _actors/MaliciousSpecAuthor
+      New process: sorts changelog entries into deterministic order by category then alphabetically by node or journey
+      name before narrowing, ensuring identical output regardless of input iteration order
+  - node: sync/FetchDependencyHashesConcurrently
     type: added
     impact: >-
-      New actor: injects prompt-injection or adversarial content into spec.md to manipulate LLM behavior during
-      convergence
-  - node: _actors/YAMLTamperer
+      New process: fetches SHA256 hashes from multiple dependency interface.yaml files in parallel with a configurable
+      concurrency limit, reducing total fetch time for boxes with many dependencies
+  - node: sync/BatchMarkModulesStale
     type: added
     impact: >-
-      New actor: directly edits module YAML files to introduce invalid refs, corrupt hashes, or inject malicious node
-      definitions
-  - node: _actors/RogueWorker
+      New process: writes stale markers on all affected modules in a single batch operation instead of individual
+      writes, reducing I/O overhead when hundreds of modules are stale
+  - node: sync/ChunkAffectedModuleTracing
     type: added
     impact: >-
-      New actor: an LLMWorker that produces subtly wrong content — hallucinated nodes, phantom connections, or code with
-      hidden vulnerabilities
-  - node: _actors/EventSpoofer
+      New process: partitions the cross-module connection set into chunks and traces affected modules incrementally,
+      preventing memory exhaustion when the graph has thousands of edges
+  - node: sync/CheckRippleDepthLimit
     type: added
     impact: >-
-      New actor: writes fake event files to trigger unnecessary reconvergence cascades or inject stale data into
-      dependent boxes
-  - node: _actors/InfiniteLoopTrigger
+      New process: reads the ripple depth from the origin chain length and compares it against a configured maximum,
+      suppressing propagation when the chain exceeds the depth limit to prevent cascade storms
+  - node: sync/DetectAndClearOrphanSyncLock
     type: added
     impact: >-
-      New actor: crafts circular dependencies or oscillating changes between boxes that cause unbounded ripple chains
-      despite convergence rules
-  - node: _actors/HashCollisionExploiter
-    type: added
-    impact: 'New actor: manipulates artifact content to produce identical SHA256 hashes, causing sync.ts to miss real changes'
-  - node: _actors/PrivilegeEscalator
+      New process: checks on startup whether a SyncLock exists from a previous crashed process, validates no sync is
+      actually running, and clears the stale lock to unblock new sync cycles
+  - node: sync/ScanForMissedEventsDuringSleep
     type: added
     impact: >-
-      New actor: exploits LLMWorker's native tool access (Read, Write, Edit, Bash) to touch files outside the box scope
-      or execute arbitrary commands
-  - node: _actors/ResourceExhauster
+      New process: on wake or restart, reads the current event file sequence numbers from all dependencies and compares
+      them against LastProcessedSequence to discover events that arrived while the process was not running
+  - node: sync/ValidateHashStoreIntegrityOnStartup
     type: added
     impact: >-
-      New actor: submits specs or triggers hierarchies designed to spawn unbounded child engines, exhausting memory,
-      disk, or API quota
-  - node: _actors/NewProjectAdopter
+      New process: reads the DependencyHashStore file on cold start and validates its structural integrity including
+      correct entry count, valid SHA256 format for each hash, and no truncation from a prior crash
+  - node: sync/RecoverInterruptedStaleMarking
     type: added
     impact: >-
-      New actor: encounters genome8 for the first time, runs convergence on their first spec.md, and evaluates whether
-      the protocol fits their system
-  - node: _actors/MigratingProject
+      New process: on startup, detects a partially-written StaleModuleList by comparing its entries against the current
+      SyncResult and re-derives the complete stale list from stored hashes to replace the incomplete one
+  - node: sync/ReconcileSequenceNumbersOnRestart
     type: added
     impact: >-
-      New actor: an existing codebase with legacy documentation being onboarded into genome8, requiring initial graph
-      bootstrapping from pre-existing artifacts
-  - node: _actors/StaleBox
+      New process: on restart after crash, compares each dependency's current event sequence number against the locally
+      stored LastProcessedSequence and fast-forwards to the latest sequence when the stored value is behind
+  - node: sync/SyncLock
     type: added
     impact: >-
-      New actor: a box whose event watcher has stopped or whose upstream dependencies have been removed, silently
-      drifting out of sync with the living graph
-  - node: _actors/DeprecatedModule
+      New artifact: a lock file or flag that indicates a sync cycle is in progress, consumed by
+      GuardAgainstConcurrentSync to detect and block overlapping sync runs
+  - node: sync/EnforceAtomicHashUpdate
     type: added
     impact: >-
-      New actor: a module that is no longer relevant to the current spec but still exists on disk with orphaned nodes
-      and dangling inbound references
-  - node: _actors/ReturningOwner
+      New rule: requires that when multiple dependency hashes are updated in a single sync cycle, either all are
+      persisted or none are, preventing inconsistent stored state
+  - node: sync/DependencyFanOutLimit
     type: added
     impact: >-
-      New actor: a ProjectOwner who re-triggers convergence after a long period of inactivity, facing stale hashes,
-      outdated interfaces, and potentially broken child engines
+      New rule: enforces a maximum number of dependencies a single box may declare, preventing sync from becoming
+      unresponsive due to excessive upstream watchers and hash fetches

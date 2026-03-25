@@ -251,8 +251,8 @@ This is THE core feature. If plan ≠ reality, genome is useless. MUST test befo
 ### Test D: Non-code domain (storybook)
 - [x] Create storybook project (mystery story, 17-line spec, chapter1.md written)
 - [x] Run convergence → 10 modules, 75+ nodes, 72+ journeys, 10 story-specific lenses. WORKS.
-- [ ] Write a new chapter file manually → Step 4d detects → adds to graph (after convergence completes)
-- [ ] Edit chapter to change character action → graph updates (after convergence completes)
+- [x] Wrote chapter2.md manually → Step 4d detected 2 untracked chapters → LLM edited 8 modules (actors, museum, characters, evidence, security, investigation, narrative, conspiracy) → graph updated with chapter content. WORKS.
+- [x] Chapter content reconciled: MarcusIntroduction, ElenaIntroduction, NervousnessAmbiguity mapped to chapter files. Bottom-up for NON-CODE domain PROVEN.
 
 ---
 

@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForHumanDeveloper", () => {
   it("step 1: _actors/HumanDeveloper requests context for a specific module to understand or edit it", () => {
     // Node: _actors/HumanDeveloper (actor)
@@ -19,7 +22,7 @@ describe("ProvideExcerptForHumanDeveloper", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the compiled graph data", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled graph data
     // TODO: agent fills assertion
   });
@@ -55,7 +58,7 @@ describe("ProvideExcerptForHumanDeveloper", () => {
   });
 
   it("step 9: excerpt/AssembleExcerpt combines all sections into a readable excerpt", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: combines all sections into a readable excerpt
     // TODO: agent fills assertion
   });

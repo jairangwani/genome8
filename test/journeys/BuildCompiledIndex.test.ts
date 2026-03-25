@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("BuildCompiledIndex", () => {
   it("step 1: _actors/Compiler reads all module YAML files from the modules directory", () => {
     // Node: _actors/Compiler (actor)
@@ -79,7 +81,7 @@ describe("BuildCompiledIndex", () => {
   });
 
   it("step 13: graph/CompiledIndex merges nodes, journeys, and connections into the final compiled structure", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: merges nodes, journeys, and connections into the final compiled structure
     // TODO: agent fills assertion
   });

@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/publish.ts
+
 describe("PublishInterface", () => {
   it("step 1: convergence/TriggerPublish invokes publish.ts after convergence is confirmed complete", () => {
     // Node: convergence/TriggerPublish (process)
@@ -18,7 +21,7 @@ describe("PublishInterface", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the full compiled graph to select exports from", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full compiled graph to select exports from
     // TODO: agent fills assertion
   });
@@ -78,7 +81,7 @@ describe("PublishInterface", () => {
   });
 
   it("step 13: publish/GenerateInterfaceYaml writes interface.yaml with exported nodes, journeys, and hash", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes interface.yaml with exported nodes, journeys, and hash
     // TODO: agent fills assertion
   });

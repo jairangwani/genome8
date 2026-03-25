@@ -1,0 +1,88 @@
+// Auto-generated from journey: SpawnParallelWorkerPool
+// Module: llm
+// Modules touched: convergence, llm
+
+import { describe, it, expect } from 'vitest';
+
+// Implementation: src/llm.ts
+
+describe("SpawnParallelWorkerPool", () => {
+  it("step 1: convergence/ParallelModuleCreation requests multiple concurrent workers for parallel module creation", () => {
+    // Node: convergence/ParallelModuleCreation (process)
+    // Action: requests multiple concurrent workers for parallel module creation
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: llm/ParallelWorkerPoolLimit checks the requested worker count against the maximum concurrent process limit", () => {
+    // Node: llm/ParallelWorkerPoolLimit (rule)
+    // Action: checks the requested worker count against the maximum concurrent process limit
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: llm/ManageWorkerPool initializes the pool tracker with the approved worker count", () => {
+    // Node: llm/ManageWorkerPool (process)
+    // Action: initializes the pool tracker with the approved worker count
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: llm/SpawnWorkerProcess launches the first worker subprocess in the pool", () => {
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
+    // Action: launches the first worker subprocess in the pool
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: llm/StreamJsonProtocol establishes a dedicated stream-json channel for the first worker", () => {
+    // Node: llm/StreamJsonProtocol (interface)
+    // Action: establishes a dedicated stream-json channel for the first worker
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: llm/SystemPrompt provides the system prompt for the first worker", () => {
+    // Node: llm/SystemPrompt (artifact)
+    // Action: provides the system prompt for the first worker
+    // TODO: agent fills assertion
+  });
+
+  it("step 7: llm/InjectSystemPrompt sends the system prompt to the first worker", () => {
+    // Node: llm/InjectSystemPrompt (process)
+    // Action: sends the system prompt to the first worker
+    // TODO: agent fills assertion
+  });
+
+  it("step 8: llm/SpawnWorkerProcess launches the second worker subprocess in the pool", () => {
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
+    // Action: launches the second worker subprocess in the pool
+    // TODO: agent fills assertion
+  });
+
+  it("step 9: llm/StreamJsonProtocol establishes a dedicated stream-json channel for the second worker", () => {
+    // Node: llm/StreamJsonProtocol (interface)
+    // Action: establishes a dedicated stream-json channel for the second worker
+    // TODO: agent fills assertion
+  });
+
+  it("step 10: llm/InjectSystemPrompt sends the system prompt to the second worker", () => {
+    // Node: llm/InjectSystemPrompt (process)
+    // Action: sends the system prompt to the second worker
+    // TODO: agent fills assertion
+  });
+
+  it("step 11: llm/ManageWorkerPool registers each worker with its own session state, compaction counter, and assigned task slot", () => {
+    // Node: llm/ManageWorkerPool (process)
+    // Action: registers each worker with its own session state, compaction counter, and assigned task slot
+    // TODO: agent fills assertion
+  });
+
+  it("step 12: llm/CompactionCounter initializes a separate compaction counter for each worker in the pool", () => {
+    // Node: llm/CompactionCounter (artifact)
+    // Action: initializes a separate compaction counter for each worker in the pool
+    // TODO: agent fills assertion
+  });
+
+  it("step 13: llm/WorkerSession initializes independent session state for each worker in the pool", () => {
+    // Node: llm/WorkerSession (artifact)
+    // Action: initializes independent session state for each worker in the pool
+    // TODO: agent fills assertion
+  });
+
+});

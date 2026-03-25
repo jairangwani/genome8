@@ -65,6 +65,66 @@ nodes:
   SuppressNoOpRipple:
     type: process
     description: after reconvergence produces an interface hash identical to the pre-reconvergence hash, suppresses event file write to stop the ripple chain from propagating further
+  VerifyPublishedHashIntegrity:
+    type: process
+    description: re-reads interface.yaml after write, recomputes SHA256 from the file content, and compares against the embedded hash to detect silent corruption or partial write
+  CanonicalizeHashInput:
+    type: process
+    description: sorts exported nodes alphabetically by name and exported journeys alphabetically by name before hash computation to guarantee identical content always produces identical hash regardless of collection order
+  CrossCheckEventInterfaceHash:
+    type: process
+    description: after both event file and interface.yaml are written, reads the hash from each and verifies they are identical, detecting divergence from non-atomic write sequences
+  ValidatePreviousHashBaseline:
+    type: process
+    description: before hash comparison, reads the hash embedded in the current interface.yaml on disk and verifies it matches PreviousHash, detecting baseline drift from crash between writes
+  ReconcileHashStateOnStartup:
+    type: process
+    description: on startup or after crash recovery, reads PreviousHash file, interface.yaml embedded hash, and last event file hash, and reconciles any disagreements to restore a consistent baseline
+  CanonicalizeChangelogDiffOutput:
+    type: process
+    description: sorts added, removed, and modified lists in the changelog diff alphabetically by name so that identical diffs always produce byte-identical changelog.yaml regardless of internal diff ordering
+  NormalizeEventTransientFields:
+    type: process
+    description: strips or normalizes wall-clock timestamps and other transient fields from event file content before deduplication comparison so re-runs on identical input are not falsely considered different
+  EnforceDeterministicYamlSerialization:
+    type: process
+    description: enforces canonical YAML output for interface.yaml by using sorted keys, consistent quoting, and stable whitespace so the same exported content always serializes to identical bytes
+  GuardSequenceCounterAgainstRetry:
+    type: process
+    description: before incrementing EventSequenceCounter, reads the last event file and checks if its sequence number already equals the expected next value, skipping the increment if this is a retry of an already-written event
+  VerifyPublishPipelineIdempotency:
+    type: process
+    description: runs the full publish pipeline twice on the same compiled index and compares interface.yaml, changelog.yaml, and normalized event content to confirm all outputs are byte-identical
+  DetectOrphanTempFiles:
+    type: process
+    description: on cold start, scans the publish output directory for orphan temp files left by atomic write operations that crashed between temp file creation and rename, and removes them to prevent disk accumulation
+  DetectPublishInterruptionPoint:
+    type: process
+    description: after crash recovery, inspects the state of all publish artifacts on disk to determine exactly which pipeline step was interrupted, classifying the state as pre-interface, post-interface-pre-changelog, post-changelog-pre-event, post-event-pre-notification, or fully complete
+  RecoverMissedPublishNotification:
+    type: process
+    description: detects that the event file on disk is newer than the last convergence-acknowledged publish, indicating the process crashed after writing the event but before notifying convergence, and sends the missed notification without re-running publish
+  RestoreSequenceCounterFromDisk:
+    type: process
+    description: on cold start, reads the sequence number from the last event file on disk and restores the in-memory EventSequenceCounter to that value so the next publish increments from the correct baseline
+  ResumePublishFromInterruptionPoint:
+    type: process
+    description: given a detected interruption point, skips already-completed pipeline stages and resumes from the first incomplete stage, reusing valid artifacts already on disk rather than regenerating them from scratch
+  ValidateInterfaceYamlSchema:
+    type: process
+    description: validates the in-memory interface structure against the required schema before serialization, checking that hash is a 64-char hex string, nodes is a non-empty map with type and description fields, and journeys is a map with steps arrays
+  ValidateChangelogYamlSchema:
+    type: process
+    description: validates the in-memory changelog structure against the required schema before serialization, checking that added, removed, and modified are arrays where each entry has a name field and a type indicator
+  VerifyInterfaceYamlRoundTrip:
+    type: process
+    description: after writing interface.yaml, parses the file back into an in-memory structure and compares each node and journey field-by-field against the original export to detect silent data mangling by the YAML serializer
+  PreserveExtensionFieldsInInterface:
+    type: process
+    description: when collecting nodes for export, copies all fields from the compiled index node entries including extension fields like files, not just type and description, preventing silent metadata loss in the published interface
+  ValidateEventFileYamlParsability:
+    type: process
+    description: after writing the event file, parses it back with a standard YAML parser and verifies all expected fields are accessible including embedded changelog entries that may contain special YAML characters
   InterfaceYamlFile:
     type: artifact
     description: the published interface.yaml file containing exported nodes, journeys, and SHA256 hash for this box
@@ -532,3 +592,399 @@ journeys:
         action: signals convergence that publish artifacts were written but ripple propagation was stopped at depth limit
       - node: convergence/ConvergenceState
         action: records the depth-limited publish and flags it for operator review
+
+  VerifyPublishedHashAfterWrite:
+    steps:
+      - node: GenerateInterfaceYaml
+        action: writes interface.yaml to disk with embedded SHA256 hash
+      - node: InterfaceYamlFile
+        action: the file is now on disk after atomic rename
+      - node: VerifyPublishedHashIntegrity
+        action: re-reads interface.yaml from disk to get the persisted content
+      - node: VerifyPublishedHashIntegrity
+        action: extracts the embedded hash from the file header
+      - node: VerifyPublishedHashIntegrity
+        action: recomputes SHA256 over the content portion of the file excluding the hash field itself
+      - node: VerifyPublishedHashIntegrity
+        action: compares the recomputed hash against the embedded hash to confirm they match
+      - node: InterfaceHash
+        action: confirms the on-disk hash is authoritative and matches the in-memory hash
+      - node: ReportPublishFailure
+        action: if hashes diverge, reports a hash integrity failure indicating silent corruption during write
+
+  EnforceCanonicalHashInputOrder:
+    steps:
+      - node: CollectExportedNodes
+        action: provides the set of exported nodes in whatever order they were collected
+      - node: CollectExportedJourneys
+        action: provides the set of exported journeys in whatever order they were collected
+      - node: CanonicalizeHashInput
+        action: sorts exported nodes alphabetically by node name
+      - node: CanonicalizeHashInput
+        action: sorts exported journeys alphabetically by journey name
+      - node: CanonicalizeHashInput
+        action: sorts steps within each journey by their original positional index to preserve journey semantics
+      - node: ComputeInterfaceHash
+        action: receives the canonicalized input and computes SHA256 over the deterministic byte sequence
+      - node: InterfaceHash
+        action: stores the hash that is now guaranteed stable for identical content regardless of collection order
+      - node: HashBasedChangeDetection
+        action: enforces that hash accuracy depends on canonical ordering, not on runtime collection order
+
+  DetectEventInterfaceHashDivergence:
+    steps:
+      - node: WriteEventFile
+        action: writes the event file containing the interface hash in its payload
+      - node: EventFile
+        action: the event file is on disk with its embedded hash
+      - node: InterfaceYamlFile
+        action: provides the interface.yaml that was written in the same publish cycle
+      - node: CrossCheckEventInterfaceHash
+        action: reads the hash from the event file payload
+      - node: CrossCheckEventInterfaceHash
+        action: reads the hash from the interface.yaml file header
+      - node: CrossCheckEventInterfaceHash
+        action: compares the two hashes and detects divergence if they differ
+      - node: ReportPublishFailure
+        action: if hashes diverge, reports that event and interface files are inconsistent requiring republish
+      - node: NotifyPublishComplete
+        action: if hashes match, confirms the publish artifacts are mutually consistent
+
+  DetectBaselineDriftBeforeCompare:
+    steps:
+      - node: _actors/Compiler
+        action: initiates publish and needs to establish a trustworthy comparison baseline
+      - node: PreviousHash
+        action: provides the stored hash from the last publish cycle
+      - node: InterfaceYamlFile
+        action: provides the current interface.yaml on disk from the last publish
+      - node: ValidatePreviousHashBaseline
+        action: reads the hash embedded in the current interface.yaml
+      - node: ValidatePreviousHashBaseline
+        action: compares the embedded hash against the PreviousHash file contents
+      - node: ValidatePreviousHashBaseline
+        action: detects drift if the two disagree, indicating a crash occurred between StorePreviousHash and GenerateInterfaceYaml or vice versa
+      - node: DetectCorruptedPreviousHash
+        action: flags the PreviousHash as unreliable if baseline drift is detected
+      - node: ComparePreviousHash
+        action: falls back to forced publish since the baseline cannot be trusted
+
+  ReconcileHashStateAfterCrash:
+    steps:
+      - node: _actors/Compiler
+        action: starts up after a crash or unexpected shutdown and needs to verify hash consistency
+      - node: PreviousHash
+        action: provides the stored previous hash file for inspection
+      - node: InterfaceYamlFile
+        action: provides the interface.yaml on disk for hash extraction
+      - node: EventFile
+        action: provides the last written event file for hash extraction
+      - node: ReconcileHashStateOnStartup
+        action: reads the hash from the PreviousHash file
+      - node: ReconcileHashStateOnStartup
+        action: reads the hash embedded in interface.yaml
+      - node: ReconcileHashStateOnStartup
+        action: reads the hash embedded in the last event file
+      - node: ReconcileHashStateOnStartup
+        action: compares all three hashes to determine which agree and which are stale
+      - node: ReconcileHashStateOnStartup
+        action: overwrites the disagreeing hash sources with the majority-agreed value to restore consistency
+      - node: StorePreviousHash
+        action: writes the reconciled hash as the authoritative PreviousHash baseline
+      - node: NotifyPublishComplete
+        action: signals that hash state has been reconciled and publish can proceed safely
+
+  EnforceDeterministicChangelogOutput:
+    steps:
+      - node: ComputeChangelogDiff
+        action: produces the raw diff with added, removed, and modified lists in arbitrary internal order
+      - node: CanonicalizeChangelogDiffOutput
+        action: sorts the added list alphabetically by node or journey name
+      - node: CanonicalizeChangelogDiffOutput
+        action: sorts the removed list alphabetically by node or journey name
+      - node: CanonicalizeChangelogDiffOutput
+        action: sorts the modified list alphabetically by node or journey name
+      - node: GenerateChangelogYaml
+        action: serializes the canonicalized diff into changelog.yaml with deterministic output
+      - node: ChangelogYamlFile
+        action: stores the changelog that is now guaranteed byte-identical for the same diff regardless of internal ordering
+      - node: EmbedChangelogInEvent
+        action: embeds the deterministic changelog into the event so dependents receive consistent scoping data across re-runs
+
+  NormalizeEventForIdempotentComparison:
+    steps:
+      - node: WriteEventFile
+        action: produces an event file containing hash, origin chain, sequence number, changelog, and wall-clock timestamp
+      - node: EventFile
+        action: the event file is on disk with all fields including transient timestamp
+      - node: NormalizeEventTransientFields
+        action: reads the event file and identifies transient fields like wall-clock timestamp
+      - node: NormalizeEventTransientFields
+        action: strips or zeros the transient fields to produce a normalized content representation
+      - node: NormalizeEventTransientFields
+        action: computes a content hash over the normalized representation excluding transient fields
+      - node: DeduplicateEventFile
+        action: uses the normalized content hash instead of raw file bytes to determine if the event carries new semantic information
+      - node: SuppressNoOpRipple
+        action: suppresses event propagation if the normalized content matches the last event, preventing false ripple from timestamp differences alone
+
+  EnforceDeterministicInterfaceYamlOutput:
+    steps:
+      - node: CollectExportedNodes
+        action: provides the exported nodes to be serialized into interface.yaml
+      - node: CollectExportedJourneys
+        action: provides the exported journeys to be serialized into interface.yaml
+      - node: CanonicalizeHashInput
+        action: ensures nodes and journeys are in canonical alphabetical order before serialization
+      - node: EnforceDeterministicYamlSerialization
+        action: configures the YAML serializer to use sorted map keys for all nested structures
+      - node: EnforceDeterministicYamlSerialization
+        action: enforces consistent quoting rules so strings are always quoted the same way for identical content
+      - node: EnforceDeterministicYamlSerialization
+        action: strips trailing whitespace and enforces a single trailing newline to normalize file endings
+      - node: GenerateInterfaceYaml
+        action: writes interface.yaml using the deterministic serializer producing byte-identical output for identical input
+      - node: InterfaceYamlFile
+        action: stores the deterministically serialized interface on disk
+      - node: ComputeInterfaceHash
+        action: computes SHA256 over the deterministic bytes guaranteeing same input always yields same hash
+
+  GuardSequenceCounterOnPublishRetry:
+    steps:
+      - node: _actors/Compiler
+        action: triggers a publish retry after a previous attempt crashed mid-pipeline
+      - node: EventFile
+        action: provides the last event file that may have been written before the crash
+      - node: EventSequenceCounter
+        action: provides the current counter value that would be used for the next event
+      - node: GuardSequenceCounterAgainstRetry
+        action: reads the sequence number from the last event file on disk
+      - node: GuardSequenceCounterAgainstRetry
+        action: compares the on-disk sequence number against the current counter value
+      - node: GuardSequenceCounterAgainstRetry
+        action: detects that the last event already carries the expected next sequence number indicating a retry
+      - node: GuardSequenceCounterAgainstRetry
+        action: skips the counter increment to avoid double-incrementing on retry
+      - node: MonotonicEventSequencing
+        action: confirms the sequence number is consistent with the monotonic guarantee after the retry guard
+      - node: WriteEventFile
+        action: writes the event file reusing the existing sequence number since this is a retry of the same logical publish
+
+  VerifyFullPublishIdempotency:
+    steps:
+      - node: convergence/VerifyPublishDeterminism
+        action: triggers a second publish run on the same compiled index for idempotency verification
+      - node: graph/CompiledIndex
+        action: provides the identical compiled graph used in the first publish run
+      - node: CollectExportedNodes
+        action: re-selects exported nodes from the same compiled index
+      - node: CollectExportedJourneys
+        action: re-selects exported journeys from the same compiled index
+      - node: ComputeInterfaceHash
+        action: recomputes the interface hash from the re-collected exports
+      - node: InterfaceHash
+        action: provides the recomputed hash for comparison against the first run
+      - node: VerifyPublishPipelineIdempotency
+        action: compares the recomputed hash against the hash from the first publish run
+      - node: VerifyPublishPipelineIdempotency
+        action: compares the regenerated interface.yaml bytes against the first run's interface.yaml
+      - node: VerifyPublishPipelineIdempotency
+        action: compares the regenerated changelog.yaml bytes against the first run's changelog.yaml
+      - node: VerifyPublishPipelineIdempotency
+        action: compares the normalized event content against the first run's normalized event content
+      - node: ReportPublishFailure
+        action: if any output differs between runs, reports an idempotency violation with the specific divergent artifact
+      - node: NotifyPublishComplete
+        action: if all outputs match, confirms the publish pipeline is fully idempotent for this input
+
+  CleanupOrphanTempFilesOnColdStart:
+    steps:
+      - node: _actors/Compiler
+        action: starts cold boot and initializes the publish subsystem
+      - node: DetectOrphanTempFiles
+        action: scans the publish output directory for files matching the atomic write temp file naming pattern
+      - node: DetectOrphanTempFiles
+        action: checks each temp file's modification timestamp to confirm it predates the current startup
+      - node: DetectOrphanTempFiles
+        action: removes each confirmed orphan temp file from disk
+      - node: AtomicFileWrite
+        action: confirms the cleanup preserves the atomic write invariant since orphan temps were never renamed to final names
+      - node: ReportPublishFailure
+        action: logs a recovery report listing the orphan temp files that were cleaned up for diagnostic review
+
+  DiagnosePublishInterruptionOnRestart:
+    steps:
+      - node: _actors/Compiler
+        action: starts up after crash and needs to determine publish pipeline state
+      - node: InterfaceYamlFile
+        action: checks whether interface.yaml exists on disk and reads its embedded hash
+      - node: ChangelogYamlFile
+        action: checks whether changelog.yaml exists on disk and reads its timestamp
+      - node: PreviousHash
+        action: reads the stored previous hash to compare against interface.yaml's hash
+      - node: EventFile
+        action: checks whether the last event file's hash matches the current interface hash
+      - node: DetectPublishInterruptionPoint
+        action: compares interface.yaml hash against PreviousHash to determine if interface was written in the interrupted cycle
+      - node: DetectPublishInterruptionPoint
+        action: compares changelog.yaml presence and consistency with interface.yaml to determine if changelog was written
+      - node: DetectPublishInterruptionPoint
+        action: compares event file hash against interface hash to determine if the event was written
+      - node: DetectPublishInterruptionPoint
+        action: checks convergence acknowledgment state to determine if notification was sent
+      - node: DetectPublishInterruptionPoint
+        action: classifies the interruption point as one of pre-interface, post-interface-pre-changelog, post-changelog-pre-event, post-event-pre-notification, or fully-complete
+      - node: convergence/ConvergenceState
+        action: receives the interruption classification to determine the correct recovery strategy
+
+  RecoverMissedNotificationAfterCrash:
+    steps:
+      - node: _actors/Compiler
+        action: starts up and runs publish interruption diagnosis
+      - node: DetectPublishInterruptionPoint
+        action: classifies the interruption as post-event-pre-notification meaning the event was written but convergence was not notified
+      - node: EventFile
+        action: provides the event file that was successfully written before the crash
+      - node: RecoverMissedPublishNotification
+        action: reads the event file to confirm it contains a valid hash and sequence number
+      - node: RecoverMissedPublishNotification
+        action: verifies the event file's hash matches the current interface.yaml hash confirming they are from the same publish cycle
+      - node: RecoverMissedPublishNotification
+        action: sends the missed publish-complete notification to convergence without re-running the publish pipeline
+      - node: NotifyPublishComplete
+        action: delivers the recovered notification signaling that publish was already complete before the crash
+      - node: convergence/ConvergenceState
+        action: receives the recovered notification and advances to codegen without triggering a redundant publish
+
+  RestoreSequenceCounterOnColdStart:
+    steps:
+      - node: _actors/Compiler
+        action: starts cold boot and needs to restore in-memory publish state
+      - node: EventFile
+        action: provides the last event file on disk from the previous run
+      - node: RestoreSequenceCounterFromDisk
+        action: reads the sequence number field from the last event file
+      - node: RestoreSequenceCounterFromDisk
+        action: validates the sequence number is a positive integer and not corrupted
+      - node: RestoreSequenceCounterFromDisk
+        action: sets the in-memory EventSequenceCounter to the recovered value
+      - node: EventSequenceCounter
+        action: is restored to the last persisted sequence number ready for the next increment
+      - node: MonotonicEventSequencing
+        action: confirms the restored counter maintains the monotonic guarantee with respect to all previously written events
+
+  ResumePublishFromInterruption:
+    steps:
+      - node: _actors/Compiler
+        action: decides to resume publish rather than restart from scratch after interruption diagnosis
+      - node: DetectPublishInterruptionPoint
+        action: provides the classified interruption point identifying which stages completed
+      - node: ResumePublishFromInterruptionPoint
+        action: checks that interface.yaml on disk is valid and its hash matches the compiled index if the interface stage completed
+      - node: ResumePublishFromInterruptionPoint
+        action: checks that changelog.yaml on disk is consistent with interface.yaml if the changelog stage completed
+      - node: ResumePublishFromInterruptionPoint
+        action: skips to the first incomplete stage reusing the valid artifacts already on disk
+      - node: ResumePublishFromInterruptionPoint
+        action: executes only the remaining pipeline stages from the interruption point forward
+      - node: WriteEventFile
+        action: writes the event file if it was the first incomplete stage
+      - node: NotifyPublishComplete
+        action: sends the publish-complete notification after the remaining stages finish
+      - node: convergence/ConvergenceState
+        action: receives the completion notification and advances the pipeline having avoided redundant work
+
+  ValidateInterfaceSchemaBeforeWrite:
+    steps:
+      - node: CollectExportedNodes
+        action: provides the collected nodes to be included in the interface
+      - node: CollectExportedJourneys
+        action: provides the collected journeys to be included in the interface
+      - node: ComputeInterfaceHash
+        action: provides the computed hash to be embedded in the interface
+      - node: ValidateInterfaceYamlSchema
+        action: checks that the hash field is a 64-character hexadecimal string
+      - node: ValidateInterfaceYamlSchema
+        action: checks that nodes is a non-empty map where each entry has type and description fields
+      - node: ValidateInterfaceYamlSchema
+        action: checks that journeys is a map where each entry has a steps array with node and action fields
+      - node: ValidateInterfaceYamlSchema
+        action: rejects the interface if any required field is missing or has an invalid type
+      - node: GenerateInterfaceYaml
+        action: proceeds to serialize and write interface.yaml only after schema validation passes
+      - node: ReportPublishFailure
+        action: if schema validation fails, reports the specific field violations preventing publish
+
+  ValidateChangelogSchemaBeforeWrite:
+    steps:
+      - node: ComputeChangelogDiff
+        action: provides the computed diff to be serialized into changelog.yaml
+      - node: ValidateChangelogYamlSchema
+        action: checks that the added field is an array where each entry has a name and type field
+      - node: ValidateChangelogYamlSchema
+        action: checks that the removed field is an array where each entry has a name and type field
+      - node: ValidateChangelogYamlSchema
+        action: checks that the modified field is an array where each entry has a name and a description of what changed
+      - node: ValidateChangelogYamlSchema
+        action: rejects the changelog if any required field is missing or has an invalid structure
+      - node: GenerateChangelogYaml
+        action: proceeds to serialize and write changelog.yaml only after schema validation passes
+      - node: ReportPublishFailure
+        action: if schema validation fails, reports the specific changelog field violations preventing publish
+
+  VerifyInterfaceRoundTripFidelity:
+    steps:
+      - node: GenerateInterfaceYaml
+        action: writes interface.yaml to disk using the deterministic serializer
+      - node: InterfaceYamlFile
+        action: provides the written file for round-trip verification
+      - node: VerifyInterfaceYamlRoundTrip
+        action: parses interface.yaml back into an in-memory structure using the standard YAML parser
+      - node: VerifyInterfaceYamlRoundTrip
+        action: compares each node entry field-by-field against the original in-memory export checking for type coercion
+      - node: VerifyInterfaceYamlRoundTrip
+        action: compares each journey steps array element-by-element against the original checking for string mangling
+      - node: VerifyInterfaceYamlRoundTrip
+        action: checks that no fields were silently dropped or added during the serialize-parse round trip
+      - node: InterfaceHash
+        action: confirms the round-tripped content produces the same hash as the original export
+      - node: ReportPublishFailure
+        action: if any field diverges between original and round-tripped content, reports the specific data loss with field path
+
+  PreserveExtensionFieldsDuringExport:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph including nodes with extension fields like files
+      - node: CollectExportedNodes
+        action: iterates over each node selected for export
+      - node: PreserveExtensionFieldsInInterface
+        action: reads all fields from the compiled index node entry, not just type and description
+      - node: PreserveExtensionFieldsInInterface
+        action: copies extension fields like files into the exported node entry
+      - node: PreserveExtensionFieldsInInterface
+        action: verifies that the exported node entry has the same field count as the source node entry
+      - node: ValidateInterfaceYamlSchema
+        action: confirms the extension fields do not violate the interface schema since extension fields are allowed
+      - node: GenerateInterfaceYaml
+        action: serializes the complete node entries including extension fields into interface.yaml
+      - node: InterfaceYamlFile
+        action: stores the interface with extension fields preserved for dependents that need them
+
+  ValidateEventFileAfterWrite:
+    steps:
+      - node: WriteEventFile
+        action: writes the event file containing hash, origin chain, sequence number, and embedded changelog
+      - node: EventFile
+        action: the event file is on disk with all embedded YAML content
+      - node: ValidateEventFileYamlParsability
+        action: reads the event file from disk and parses it with a standard YAML parser
+      - node: ValidateEventFileYamlParsability
+        action: verifies the hash field is accessible and matches the expected 64-character hex format
+      - node: ValidateEventFileYamlParsability
+        action: verifies the origin chain field is accessible and is an array of strings
+      - node: ValidateEventFileYamlParsability
+        action: verifies the embedded changelog entries containing special YAML characters were properly escaped and parse correctly
+      - node: ValidateEventFileYamlParsability
+        action: verifies the sequence number field is accessible and is a positive integer
+      - node: ReportPublishFailure
+        action: if any field fails to parse or has an unexpected type, reports the event file as unparsable requiring rewrite

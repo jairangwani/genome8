@@ -4,15 +4,18 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/cli.ts
+// Implementation: src/llm.ts
+
 describe("SpawnAndInitializeWorker", () => {
   it("step 1: convergence/ConvergenceCLI triggers the convergence pipeline which needs an LLM worker", () => {
-    // Node: convergence/ConvergenceCLI (interface)
+    // Node: convergence/ConvergenceCLI (interface) — has code: src/cli.ts
     // Action: triggers the convergence pipeline which needs an LLM worker
     // TODO: agent fills assertion
   });
 
   it("step 2: llm/SpawnWorkerProcess launches a new Claude Code subprocess as a persistent worker", () => {
-    // Node: llm/SpawnWorkerProcess (process)
+    // Node: llm/SpawnWorkerProcess (process) — has code: src/llm.ts
     // Action: launches a new Claude Code subprocess as a persistent worker
     // TODO: agent fills assertion
   });

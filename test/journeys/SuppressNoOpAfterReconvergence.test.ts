@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("SuppressNoOpAfterReconvergence", () => {
   it("step 1: convergence/TargetedReconvergence completes targeted reconvergence on modules affected by an upstream event", () => {
     // Node: convergence/TargetedReconvergence (process)
@@ -19,7 +21,7 @@ describe("SuppressNoOpAfterReconvergence", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the updated compiled graph", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the updated compiled graph
     // TODO: agent fills assertion
   });

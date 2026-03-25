@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/publish.ts
+
 describe("FlattenGrandchildInterfacesIntoChild", () => {
   it("step 1: _actors/ChildEngine has split into grandchildren and all grandchildren have converged", () => {
     // Node: _actors/ChildEngine (actor)
@@ -55,7 +58,7 @@ describe("FlattenGrandchildInterfacesIntoChild", () => {
   });
 
   it("step 9: graph/CompiledIndex the child's index now contains its own nodes plus flattened grandchild nodes", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: the child's index now contains its own nodes plus flattened grandchild nodes
     // TODO: agent fills assertion
   });
@@ -67,7 +70,7 @@ describe("FlattenGrandchildInterfacesIntoChild", () => {
   });
 
   it("step 11: publish/GenerateInterfaceYaml writes the child's interface.yaml with flattened grandchild content", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the child's interface.yaml with flattened grandchild content
     // TODO: agent fills assertion
   });

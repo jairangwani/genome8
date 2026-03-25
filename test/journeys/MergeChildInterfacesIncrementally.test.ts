@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("MergeChildInterfacesIncrementally", () => {
   it("step 1: _actors/ParentEngine has many child interfaces to merge and wants to avoid loading all simultaneously", () => {
     // Node: _actors/ParentEngine (actor)
@@ -55,7 +57,7 @@ describe("MergeChildInterfacesIncrementally", () => {
   });
 
   it("step 9: graph/CompiledIndex the parent index now contains all child nodes merged incrementally", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: the parent index now contains all child nodes merged incrementally
     // TODO: agent fills assertion
   });

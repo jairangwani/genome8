@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("EndToEndHierarchySplit", () => {
   it("step 1: convergence/HierarchyDecision triggers the hierarchy decision step in the convergence pipeline", () => {
     // Node: convergence/HierarchyDecision (process)
@@ -114,7 +116,7 @@ describe("EndToEndHierarchySplit", () => {
   });
 
   it("step 19: publish/GenerateInterfaceYaml writes the parent's interface.yaml", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes the parent's interface.yaml
     // TODO: agent fills assertion
   });

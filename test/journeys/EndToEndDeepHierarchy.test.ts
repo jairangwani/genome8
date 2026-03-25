@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("EndToEndDeepHierarchy", () => {
   it("step 1: _actors/ParentEngine begins convergence at depth 0 with a large module set", () => {
     // Node: _actors/ParentEngine (actor)
@@ -115,7 +117,7 @@ describe("EndToEndDeepHierarchy", () => {
   });
 
   it("step 19: publish/GenerateInterfaceYaml root publishes its interface containing the full flattened hierarchy", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: root publishes its interface containing the full flattened hierarchy
     // TODO: agent fills assertion
   });

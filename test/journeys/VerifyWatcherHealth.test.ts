@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("VerifyWatcherHealth", () => {
   it("step 1: events/WakeFromSleep resumes the engine, triggering a health check before processing", () => {
     // Node: events/WakeFromSleep (process)
@@ -37,7 +39,7 @@ describe("VerifyWatcherHealth", () => {
   });
 
   it("step 6: sync/ReadDependencyList provides the dependency list to know which watchers to recreate", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: provides the dependency list to know which watchers to recreate
     // TODO: agent fills assertion
   });

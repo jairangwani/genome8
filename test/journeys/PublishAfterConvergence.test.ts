@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/publish.ts
+
 describe("PublishAfterConvergence", () => {
   it("step 1: convergence/ConvergenceState confirms convergence is complete with 0 errors and 0 audit gaps", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -24,7 +26,7 @@ describe("PublishAfterConvergence", () => {
   });
 
   it("step 4: publish/GenerateInterfaceYaml writes interface.yaml with the exported nodes and journeys", () => {
-    // Node: publish/GenerateInterfaceYaml (process)
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: writes interface.yaml with the exported nodes and journeys
     // TODO: agent fills assertion
   });

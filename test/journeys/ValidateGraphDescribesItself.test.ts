@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+
 describe("ValidateGraphDescribesItself", () => {
   it("step 1: convergence/ConvergenceState confirms convergence is complete for a self-referential project", () => {
     // Node: convergence/ConvergenceState (artifact)
@@ -12,7 +14,7 @@ describe("ValidateGraphDescribesItself", () => {
   });
 
   it("step 2: graph/CompiledIndex provides the full compiled graph including all self-referential modules", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full compiled graph including all self-referential modules
     // TODO: agent fills assertion
   });

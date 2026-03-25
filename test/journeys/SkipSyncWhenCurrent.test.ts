@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("SkipSyncWhenCurrent", () => {
   it("step 1: _actors/DependentBox receives an event and initiates a sync check", () => {
     // Node: _actors/DependentBox (actor)
@@ -13,7 +15,7 @@ describe("SkipSyncWhenCurrent", () => {
   });
 
   it("step 2: sync/ReadDependencyList reads the dependency list", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the dependency list
     // TODO: agent fills assertion
   });

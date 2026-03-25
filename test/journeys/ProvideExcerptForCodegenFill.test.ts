@@ -4,6 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
+
 describe("ProvideExcerptForCodegenFill", () => {
   it("step 1: codegen/FillImplementation requests focused context for filling a code skeleton with implementation", () => {
     // Node: codegen/FillImplementation (process)
@@ -18,7 +21,7 @@ describe("ProvideExcerptForCodegenFill", () => {
   });
 
   it("step 3: graph/CompiledIndex provides the compiled graph for understanding node purposes and connections", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled graph for understanding node purposes and connections
     // TODO: agent fills assertion
   });
@@ -48,7 +51,7 @@ describe("ProvideExcerptForCodegenFill", () => {
   });
 
   it("step 8: excerpt/AssembleExcerpt builds the codegen-focused excerpt prioritizing implementation guidance", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds the codegen-focused excerpt prioritizing implementation guidance
     // TODO: agent fills assertion
   });

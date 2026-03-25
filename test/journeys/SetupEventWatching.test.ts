@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+
 describe("SetupEventWatching", () => {
   it("step 1: convergence/EnterSleepMode signals that the convergence pipeline is complete and the engine should begin watching", () => {
     // Node: convergence/EnterSleepMode (process)
@@ -13,7 +15,7 @@ describe("SetupEventWatching", () => {
   });
 
   it("step 2: sync/ReadDependencyList provides the list of upstream dependencies to watch", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: provides the list of upstream dependencies to watch
     // TODO: agent fills assertion
   });

@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+// Implementation: src/types.ts
+
 describe("SyncAfterEventDetection", () => {
   it("step 1: _actors/FileSystem detects a change on a dependency's event file via fs.watch", () => {
     // Node: _actors/FileSystem (actor)
@@ -61,7 +64,7 @@ describe("SyncAfterEventDetection", () => {
   });
 
   it("step 10: sync/ReadDependencyList reads the dependency list to identify which upstream box changed", () => {
-    // Node: sync/ReadDependencyList (process)
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
     // Action: reads the dependency list to identify which upstream box changed
     // TODO: agent fills assertion
   });
@@ -109,7 +112,7 @@ describe("SyncAfterEventDetection", () => {
   });
 
   it("step 18: graph/CompiledIndex provides the full graph for affected module tracing", () => {
-    // Node: graph/CompiledIndex (artifact)
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the full graph for affected module tracing
     // TODO: agent fills assertion
   });

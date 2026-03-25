@@ -122,6 +122,21 @@ nodes:
   CleanupParallelWorker:
     type: process
     description: shuts down and cleans up a single worker from the parallel pool after its assigned task completes, freeing resources without affecting other active workers in the pool
+  DetectStaleWorkerProcess:
+    type: process
+    description: sends a lightweight heartbeat probe to an existing worker subprocess and waits for acknowledgment, detecting zombies and sleep-corrupted processes that are alive but unresponsive
+  RecoverFromSpawnFailure:
+    type: process
+    description: handles failure to launch the Claude Code subprocess by checking prerequisites such as API key availability, CLI binary existence, and disk space before retrying
+  ValidateWorkerHealthBeforeTask:
+    type: process
+    description: performs a pre-dispatch liveness check on the worker by sending a no-op probe via the stream-json channel and confirming a response within a short timeout
+  DetectOrphanWorkerProcess:
+    type: process
+    description: scans for leftover Claude Code subprocesses from a previous convergence run that were not properly shut down, identifying them by process name and working directory
+  ReestablishStreamChannel:
+    type: process
+    description: tears down a stale or corrupted stream-json channel and opens a fresh one to the same worker process without requiring a full process respawn
   StreamJsonProtocol:
     type: interface
     description: the stream-json communication protocol between convergence.ts and the Claude Code worker process
@@ -919,3 +934,122 @@ journeys:
         action: initializes a fresh session with full capacity for the large upcoming task
       - node: SendTask
         action: sends the large task to the fresh worker which now has ample context space
+
+  RecoverFromWorkerSpawnFailure:
+    steps:
+      - node: convergence/ConvergenceCLI
+        action: triggers worker spawn as the first step of the convergence pipeline
+      - node: SpawnWorkerProcess
+        action: attempts to launch the Claude Code subprocess but the spawn fails
+      - node: RecoverFromSpawnFailure
+        action: captures the spawn error including exit code and stderr output
+      - node: RecoverFromSpawnFailure
+        action: checks that the Claude CLI binary exists and is executable at the expected path
+      - node: RecoverFromSpawnFailure
+        action: checks that the API key environment variable is set and non-empty
+      - node: RecoverFromSpawnFailure
+        action: checks available disk space to rule out filesystem exhaustion
+      - node: CrashReport
+        action: records the spawn failure with the specific prerequisite that was missing or broken
+      - node: SpawnWorkerProcess
+        action: retries the spawn after prerequisite verification passes
+      - node: StreamJsonProtocol
+        action: establishes the stream-json channel on the successfully spawned process
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the freshly spawned worker
+      - node: WorkerSession
+        action: initializes the session state for the worker that succeeded on retry
+
+  DetectAndRecoverStaleWorker:
+    steps:
+      - node: convergence/ConvergenceState
+        action: resumes after a host sleep/wake cycle and prepares to send the next task
+      - node: DetectStaleWorkerProcess
+        action: sends a heartbeat probe to the existing worker subprocess
+      - node: StreamJsonProtocol
+        action: transmits the probe on the existing channel
+      - node: DetectStaleWorkerProcess
+        action: waits for acknowledgment within a short timeout and receives none
+      - node: DetectStaleWorkerProcess
+        action: classifies the worker as stale because it is alive but unresponsive
+      - node: CrashReport
+        action: records the stale worker detection with process ID and time since last successful response
+      - node: ShutdownWorker
+        action: forcefully terminates the unresponsive worker process
+      - node: CleanupFailedSession
+        action: tears down the stale session and closes the corrupted stream channel
+      - node: SingleWorkerConstraint
+        action: enforces that cleanup completes before spawning a replacement
+      - node: SpawnWorkerProcess
+        action: launches a fresh worker to replace the stale one
+      - node: SystemPrompt
+        action: provides the system prompt for the fresh worker
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the replacement worker
+      - node: CompactionCounter
+        action: resets to zero for the new worker session
+      - node: WorkerSession
+        action: initializes a fresh session ready to resume the pipeline after sleep recovery
+
+  CleanupOrphanWorkerOnColdStart:
+    steps:
+      - node: convergence/ConvergenceCLI
+        action: starts a new convergence run and needs to ensure no leftover workers exist
+      - node: DetectOrphanWorkerProcess
+        action: scans the process table for Claude Code subprocesses matching the project working directory
+      - node: DetectOrphanWorkerProcess
+        action: identifies an orphan process from a previous convergence run that was not shut down
+      - node: SingleWorkerConstraint
+        action: confirms that the orphan must be killed before a new worker can be spawned
+      - node: ShutdownWorker
+        action: sends a termination signal to the orphan process
+      - node: DetectOrphanWorkerProcess
+        action: waits for the orphan process to exit and confirms it is no longer running
+      - node: CleanupFailedSession
+        action: clears any stale session artifacts left on disk by the orphan worker
+      - node: StreamJsonProtocol
+        action: confirms no lingering stream-json channels remain open from the orphan
+      - node: SpawnWorkerProcess
+        action: proceeds with launching a fresh worker now that the orphan is cleaned up
+
+  RecoverStreamChannelAfterSleep:
+    steps:
+      - node: convergence/ConvergenceState
+        action: resumes after host sleep/wake and needs to send a task to the existing worker
+      - node: ValidateWorkerHealthBeforeTask
+        action: sends a no-op probe to the worker via the existing stream-json channel
+      - node: StreamJsonProtocol
+        action: attempts to transmit the probe but encounters a stale or broken pipe
+      - node: DetectStreamInterruption
+        action: detects that the channel is corrupted but the worker process itself is still alive
+      - node: ReestablishStreamChannel
+        action: closes the broken stream-json channel to the worker process
+      - node: ReestablishStreamChannel
+        action: opens a fresh stream-json channel to the same still-alive worker process
+      - node: StreamJsonProtocol
+        action: establishes the new channel and confirms bidirectional data flow
+      - node: SystemPrompt
+        action: provides critical instructions that may need reinforcement after the channel reset
+      - node: ReinjectSystemPromptAfterCompaction
+        action: re-sends the system prompt constraints through the fresh channel to restore worker state
+      - node: WorkerSession
+        action: continues with the existing session now connected through the recovered channel
+
+  HealthCheckBeforeTaskDispatch:
+    steps:
+      - node: convergence/ConvergenceState
+        action: selects the next task to send to the worker
+      - node: ValidateWorkerHealthBeforeTask
+        action: sends a lightweight liveness probe to the worker before dispatching the task
+      - node: StreamJsonProtocol
+        action: transmits the probe and waits for acknowledgment
+      - node: ValidateWorkerHealthBeforeTask
+        action: receives acknowledgment confirming the worker and channel are healthy
+      - node: BuildTaskContext
+        action: assembles the task context knowing the worker is confirmed alive
+      - node: TaskPayload
+        action: packages the context into the task payload
+      - node: SendTask
+        action: sends the task to the verified-healthy worker
+      - node: _actors/LLMWorker
+        action: receives and begins processing the task on the confirmed-healthy worker

@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/excerpt.ts
+
 describe("HandleCompactionDuringCreation", () => {
   it("step 1: convergence/BoundedCreationLoop is mid-way through creating modules in a large project", () => {
     // Node: convergence/BoundedCreationLoop (process)
@@ -49,7 +51,7 @@ describe("HandleCompactionDuringCreation", () => {
   });
 
   it("step 8: excerpt/AssembleExcerpt rebuilds a fresh excerpt for the next module since the worker lost prior excerpt context", () => {
-    // Node: excerpt/AssembleExcerpt (process)
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: rebuilds a fresh excerpt for the next module since the worker lost prior excerpt context
     // TODO: agent fills assertion
   });
