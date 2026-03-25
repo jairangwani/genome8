@@ -532,7 +532,7 @@ journeys:
         action: confirms the rule violation since children must not modify inherited actors
       - node: compilation/ErrorReport
         action: records the tampering as a validation error with the specific differences found
-      - node: hierarchy/ValidateChildGraph
+      - node: hierarchy/ValidateCrossEngineRefs
         action: blocks the child's compilation result from merging into the parent until the tampering is resolved
 
   DiscoveryAngleBiasDefense:

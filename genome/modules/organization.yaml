@@ -394,7 +394,7 @@ journeys:
 
   DetectSpecChangeToOrganizationSections:
     steps:
-      - node: sync/DependencyHashComparison
+      - node: sync/CompareStoredHash
         action: detects that genome's own spec.md has changed via hash mismatch
       - node: ReadSpecFile
         action: re-reads the changed spec.md from disk

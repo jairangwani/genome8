@@ -1,0 +1,38 @@
+// Auto-generated from journey: ServeExcerptFromCache
+// Module: excerpt
+// Modules touched: excerpt, graph
+
+import { describe, it, expect } from 'vitest';
+
+describe("ServeExcerptFromCache", () => {
+  it("step 1: excerpt/SelectTargetModule identifies the module that needs an excerpt", () => {
+    // Node: excerpt/SelectTargetModule (process)
+    // Action: identifies the module that needs an excerpt
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: graph/CompiledIndex provides the current compiled index hash for cache lookup", () => {
+    // Node: graph/CompiledIndex (artifact)
+    // Action: provides the current compiled index hash for cache lookup
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: excerpt/CacheExcerptByState checks if a cached excerpt exists for this module at the current compiled index hash", () => {
+    // Node: excerpt/CacheExcerptByState (process)
+    // Action: checks if a cached excerpt exists for this module at the current compiled index hash
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: excerpt/CacheExcerptByState finds a valid cache hit and retrieves the stored excerpt", () => {
+    // Node: excerpt/CacheExcerptByState (process)
+    // Action: finds a valid cache hit and retrieves the stored excerpt
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: excerpt/ExcerptOutput serves the cached excerpt immediately without running any collection steps", () => {
+    // Node: excerpt/ExcerptOutput (artifact)
+    // Action: serves the cached excerpt immediately without running any collection steps
+    // TODO: agent fills assertion
+  });
+
+});

@@ -67,3 +67,61 @@ nodes:
   ReturningOwner:
     type: actor
     description: a ProjectOwner who re-triggers convergence after a long period of inactivity, facing stale hashes, outdated interfaces, and potentially broken child engines
+
+journeys:
+  BreakSystemIntoScopedPieces:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing a complex system that no single brain can hold
+      - node: convergence/ReadSpec
+        action: reads the spec as the sole human input to the pipeline
+      - node: organization/IdentifyModules
+        action: discovers independent concerns in the spec, each becoming a scoped module
+      - node: organization/AnalyzeDependencies
+        action: determines how the scoped modules relate to each other
+      - node: convergence/ModuleCreation
+        action: creates a YAML module file for each scoped piece
+      - node: compilation/YAMLParsing
+        action: parses each module into structured node and journey data
+      - node: graph/CompiledIndex
+        action: merges all scoped pieces into a single connected graph
+
+  MapPiecesWithJourneys:
+    steps:
+      - node: _actors/LLMWorker
+        action: writes journey steps that trace use cases across nodes in a module
+      - node: graph/JourneyDefinition
+        action: defines each journey as an ordered sequence of steps
+      - node: graph/StepDefinition
+        action: binds each step to a node reference and an action description
+      - node: graph/ConnectionComputation
+        action: derives directed edges from consecutive journey steps
+      - node: graph/CrossModuleRefResolution
+        action: resolves module/NodeName references linking nodes across module boundaries
+      - node: graph/ConnectionSet
+        action: stores the full set of directed edges connecting all pieces
+      - node: graph/CompiledIndex
+        action: assembles nodes and connections into the living graph
+
+  SyncWhenThingsChange:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: modifies a module or spec in a box
+      - node: convergence/TargetedReconvergence
+        action: reconverges only the affected modules in the changed box
+      - node: publish/ComputeInterfaceHash
+        action: computes a new hash over the changed box's exported interface
+      - node: publish/WriteEventFile
+        action: writes an event file signaling the change to dependent boxes
+      - node: _actors/DependentBox
+        action: watches for event files from upstream boxes via fs.watch
+      - node: events/DetectEventFileChange
+        action: receives the filesystem notification that an upstream box changed
+      - node: events/ReadEventFile
+        action: reads the change event to identify what changed
+      - node: sync/CompareStoredHash
+        action: compares the new dependency hash against the locally stored one
+      - node: sync/FindAffectedModules
+        action: traces which local modules reference the changed dependency
+      - node: convergence/TargetedReconvergence
+        action: reconverges only the affected modules in the dependent box

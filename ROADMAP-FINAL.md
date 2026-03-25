@@ -207,7 +207,7 @@
 ## Phase 7: Genome Manages Itself (after Phase 6)
 
 - [x] Write `genome8/genome/spec.md` — genome's own spec (derived from BLUEPRINT.md)
-- [ ] Run `convergence.ts` on genome8 itself — genome builds its own context graph
+- [x] Run `convergence.ts` on genome8 itself — 453 nodes, 250 journeys, 1412 connections. 22 actors (including threat actors). 14 modules. Audit passed. Published.
 - [x] Verify: genome's actors, processes, interfaces, rules all captured (22 actors, 230 processes, 55 artifacts, 58 rules, 5 interfaces = 370 nodes)
 - [x] Verify: journeys describe compilation, convergence, publishing, hierarchy (173 journeys, 969 connections)
 - [x] Goals captured as RULE nodes (58 rule nodes governing genome behavior)

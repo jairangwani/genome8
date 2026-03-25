@@ -1,0 +1,74 @@
+// Auto-generated from journey: PrioritizeHighImpactEventsInBatch
+// Module: events
+// Modules touched: events, graph
+
+import { describe, it, expect } from 'vitest';
+
+describe("PrioritizeHighImpactEventsInBatch", () => {
+  it("step 1: events/DebounceEvents produces a large batch of events from many dependencies", () => {
+    // Node: events/DebounceEvents (process)
+    // Action: produces a large batch of events from many dependencies
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: events/ReadEventFile reads event files for all dependencies in the batch", () => {
+    // Node: events/ReadEventFile (process)
+    // Action: reads event files for all dependencies in the batch
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: events/ValidateEventFileFormat validates each event file in the batch", () => {
+    // Node: events/ValidateEventFileFormat (process)
+    // Action: validates each event file in the batch
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: events/EventPayload stores the validated payloads for all events", () => {
+    // Node: events/EventPayload (artifact)
+    // Action: stores the validated payloads for all events
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: graph/ConnectionSet provides the edge set showing how many local modules reference each dependency", () => {
+    // Node: graph/ConnectionSet (artifact)
+    // Action: provides the edge set showing how many local modules reference each dependency
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: events/PrioritizeEventsByImpact counts the number of local modules affected by each dependency's change", () => {
+    // Node: events/PrioritizeEventsByImpact (process)
+    // Action: counts the number of local modules affected by each dependency's change
+    // TODO: agent fills assertion
+  });
+
+  it("step 7: events/PrioritizeEventsByImpact sorts the batch by impact count, placing highest-impact dependencies first", () => {
+    // Node: events/PrioritizeEventsByImpact (process)
+    // Action: sorts the batch by impact count, placing highest-impact dependencies first
+    // TODO: agent fills assertion
+  });
+
+  it("step 8: events/PrioritizeEventsByImpact selects the top events that fit within the processing budget for this cycle", () => {
+    // Node: events/PrioritizeEventsByImpact (process)
+    // Action: selects the top events that fit within the processing budget for this cycle
+    // TODO: agent fills assertion
+  });
+
+  it("step 9: events/LogEventReceived records the prioritized batch with impact scores and any deferred events", () => {
+    // Node: events/LogEventReceived (process)
+    // Action: records the prioritized batch with impact scores and any deferred events
+    // TODO: agent fills assertion
+  });
+
+  it("step 10: events/EventLog persists the prioritized batch log entry", () => {
+    // Node: events/EventLog (artifact)
+    // Action: persists the prioritized batch log entry
+    // TODO: agent fills assertion
+  });
+
+  it("step 11: events/DelegateToSync passes the prioritized events to sync.ts, highest-impact dependencies first", () => {
+    // Node: events/DelegateToSync (process)
+    // Action: passes the prioritized events to sync.ts, highest-impact dependencies first
+    // TODO: agent fills assertion
+  });
+
+});

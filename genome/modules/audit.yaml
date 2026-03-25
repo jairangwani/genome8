@@ -19,7 +19,7 @@ nodes:
   PrioritizeGaps:
     type: process
     description: ranks the collected gaps by severity so the most critical coverage issues are fixed first
-  GenerateFixPrompt:
+  BuildGapFixPrompt:
     type: process
     description: builds a targeted fix prompt for each gap specifying exactly which module to edit and what coverage to add
   ApplyFix:
@@ -34,6 +34,45 @@ nodes:
   DeclareConverged:
     type: process
     description: marks the graph as CONVERGED after all 3 auditors report zero gaps and compilation shows zero errors
+  SelectNextGapToFix:
+    type: process
+    description: picks the highest-priority unfixed gap from the prioritized list and advances the pointer to the next gap
+  ProvideFixContext:
+    type: process
+    description: assembles the target module excerpt, the specific gap description, and surrounding graph context into a complete fix payload for the LLM worker
+  MergeAuditReports:
+    type: process
+    description: combines the 3 individual coverage reports into a unified view with normalized gap format before feeding into findings collection
+  ConfirmAllGapsResolved:
+    type: process
+    description: checks that the re-audit findings list is empty and compilation is clean before allowing convergence declaration to proceed
+  DetectFixInducedErrors:
+    type: process
+    description: compares pre-fix and post-fix compilation results to detect new orphans, duplicates, or dangling refs that did not exist before the fix was applied
+  DetectFixInducedGaps:
+    type: process
+    description: compares pre-fix and post-fix audit findings to detect new coverage gaps opened by a fix that closed a different gap
+  RejectAndRevertFix:
+    type: process
+    description: restores the target module to its pre-fix state when a fix introduced new errors or failed to close the target gap
+  ValidateGraphInvariantsPostFix:
+    type: process
+    description: checks all convergence invariants after a fix round including zero errors, zero orphans, zero duplicates, and zero isolated modules
+  DetectSelfAuditTarget:
+    type: process
+    description: detects when a coverage gap targets audit.yaml itself, flagging the meta-circular dependency so the fix process applies extra safeguards
+  ValidateAuditModulePresence:
+    type: process
+    description: checks that audit.yaml exists as a compiled module in the index since it is infrastructure required for the convergence pipeline to function
+  DetectSpecChangeToAuditSections:
+    type: process
+    description: detects when spec sections referenced by audit.yaml have changed, triggering re-evaluation of audit coverage requirements against the updated spec
+  ScopeFixToAvoidAuditBreak:
+    type: process
+    description: when a fix targets audit.yaml, validates that the proposed edit does not remove or break existing audit processes like CheckSpecCoverage, VerifyFixCompiles, or DeclareConverged
+  ReauditAfterSelfFix:
+    type: process
+    description: after a fix modifies audit.yaml, re-runs the full audit pipeline from scratch to verify the self-fix did not invalidate audit's own integrity
   AuditFindingsList:
     type: artifact
     description: the collected list of coverage gaps from all 3 auditors with gap type, location, and description
@@ -46,6 +85,9 @@ nodes:
   CrossModuleCoverageReport:
     type: artifact
     description: auditor 3's report listing which modules have cross-module connections and which are isolated
+  TrackAuditRound:
+    type: artifact
+    description: records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking and termination decisions
   ExactlyThreeAuditors:
     type: rule
     description: depth audit always uses exactly 3 auditors checking spec coverage, actor coverage, and cross-module coverage
@@ -55,6 +97,9 @@ nodes:
   AuditAfterZeroErrors:
     type: rule
     description: audit only runs after compile.ts reports 0 errors and 0 orphans — never on a broken graph
+  AuditRoundLimit:
+    type: rule
+    description: audit-fix-reaudit cycles are capped at a maximum number of rounds to prevent infinite loops when gaps cannot be resolved
 
 journeys:
   DepthAudit:
@@ -69,6 +114,8 @@ journeys:
         action: triggers the depth audit with 3 auditors
       - node: ExactlyThreeAuditors
         action: enforces that all 3 coverage angles will be checked
+      - node: TrackAuditRound
+        action: initializes the round counter to 1 for the first audit pass
       - node: GenerateAuditPrompt
         action: builds the spec coverage prompt for auditor 1
       - node: excerpt/ExcerptOutput
@@ -95,8 +142,10 @@ journeys:
         action: checks each module for at least one cross-module connection
       - node: CrossModuleCoverageReport
         action: records which modules are connected and which are isolated
+      - node: MergeAuditReports
+        action: combines the 3 individual reports into a unified gap format
       - node: CollectAuditFindings
-        action: gathers all findings from the 3 reports into a single gap list
+        action: gathers all findings from the merged reports into a single gap list
       - node: AuditFindingsList
         action: stores the complete list of coverage gaps
 
@@ -108,10 +157,16 @@ journeys:
         action: ranks gaps by severity to fix the most critical first
       - node: TargetedFixesOnly
         action: enforces that fixes are targeted edits, not full re-creation
-      - node: GenerateFixPrompt
-        action: builds a specific fix prompt for the highest priority gap
+      - node: SelectNextGapToFix
+        action: picks the highest-priority unfixed gap from the list
+      - node: DetectSelfAuditTarget
+        action: checks whether the selected gap targets audit.yaml itself
+      - node: BuildGapFixPrompt
+        action: builds a specific fix prompt for the selected gap
+      - node: ProvideFixContext
+        action: assembles the target module excerpt and gap details into a fix payload
       - node: _actors/LLMWorker
-        action: receives the fix prompt with the exact module and gap to address
+        action: receives the fix payload with the exact module and gap to address
       - node: ApplyFix
         action: edits the target module YAML to close the coverage gap
       - node: VerifyFixCompiles
@@ -120,10 +175,14 @@ journeys:
         action: validates the edited module has 0 errors
       - node: compilation/CompilationResult
         action: confirms the fix did not break compilation
+      - node: DetectFixInducedErrors
+        action: compares pre-fix and post-fix compilation to check for new orphans or duplicates
       - node: VerifyGapClosed
         action: re-runs the specific auditor on the fixed area
       - node: _actors/Auditor
         action: confirms the specific gap is now closed
+      - node: TrackAuditRound
+        action: increments the cumulative gaps-fixed counter
       - node: convergence/ConvergenceState
         action: updates with the fix result — either more gaps remain or all are closed
 
@@ -131,12 +190,18 @@ journeys:
     steps:
       - node: convergence/ConvergenceState
         action: indicates gaps remain after a fix round
+      - node: TrackAuditRound
+        action: increments the round counter for the next audit-fix cycle
+      - node: AuditRoundLimit
+        action: checks whether the round counter has exceeded the maximum allowed cycles
       - node: convergence/RecompileAfterFix
         action: runs full compilation after all fixes in this round
       - node: _actors/Compiler
         action: validates the full graph after fixes
       - node: compilation/CompilationResult
         action: confirms 0 errors after the fix round
+      - node: ValidateGraphInvariantsPostFix
+        action: checks zero orphans, zero duplicates, and zero isolated modules in the post-fix graph
       - node: convergence/ReauditAfterFix
         action: triggers a re-audit to check for remaining gaps
       - node: GenerateAuditPrompt
@@ -153,6 +218,8 @@ journeys:
         action: re-checks cross-module coverage after fixes
       - node: CheckCrossModuleCoverage
         action: re-examines module connections in the updated graph
+      - node: MergeAuditReports
+        action: combines the re-audit reports into unified format
       - node: CollectAuditFindings
         action: gathers findings from the re-audit
       - node: AuditFindingsList
@@ -161,12 +228,423 @@ journeys:
   DeclareConvergence:
     steps:
       - node: AuditFindingsList
-        action: provides an empty gap list indicating all coverage angles are satisfied
+        action: provides the gap list from the latest audit round
+      - node: ConfirmAllGapsResolved
+        action: verifies the findings list is empty across all 3 coverage angles
       - node: compilation/CompilationResult
         action: confirms 0 errors and 0 orphans in the final compilation
+      - node: compilation/ZeroErrorConvergence
+        action: confirms the zero-error threshold is met
+      - node: ValidateGraphInvariantsPostFix
+        action: performs the final invariant check — zero errors, orphans, duplicates, and isolated modules
       - node: DeclareConverged
         action: marks the graph as CONVERGED — all creation, compilation, and audit complete
       - node: convergence/ConvergenceState
         action: records CONVERGED status, ready for publish and codegen
       - node: convergence/TriggerPublish
         action: proceeds to publish the converged interface
+
+  ProvideAuditExcerptContext:
+    steps:
+      - node: convergence/TargetedAudit
+        action: requests focused context for each auditor to check a specific module
+      - node: excerpt/SelectTargetModule
+        action: identifies the module the auditor will examine
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph for extraction
+      - node: excerpt/CollectLocalNodes
+        action: extracts the target module's nodes for the auditor to review
+      - node: excerpt/CollectLocalJourneys
+        action: extracts the target module's journeys for the auditor to review
+      - node: excerpt/CollectCrossModuleConnections
+        action: shows how the target module connects to others
+      - node: excerpt/CollectWarnings
+        action: includes any compilation warnings relevant to this module
+      - node: excerpt/AssembleExcerpt
+        action: combines all sections into an audit-focused excerpt
+      - node: excerpt/TruncateToLimit
+        action: trims to the ~200 line budget
+      - node: excerpt/ExcerptOutput
+        action: provides the focused excerpt to the auditor
+      - node: GenerateAuditPrompt
+        action: wraps the excerpt with the specific coverage angle instructions
+
+  ProvideFixExcerptToWorker:
+    steps:
+      - node: SelectNextGapToFix
+        action: identifies which module contains the gap to be fixed
+      - node: excerpt/SelectTargetModule
+        action: targets the module that needs the fix
+      - node: graph/CompiledIndex
+        action: provides the compiled graph showing current state including the gap
+      - node: excerpt/CollectLocalNodes
+        action: extracts the module's nodes so the worker knows what exists
+      - node: excerpt/CollectLocalJourneys
+        action: extracts the module's journeys so the worker knows current coverage
+      - node: excerpt/CollectCrossModuleConnections
+        action: shows cross-module connections relevant to the gap
+      - node: excerpt/CollectModuleSource
+        action: reads the raw YAML so the worker can edit the specific file
+      - node: excerpt/AssembleExcerpt
+        action: builds the fix-focused excerpt combining gap details with module context
+      - node: excerpt/TruncateToLimit
+        action: ensures the excerpt fits within the line budget
+      - node: excerpt/ExcerptOutput
+        action: provides the excerpt to the fix prompt builder
+      - node: ProvideFixContext
+        action: combines the excerpt with the specific gap description into the fix payload
+      - node: BuildGapFixPrompt
+        action: packages the fix context into the prompt sent to the LLM worker
+
+  FixSingleGap:
+    steps:
+      - node: AuditFindingsList
+        action: provides the prioritized list of gaps
+      - node: SelectNextGapToFix
+        action: picks the next unfixed gap from the prioritized list
+      - node: ProvideFixContext
+        action: assembles the module excerpt and gap description for the worker
+      - node: BuildGapFixPrompt
+        action: builds the targeted fix prompt with module context and specific gap
+      - node: llm/SendTask
+        action: sends the fix task to the LLM worker process
+      - node: _actors/LLMWorker
+        action: reads the fix prompt and understands which module and gap to address
+      - node: llm/ReceiveResult
+        action: receives the worker's edited YAML output
+      - node: ApplyFix
+        action: writes the edited YAML content to the target module file
+      - node: graph/ModuleFile
+        action: stores the updated module on disk
+      - node: VerifyFixCompiles
+        action: triggers compilation on the updated module
+      - node: _actors/Compiler
+        action: validates the edit produced 0 new errors
+      - node: compilation/CompilationResult
+        action: provides the post-fix compilation result
+      - node: DetectFixInducedErrors
+        action: checks whether the fix introduced new orphans, duplicates, or dangling refs
+      - node: VerifyGapClosed
+        action: re-runs the auditor that originally found this gap
+      - node: _actors/Auditor
+        action: confirms the specific gap no longer appears in the coverage check
+      - node: DetectFixInducedGaps
+        action: checks whether the fix opened new coverage gaps in other angles
+      - node: TrackAuditRound
+        action: records that one more gap has been fixed in this round
+
+  EndToEndAuditToConvergence:
+    steps:
+      - node: convergence/BoundedCreationLoop
+        action: completes all module creation with all perspectives applied
+      - node: convergence/CompileCheck
+        action: triggers final compilation after all modules are created
+      - node: _actors/Compiler
+        action: runs full compilation across all modules
+      - node: compilation/CompilationResult
+        action: reports 0 errors and 0 orphans
+      - node: AuditAfterZeroErrors
+        action: confirms the graph is clean enough to audit
+      - node: convergence/TargetedAudit
+        action: dispatches 3 auditors to check coverage
+      - node: GenerateAuditPrompt
+        action: builds prompts for all 3 auditors with excerpt context
+      - node: CheckSpecCoverage
+        action: auditor 1 checks spec section coverage
+      - node: CheckActorCoverage
+        action: auditor 2 checks actor participation coverage
+      - node: CheckCrossModuleCoverage
+        action: auditor 3 checks cross-module connection coverage
+      - node: MergeAuditReports
+        action: combines the 3 audit reports into unified format
+      - node: CollectAuditFindings
+        action: collects all gaps into the findings list
+      - node: AuditFindingsList
+        action: stores the initial gap list
+      - node: PrioritizeGaps
+        action: ranks gaps for fixing
+      - node: SelectNextGapToFix
+        action: picks each gap in priority order
+      - node: ApplyFix
+        action: fixes each gap with targeted module edits
+      - node: VerifyFixCompiles
+        action: confirms each fix compiles cleanly
+      - node: DetectFixInducedErrors
+        action: checks each fix did not introduce new validation problems
+      - node: VerifyGapClosed
+        action: confirms each gap is closed after fixing
+      - node: ValidateGraphInvariantsPostFix
+        action: confirms all invariants hold after the full fix round
+      - node: ConfirmAllGapsResolved
+        action: verifies no gaps remain after all fixes
+      - node: DeclareConverged
+        action: marks the graph as CONVERGED
+      - node: convergence/TriggerPublish
+        action: proceeds to publish the converged interface
+
+  TrackAuditFixProgress:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the current pipeline step showing audit is in progress
+      - node: TrackAuditRound
+        action: provides the current round number and cumulative gaps fixed
+      - node: AuditFindingsList
+        action: provides the current gap count remaining
+      - node: convergence/DataDecidesWhenToStop
+        action: evaluates whether progress is being made based on gap count trending toward zero
+      - node: TrackAuditRound
+        action: records the gap count delta between this round and the previous round
+      - node: convergence/ConvergenceState
+        action: updates with the audit progress metrics for the current round
+
+  HandleFixInducedErrors:
+    steps:
+      - node: ApplyFix
+        action: has just edited a module to close a coverage gap
+      - node: VerifyFixCompiles
+        action: runs compilation on the edited module
+      - node: _actors/Compiler
+        action: returns a compilation result with new errors not present before the fix
+      - node: compilation/CompilationResult
+        action: provides the post-fix result showing new orphans, duplicates, or dangling refs
+      - node: DetectFixInducedErrors
+        action: compares pre-fix error counts against post-fix and identifies the new problems
+      - node: DetectFixInducedErrors
+        action: determines the fix is net-negative because it introduced more problems than it solved
+      - node: RejectAndRevertFix
+        action: reads the pre-fix backup of the target module file
+      - node: RejectAndRevertFix
+        action: restores the module to its pre-fix state on disk
+      - node: graph/ModuleFile
+        action: stores the reverted module content
+      - node: _actors/Compiler
+        action: recompiles to confirm the revert restored zero-error state
+      - node: compilation/CompilationResult
+        action: confirms the graph is back to its pre-fix clean state
+      - node: AuditFindingsList
+        action: retains the original gap since the fix was rejected
+      - node: TrackAuditRound
+        action: records the failed fix attempt for progress analysis
+
+  HandleFixInducedGaps:
+    steps:
+      - node: ApplyFix
+        action: has edited a module to close a specific coverage gap
+      - node: VerifyGapClosed
+        action: confirms the targeted gap is now closed
+      - node: DetectFixInducedGaps
+        action: re-runs all 3 coverage checks against the post-fix graph
+      - node: CheckSpecCoverage
+        action: checks whether the fix changed spec coverage in other modules
+      - node: CheckActorCoverage
+        action: checks whether the fix created new orphan actors
+      - node: CheckCrossModuleCoverage
+        action: checks whether the fix disrupted cross-module connections
+      - node: DetectFixInducedGaps
+        action: compares pre-fix and post-fix findings to identify any newly opened gaps
+      - node: CollectAuditFindings
+        action: adds the newly opened gaps to the existing findings list
+      - node: AuditFindingsList
+        action: stores the updated list with the new fix-induced gaps appended
+      - node: PrioritizeGaps
+        action: re-ranks the updated gap list including the new entries
+      - node: TrackAuditRound
+        action: records that the fix closed one gap but opened others for progress tracking
+
+  EnforceAuditTermination:
+    steps:
+      - node: TrackAuditRound
+        action: provides the current round number and gap count history across rounds
+      - node: AuditRoundLimit
+        action: checks whether the current round exceeds the maximum allowed cycles
+      - node: TrackAuditRound
+        action: compares the gap count from this round against the previous round
+      - node: convergence/DataDecidesWhenToStop
+        action: detects that gap count has not decreased for consecutive rounds indicating a stall
+      - node: AuditFindingsList
+        action: provides the remaining unresolvable gaps
+      - node: convergence/ConvergenceState
+        action: records that audit has stalled or hit the round limit with gaps still remaining
+      - node: compilation/CompilationResult
+        action: provides the final compilation state at the point of termination
+
+  ValidateGraphInvariantsAfterFixRound:
+    steps:
+      - node: convergence/RecompileAfterFix
+        action: triggers full compilation after all fixes in this round are applied
+      - node: _actors/Compiler
+        action: runs the full compilation pipeline
+      - node: compilation/CompilationResult
+        action: provides the complete post-round compilation result
+      - node: ValidateGraphInvariantsPostFix
+        action: reads the error count and confirms it is zero
+      - node: ValidateGraphInvariantsPostFix
+        action: reads the orphan count and confirms it is zero
+      - node: ValidateGraphInvariantsPostFix
+        action: reads the duplicate count and confirms it is zero
+      - node: compilation/IsolatedModuleDetection
+        action: checks that no module became isolated as a side effect of fixes
+      - node: ValidateGraphInvariantsPostFix
+        action: reads the isolated module count and confirms it is zero
+      - node: compilation/ZeroErrorConvergence
+        action: confirms the zero-error threshold still holds after the fix round
+      - node: convergence/ConvergenceState
+        action: records that all graph invariants are satisfied after this fix round
+
+  HandleFailedFixVerification:
+    steps:
+      - node: ApplyFix
+        action: has edited a module to close a gap
+      - node: VerifyGapClosed
+        action: re-runs the auditor and finds the gap is still present
+      - node: _actors/Auditor
+        action: reports that the specific gap was not resolved by the fix
+      - node: RejectAndRevertFix
+        action: restores the module to its pre-fix state since the fix did not achieve its goal
+      - node: graph/ModuleFile
+        action: stores the reverted module content
+      - node: _actors/Compiler
+        action: recompiles to confirm the revert is clean
+      - node: compilation/CompilationResult
+        action: confirms zero errors after revert
+      - node: AuditFindingsList
+        action: retains the gap and marks it with a failed-fix-attempt annotation
+      - node: BuildGapFixPrompt
+        action: rebuilds the fix prompt with additional context about why the previous attempt failed
+      - node: ProvideFixContext
+        action: includes the failed attempt details so the next worker can try a different approach
+      - node: TrackAuditRound
+        action: records the failed verification for progress tracking
+
+  AuditAuditsItself:
+    steps:
+      - node: convergence/TargetedAudit
+        action: dispatches auditors to check all modules including audit.yaml
+      - node: GenerateAuditPrompt
+        action: builds the spec coverage prompt targeting audit.yaml's own spec sections 3 and 5
+      - node: excerpt/SelectTargetModule
+        action: selects audit as the target module for excerpt generation
+      - node: excerpt/CollectLocalNodes
+        action: extracts audit.yaml's own nodes for the auditor to review
+      - node: excerpt/CollectLocalJourneys
+        action: extracts audit.yaml's own journeys for the auditor to review
+      - node: excerpt/AssembleExcerpt
+        action: assembles the self-referential excerpt showing the audit module to the auditor
+      - node: excerpt/ExcerptOutput
+        action: provides the audit module's excerpt to the auditor
+      - node: _actors/Auditor
+        action: checks whether audit.yaml covers the audit concepts described in spec sections 3 and 5
+      - node: CheckSpecCoverage
+        action: compares the spec's audit requirements against audit.yaml's own nodes and journeys
+      - node: SpecCoverageReport
+        action: records any gaps where audit concepts in the spec are not represented in audit.yaml
+      - node: CollectAuditFindings
+        action: adds any self-audit gaps to the findings list
+      - node: AuditFindingsList
+        action: stores the self-referential gaps alongside gaps from other modules
+
+  FixGapInAuditModule:
+    steps:
+      - node: AuditFindingsList
+        action: provides a gap that targets audit.yaml itself
+      - node: SelectNextGapToFix
+        action: picks the self-referential gap from the prioritized list
+      - node: DetectSelfAuditTarget
+        action: confirms the gap targets audit.yaml and flags it for extra safeguards
+      - node: ScopeFixToAvoidAuditBreak
+        action: analyzes the proposed fix scope to ensure it will not remove existing audit processes
+      - node: ScopeFixToAvoidAuditBreak
+        action: verifies the fix will not break CheckSpecCoverage, VerifyFixCompiles, DeclareConverged, or other critical audit nodes
+      - node: BuildGapFixPrompt
+        action: builds the fix prompt with explicit instructions to preserve existing audit infrastructure
+      - node: ProvideFixContext
+        action: includes the full audit.yaml source and the safeguard constraints in the fix payload
+      - node: _actors/LLMWorker
+        action: receives the self-fix prompt with clear boundaries on what must not be changed
+      - node: ApplyFix
+        action: edits audit.yaml to close the gap while preserving all existing audit processes
+      - node: VerifyFixCompiles
+        action: compiles the modified audit.yaml to check for errors
+      - node: _actors/Compiler
+        action: validates the self-modified audit module has 0 errors
+      - node: compilation/CompilationResult
+        action: confirms the self-fix did not break compilation
+      - node: ReauditAfterSelfFix
+        action: triggers a full re-audit to verify the self-fix did not invalidate audit's own integrity
+      - node: TrackAuditRound
+        action: records the self-fix attempt for progress tracking
+
+  DetectSpecChangeToAuditDomain:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: signals that the spec has changed and modules may need updating
+      - node: convergence/SpecFile
+        action: provides the changed spec content
+      - node: DetectSpecChangeToAuditSections
+        action: reads the updated spec sections 3 and 5 that audit.yaml references
+      - node: DetectSpecChangeToAuditSections
+        action: compares the updated spec sections against audit.yaml's current node and journey coverage
+      - node: DetectSpecChangeToAuditSections
+        action: identifies new audit requirements in the spec that have no corresponding nodes or journeys
+      - node: AuditFindingsList
+        action: adds the spec-change-induced gaps to the findings list as new coverage requirements
+      - node: PrioritizeGaps
+        action: ranks the new spec-driven gaps alongside any existing gaps
+      - node: DetectSelfAuditTarget
+        action: flags all new gaps as self-referential since they target audit.yaml
+      - node: convergence/ConvergenceState
+        action: records that audit.yaml needs updating due to spec changes in its own domain
+
+  ValidateAuditInfrastructurePresent:
+    steps:
+      - node: convergence/CompileCheck
+        action: triggers compilation as a prerequisite for the audit pipeline
+      - node: _actors/Compiler
+        action: compiles all modules including audit.yaml
+      - node: graph/CompiledIndex
+        action: provides the compiled index with all registered modules
+      - node: ValidateAuditModulePresence
+        action: checks that audit.yaml exists as a compiled module in the index
+      - node: ValidateAuditModulePresence
+        action: verifies that key audit nodes are present in the registry including CheckSpecCoverage, CheckActorCoverage, and CheckCrossModuleCoverage
+      - node: ValidateAuditModulePresence
+        action: verifies that DeclareConverged is present since convergence cannot complete without it
+      - node: compilation/ValidateModuleCompleteness
+        action: confirms audit is included in the expected module list from ORGANIZATION.md
+      - node: compilation/CompilationResult
+        action: confirms the audit module compiled without errors
+      - node: AuditAfterZeroErrors
+        action: proceeds to the audit phase now that audit infrastructure is confirmed present
+
+  ReauditAfterAuditSelfFix:
+    steps:
+      - node: ApplyFix
+        action: has just modified audit.yaml to close a self-referential gap
+      - node: ReauditAfterSelfFix
+        action: detects that the fix targeted audit.yaml and triggers a full re-audit
+      - node: _actors/Compiler
+        action: recompiles all modules with the modified audit.yaml
+      - node: compilation/CompilationResult
+        action: confirms 0 errors after the self-fix
+      - node: ValidateGraphInvariantsPostFix
+        action: confirms all convergence invariants still hold after the self-fix
+      - node: GenerateAuditPrompt
+        action: rebuilds all 3 audit prompts using the modified audit module's definitions
+      - node: _actors/Auditor
+        action: re-checks spec coverage with the self-fixed audit module in the graph
+      - node: CheckSpecCoverage
+        action: re-examines all spec sections including audit's own sections 3 and 5
+      - node: _actors/Auditor
+        action: re-checks actor coverage with the updated audit module
+      - node: CheckActorCoverage
+        action: re-examines actor references including any new actors added by the self-fix
+      - node: _actors/Auditor
+        action: re-checks cross-module coverage with the updated audit module
+      - node: CheckCrossModuleCoverage
+        action: re-examines module connections including audit's updated cross-module refs
+      - node: MergeAuditReports
+        action: combines the post-self-fix re-audit reports
+      - node: CollectAuditFindings
+        action: gathers findings to verify the self-fix resolved the gap without opening new ones
+      - node: AuditFindingsList
+        action: stores the post-self-fix findings for comparison against the pre-fix state

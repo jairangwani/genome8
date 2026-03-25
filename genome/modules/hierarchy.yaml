@@ -607,7 +607,7 @@ journeys:
         action: summarizes coupling between groups as a compact adjacency list instead of full matrix
       - node: CompactSplitDecisionContext
         action: produces a condensed summary with group names, module counts, and key coupling edges
-      - node: llm/ContextBudget
+      - node: llm/PayloadSizeBudget
         action: confirms the compacted summary fits within the LLM's available context window
       - node: _actors/LLMWorker
         action: receives the compacted summary and makes the split decision

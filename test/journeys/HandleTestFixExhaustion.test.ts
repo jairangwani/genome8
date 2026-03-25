@@ -1,0 +1,75 @@
+// Auto-generated from journey: HandleTestFixExhaustion
+// Module: convergence
+// Triggered by: _actors/LLMWorker
+// Modules touched: convergence, testgen, _actors, compilation
+
+import { describe, it, expect } from 'vitest';
+
+describe("HandleTestFixExhaustion", () => {
+  it("step 1: convergence/ExecuteTests runs tests after a fix attempt", () => {
+    // Node: convergence/ExecuteTests (process)
+    // Action: runs tests after a fix attempt
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: testgen/TestResultReport reports that some tests still fail after the fix", () => {
+    // Node: testgen/TestResultReport (artifact)
+    // Action: reports that some tests still fail after the fix
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: testgen/CollectFailures gathers the remaining failures", () => {
+    // Node: testgen/CollectFailures (process)
+    // Action: gathers the remaining failures
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: convergence/FixTestFailures attempts another fix for the remaining failures", () => {
+    // Node: convergence/FixTestFailures (process)
+    // Action: attempts another fix for the remaining failures
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: _actors/LLMWorker applies another round of fixes", () => {
+    // Node: _actors/LLMWorker (actor)
+    // Action: applies another round of fixes
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: convergence/ExecuteTests re-runs previously failing tests", () => {
+    // Node: convergence/ExecuteTests (process)
+    // Action: re-runs previously failing tests
+    // TODO: agent fills assertion
+  });
+
+  it("step 7: testgen/TestResultReport reports that failures persist after multiple fix rounds", () => {
+    // Node: testgen/TestResultReport (artifact)
+    // Action: reports that failures persist after multiple fix rounds
+    // TODO: agent fills assertion
+  });
+
+  it("step 8: convergence/BoundedRetryRule detects that the retry cap for test fixes has been reached", () => {
+    // Node: convergence/BoundedRetryRule (rule)
+    // Action: detects that the retry cap for test fixes has been reached
+    // TODO: agent fills assertion
+  });
+
+  it("step 9: convergence/NeverOpenEndedLoop enforces that the fix cycle must terminate", () => {
+    // Node: convergence/NeverOpenEndedLoop (rule)
+    // Action: enforces that the fix cycle must terminate
+    // TODO: agent fills assertion
+  });
+
+  it("step 10: compilation/ErrorReport records the unconverged test failures as errors with full details", () => {
+    // Node: compilation/ErrorReport (artifact)
+    // Action: records the unconverged test failures as errors with full details
+    // TODO: agent fills assertion
+  });
+
+  it("step 11: convergence/ConvergenceState records that test generation completed with unresolved failures, blocking full pipeline completion", () => {
+    // Node: convergence/ConvergenceState (artifact)
+    // Action: records that test generation completed with unresolved failures, blocking full pipeline completion
+    // TODO: agent fills assertion
+  });
+
+});

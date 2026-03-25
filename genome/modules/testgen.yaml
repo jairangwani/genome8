@@ -37,6 +37,36 @@ nodes:
   RerunAfterFix:
     type: process
     description: re-executes only the previously failing tests to verify the fix worked
+  SelectNextTestToFill:
+    type: process
+    description: picks the next unfilled test skeleton from the journey list and advances the pointer through the fill sequence
+  ProvideTestgenExcerpt:
+    type: process
+    description: assembles testgen-specific excerpt context including node behaviors, journey flows, and implementation code to guide LLM assertion writing
+  ConfirmAllTestsFilled:
+    type: process
+    description: verifies that every journey has a filled test file on disk before proceeding to test execution
+  ConfirmAllTestsPassing:
+    type: process
+    description: verifies that the test result report shows zero failures as a gate for pipeline completion
+  SelectNextFailureToFix:
+    type: process
+    description: picks the next unfixed failure from the prioritized failure list and advances through the fix queue
+  ValidateFilledTestSyntax:
+    type: process
+    description: runs a TypeScript syntax check on the filled test file to catch LLM-generated compilation errors before test execution
+  RetryFillWithAssertionErrors:
+    type: process
+    description: sends the syntax or compilation errors from a failed test fill back to the LLM as feedback and re-requests the fill with the original skeleton plus error context
+  DetectTestExecutionCrash:
+    type: process
+    description: detects when the test runner process itself crashes or exits abnormally rather than producing a clean pass/fail result, distinguishing runner failures from test failures
+  DetectFixInducedRegression:
+    type: process
+    description: compares pre-fix and post-fix test results to detect new failures that did not exist before the fix was applied
+  RevertFailedTestFix:
+    type: process
+    description: restores the test or implementation file to its pre-fix state when a fix introduced regressions or failed to resolve the targeted failure
   TestSkeletonFile:
     type: artifact
     description: a TypeScript test file with empty assertion bodies for all steps in a journey
@@ -86,6 +116,8 @@ journeys:
     steps:
       - node: TestSkeletonFile
         action: provides the empty test skeleton for a journey
+      - node: ProvideTestgenExcerpt
+        action: assembles testgen-specific context with node behaviors and implementation code
       - node: excerpt/ExcerptOutput
         action: provides focused context for the module being tested
       - node: codegen/FilledSourceFile
@@ -102,17 +134,21 @@ journeys:
         action: receives the filled test file from the worker
       - node: FilledTestFile
         action: stores the assertion-complete test file
+      - node: ValidateFilledTestSyntax
+        action: checks the filled test for syntax and compilation errors before writing
       - node: WriteTestFile
-        action: writes the filled test file to the test output directory
+        action: writes the validated test file to the test output directory
 
   RunTestsAndCollectResults:
     steps:
-      - node: convergence/RunTests
+      - node: convergence/ExecuteTests
         action: triggers test execution after all test files are filled and written
       - node: FilledTestFile
         action: provides all filled test files for execution
       - node: RunTests
         action: executes all test files and captures output
+      - node: DetectTestExecutionCrash
+        action: checks whether the runner exited cleanly or crashed abnormally
       - node: TestResultReport
         action: stores the pass/fail results for every test case
       - node: CollectFailures
@@ -124,8 +160,10 @@ journeys:
     steps:
       - node: FailureFixList
         action: provides the list of failures to fix
+      - node: SelectNextFailureToFix
+        action: picks the highest-priority unfixed failure from the list
       - node: GenerateFixPrompt
-        action: builds a targeted fix prompt for the first failure
+        action: builds a targeted fix prompt for the selected failure
       - node: llm/TaskPayload
         action: packages the failure context into a fix task
       - node: llm/SendTask
@@ -140,7 +178,271 @@ journeys:
         action: re-executes only the previously failing tests
       - node: TestResultReport
         action: updates with the re-run results
+      - node: DetectFixInducedRegression
+        action: compares pre-fix and post-fix results to check for new failures
       - node: CollectFailures
         action: checks if any failures remain after the fix
       - node: convergence/ConvergenceState
         action: records test results — either more fixes needed or all tests passing
+
+  FillAllTestsInOrder:
+    steps:
+      - node: TestSkeletonFile
+        action: provides the list of all unfilled test skeletons
+      - node: SelectNextTestToFill
+        action: picks the first unfilled test skeleton
+      - node: ProvideTestgenExcerpt
+        action: assembles context for the selected test's module
+      - node: codegen/FilledSourceFile
+        action: provides the implementation code for the module being tested
+      - node: llm/SendTask
+        action: sends the fill task to the LLM worker
+      - node: _actors/LLMWorker
+        action: reads the skeleton and context to write assertions
+      - node: FillTestAssertions
+        action: LLM fills the assertion bodies for the selected journey's test
+      - node: llm/ReceiveResult
+        action: receives the filled test file
+      - node: FilledTestFile
+        action: stores the filled test file
+      - node: ValidateFilledTestSyntax
+        action: checks the filled test for compilation errors before writing
+      - node: WriteTestFile
+        action: writes the filled test to disk
+      - node: SelectNextTestToFill
+        action: advances to the next unfilled test skeleton
+      - node: FillTestAssertions
+        action: LLM fills the next journey's test assertions
+      - node: ValidateFilledTestSyntax
+        action: validates each subsequent filled test
+      - node: WriteTestFile
+        action: writes each subsequent filled test to disk
+      - node: ConfirmAllTestsFilled
+        action: verifies every journey has a filled test file on disk
+      - node: convergence/ExecuteTests
+        action: signals that all tests are ready for execution
+
+  ProvideTestgenExcerptContext:
+    steps:
+      - node: SelectNextTestToFill
+        action: identifies which module's test needs an excerpt for its fill pass
+      - node: excerpt/SelectTargetModule
+        action: targets the module for excerpt generation
+      - node: graph/CompiledIndex
+        action: provides the compiled graph for understanding expected behaviors
+      - node: excerpt/CollectLocalNodes
+        action: extracts node definitions to understand what each test should verify
+      - node: excerpt/CollectLocalJourneys
+        action: extracts journey steps to understand the expected sequence of actions
+      - node: excerpt/CollectCrossModuleConnections
+        action: identifies cross-module interactions the tests should validate
+      - node: codegen/FilledSourceFile
+        action: provides the implementation code the tests will exercise
+      - node: excerpt/LensRelevance
+        action: filters context to test-relevant details emphasizing expected behaviors and assertions
+      - node: excerpt/AssembleExcerpt
+        action: builds the testgen-focused excerpt with implementation and graph context
+      - node: excerpt/TruncateToLimit
+        action: ensures the excerpt fits within the line budget
+      - node: excerpt/ExcerptOutput
+        action: provides the test-focused excerpt for the fill task
+      - node: ProvideTestgenExcerpt
+        action: wraps the excerpt with testgen-specific instructions for the LLM worker
+
+  EndToEndTestgenPipeline:
+    steps:
+      - node: codegen/ConfirmAllModulesFilled
+        action: confirms all implementation files are ready from codegen
+      - node: convergence/TriggerTestgen
+        action: invokes testgen after codegen is complete
+      - node: graph/CompiledIndex
+        action: provides all journeys for test skeleton generation
+      - node: ReadJourneySteps
+        action: extracts journeys and steps as the test source
+      - node: GenerateTestFilePerJourney
+        action: creates test skeletons for all journeys
+      - node: GenerateStepTestCase
+        action: creates test cases for all steps
+      - node: GenerateConnectionAssertions
+        action: creates connection assertion stubs
+      - node: MapTestImports
+        action: links tests to implementation imports
+      - node: TestSkeletonFile
+        action: stores all test skeletons
+      - node: SelectNextTestToFill
+        action: iterates through all test skeletons
+      - node: ProvideTestgenExcerpt
+        action: assembles context for each test fill
+      - node: FillTestAssertions
+        action: LLM fills assertions for each test
+      - node: FilledTestFile
+        action: stores all filled tests
+      - node: ConfirmAllTestsFilled
+        action: verifies all tests are filled
+      - node: RunTests
+        action: executes all test files
+      - node: TestResultReport
+        action: collects pass/fail results
+      - node: CollectFailures
+        action: gathers any failures
+      - node: SelectNextFailureToFix
+        action: picks each failure for targeted fix
+      - node: ApplyTestFix
+        action: fixes each failing test or implementation
+      - node: RerunAfterFix
+        action: re-runs fixed tests to confirm
+      - node: ConfirmAllTestsPassing
+        action: verifies zero failures remain
+      - node: convergence/ConvergenceState
+        action: records that all tests pass and testgen is complete
+
+  ConfirmTestSuiteComplete:
+    steps:
+      - node: RerunAfterFix
+        action: has re-executed previously failing tests after the last fix round
+      - node: TestResultReport
+        action: provides the latest test results after all fix cycles
+      - node: CollectFailures
+        action: gathers any remaining failures from the latest run
+      - node: ConfirmAllTestsPassing
+        action: checks the failure count is zero across all test files
+      - node: ConfirmAllTestsPassing
+        action: verifies every journey has at least one passing test confirming coverage
+      - node: convergence/ConvergenceState
+        action: records that the full test suite passes
+      - node: convergence/BoundedRetryRule
+        action: confirms that fix attempts did not exceed the retry limit
+
+  HandoffFromCodegen:
+    steps:
+      - node: codegen/ConfirmAllModulesFilled
+        action: signals that all implementation files have been generated and validated
+      - node: codegen/GeneratedCodeDirectory
+        action: provides the directory containing all filled TypeScript source files
+      - node: codegen/FilledSourceFile
+        action: each implementation file is available for test import generation
+      - node: convergence/TriggerTestgen
+        action: invokes testgen.ts to begin test skeleton generation
+      - node: MapTestImports
+        action: reads the codegen output to produce import statements for the test files
+      - node: ReadJourneySteps
+        action: begins extracting journeys from the compiled index as the test source
+
+  RecoverFromFillAssertionError:
+    steps:
+      - node: FillTestAssertions
+        action: has produced a filled test file from the LLM worker
+      - node: FilledTestFile
+        action: provides the filled test content
+      - node: ValidateFilledTestSyntax
+        action: runs syntax checking and detects compilation errors in the filled assertions
+      - node: ValidateFilledTestSyntax
+        action: collects the specific error messages with line numbers and error types
+      - node: RetryFillWithAssertionErrors
+        action: reads the original test skeleton as the base for the retry
+      - node: TestSkeletonFile
+        action: provides the original empty skeleton that the LLM will re-fill
+      - node: RetryFillWithAssertionErrors
+        action: packages the compilation errors as feedback context for the retry attempt
+      - node: llm/SendTask
+        action: sends the retry task with the skeleton plus error feedback to the worker
+      - node: _actors/LLMWorker
+        action: reads the error feedback and re-fills the skeleton avoiding the previous mistakes
+      - node: FillTestAssertions
+        action: LLM produces corrected assertions addressing the specific compilation errors
+      - node: llm/ReceiveResult
+        action: receives the corrected filled test file
+      - node: FilledTestFile
+        action: stores the corrected test file
+      - node: ValidateFilledTestSyntax
+        action: re-checks the corrected fill for compilation errors
+
+  RecoverFromTestExecutionCrash:
+    steps:
+      - node: convergence/ExecuteTests
+        action: triggers test execution
+      - node: RunTests
+        action: begins executing test files
+      - node: DetectTestExecutionCrash
+        action: detects that the test runner process exited abnormally with a non-zero exit code
+      - node: DetectTestExecutionCrash
+        action: captures the crash output including stderr and any partial results written before the crash
+      - node: DetectTestExecutionCrash
+        action: identifies which test file was being executed when the crash occurred
+      - node: TestResultReport
+        action: records a runner-level crash entry for the failing test file
+      - node: CollectFailures
+        action: adds the crash as a special failure type distinct from assertion failures
+      - node: FailureFixList
+        action: stores the crash failure for the fix cycle with the crash details
+      - node: RunTests
+        action: re-executes the remaining test files excluding the crashing file
+      - node: TestResultReport
+        action: merges results from the successful run with the crash entry
+
+  HandleFixInducedRegression:
+    steps:
+      - node: ApplyTestFix
+        action: has edited a test or implementation file to fix a failure
+      - node: RerunAfterFix
+        action: re-executes the previously failing tests plus surrounding tests in the same file
+      - node: TestResultReport
+        action: provides the post-fix test results
+      - node: DetectFixInducedRegression
+        action: compares the pre-fix passing test set against the post-fix results
+      - node: DetectFixInducedRegression
+        action: identifies tests that were passing before the fix but are now failing
+      - node: RevertFailedTestFix
+        action: reads the pre-fix backup of the edited file
+      - node: RevertFailedTestFix
+        action: restores the test or implementation file to its pre-fix state
+      - node: RerunAfterFix
+        action: re-runs to confirm the revert restored the original passing state
+      - node: TestResultReport
+        action: confirms the reverted results match the pre-fix state
+      - node: FailureFixList
+        action: retains the original failure and annotates it with the failed fix approach
+      - node: GenerateFixPrompt
+        action: rebuilds the fix prompt with context about the regression to guide the next attempt
+      - node: SelectNextFailureToFix
+        action: re-queues the failure for a different fix approach
+
+  ResumePartialTestFill:
+    steps:
+      - node: convergence/ConvergenceState
+        action: indicates testgen was in progress when the process was interrupted
+      - node: TestSkeletonFile
+        action: provides the list of all test skeletons that were generated before the crash
+      - node: FilledTestFile
+        action: provides any filled test files that were written to disk before the crash
+      - node: SelectNextTestToFill
+        action: scans the filled files to find which journeys already have filled tests
+      - node: SelectNextTestToFill
+        action: identifies the first journey with a skeleton but no filled test file
+      - node: ValidateFilledTestSyntax
+        action: verifies each existing filled file compiles correctly to detect any corrupt partial fills
+      - node: ProvideTestgenExcerpt
+        action: assembles context for the next unfilled test
+      - node: FillTestAssertions
+        action: resumes LLM filling from the point of interruption
+      - node: WriteTestFile
+        action: writes the resumed fill to disk
+      - node: ConfirmAllTestsFilled
+        action: continues checking until all remaining tests are filled
+
+  HandleFixRetryExhaustion:
+    steps:
+      - node: FailureFixList
+        action: provides the list of remaining failures after multiple fix rounds
+      - node: SelectNextFailureToFix
+        action: attempts to pick the next failure but finds it has exceeded the retry limit
+      - node: convergence/BoundedRetryRule
+        action: confirms the retry limit has been reached for this failure
+      - node: CollectFailures
+        action: marks the exhausted failure as unresolvable after maximum attempts
+      - node: TestResultReport
+        action: records the final state with unresolvable failures annotated
+      - node: ConfirmAllTestsPassing
+        action: detects that not all tests are passing due to unresolvable failures
+      - node: convergence/ConvergenceState
+        action: records that testgen completed with unresolvable failures and the specific test names
