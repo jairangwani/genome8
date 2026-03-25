@@ -198,9 +198,9 @@
 - [ ] Test 2: Edit generated code (add a function that doesn't match journey) → verify mismatch detected → journey updated to match code (requires real code, skipping for now — Gap 6)
 - [x] Test 3: Added audit-trail.yaml manually → convergence detected (174 nodes, 152 journeys, 3 cross-module refs). New module integrated into graph. WORKS.
 - [x] Test 4: Deleted CredentialVaultStore from identity.yaml → compile detected: "node CredentialVaultStore does not exist in module identity". Broken ref caught instantly. WORKS.
-- [ ] Test 5: Change in child engine → event file written → parent detects → parent's cross-engine journeys updated → parent re-publishes
-- [ ] Test 6: Change in sibling engine → dependent sibling wakes via fs.watch → targeted reconvergence → re-publishes → ripple continues
-- [ ] Full cycle: developer edits code → plan updates → tests regenerate → everything reconverges → all interfaces in sync
+- [ ] Test 5: Change in child engine → event file written → parent detects (VERIFIED: event files + dependencies.yaml exist in pando20. Need live Step 7 test without --once)
+- [ ] Test 6: Sibling wakes via fs.watch (VERIFIED: dependency wiring correct — agents↔tooling, trust↔economy. Need live Step 7 test without --once)
+- [ ] Full cycle: developer edits code → plan updates → tests regenerate → everything reconverges (needs real code implementation — Gap 6. Deferred to production phase)
 
 ---
 

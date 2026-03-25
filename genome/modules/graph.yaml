@@ -1,0 +1,133 @@
+spec_sections: [2]
+
+nodes:
+  NodeDefinition:
+    type: process
+    description: defines a node with one of 5 universal types (actor, process, artifact, interface, rule) plus name and description
+  JourneyDefinition:
+    type: process
+    description: defines a journey as an ordered sequence of steps, each with a node reference and an action description
+  StepDefinition:
+    type: process
+    description: defines a single journey step binding a node reference to an action, forming a connection to the next step
+  ConnectionComputation:
+    type: process
+    description: derives directed connections between consecutive journey steps, building the edge set of the graph
+  CrossModuleRefResolution:
+    type: process
+    description: resolves node references that use module/NodeName syntax to link nodes across module boundaries
+  ActorRefResolution:
+    type: process
+    description: resolves actor references that use _actors/ActorName syntax to link shared actors into journeys
+  PublishedInterfaceDefinition:
+    type: process
+    description: defines what a box provides to other boxes as a versioned, hashable set of exported nodes and journeys
+  NodeTypeSchema:
+    type: rule
+    description: enforces that every node must be exactly one of the 5 universal types (actor, process, artifact, interface, rule)
+  StepFormatRule:
+    type: rule
+    description: enforces that every journey step must have a node field and an action field, never flat strings
+  NoIsolationRule:
+    type: rule
+    description: every node must participate in at least one journey — no standalone nodes allowed in the graph
+  ModuleFile:
+    type: artifact
+    description: a YAML file containing spec_sections, nodes, and journeys that defines one scoped piece of the graph
+  CompiledIndex:
+    type: artifact
+    description: the merged in-memory structure of all modules containing all nodes, journeys, and computed connections
+  ConnectionSet:
+    type: artifact
+    description: the set of directed edges derived from consecutive journey steps across all journeys
+  NodeRegistry:
+    type: artifact
+    description: the deduplicated map of all node names to their type and description across all modules
+  JourneyRegistry:
+    type: artifact
+    description: the collection of all journeys with their steps, used for connection computation and test generation
+
+journeys:
+  DefineNode:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: writes a node entry in a module YAML file with name, type, and description
+      - node: NodeDefinition
+        action: parses the node entry and validates it has a name, type, and description
+      - node: NodeTypeSchema
+        action: checks that the type is one of the 5 universal types
+      - node: NodeRegistry
+        action: registers the node in the deduplicated map of all nodes
+
+  DefineJourney:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: writes a journey with ordered steps in a module YAML file
+      - node: JourneyDefinition
+        action: parses the journey entry and validates it has a name and steps array
+      - node: StepFormatRule
+        action: checks that each step has node and action fields, rejecting flat strings
+      - node: StepDefinition
+        action: parses each step binding a node reference to an action description
+      - node: JourneyRegistry
+        action: registers the journey in the collection of all journeys
+
+  ComputeConnections:
+    steps:
+      - node: JourneyRegistry
+        action: provides all journeys with their ordered steps
+      - node: ConnectionComputation
+        action: walks consecutive step pairs and derives a directed edge for each
+      - node: CrossModuleRefResolution
+        action: resolves module/NodeName references to nodes in other modules
+      - node: ActorRefResolution
+        action: resolves _actors/ActorName references to shared actor definitions
+      - node: ConnectionSet
+        action: stores the complete set of directed edges for the graph
+
+  BuildCompiledIndex:
+    steps:
+      - node: _actors/Compiler
+        action: reads all module YAML files from the modules directory
+      - node: ModuleFile
+        action: provides raw YAML content for each module
+      - node: NodeDefinition
+        action: parses every node entry from every module
+      - node: NodeTypeSchema
+        action: validates all node types are legal
+      - node: JourneyDefinition
+        action: parses every journey from every module
+      - node: StepFormatRule
+        action: validates all steps have node and action fields
+      - node: ConnectionComputation
+        action: computes all connections from all journey steps
+      - node: CrossModuleRefResolution
+        action: resolves all cross-module node references
+      - node: ActorRefResolution
+        action: resolves all actor references
+      - node: NodeRegistry
+        action: builds the deduplicated node map
+      - node: JourneyRegistry
+        action: builds the journey collection
+      - node: ConnectionSet
+        action: builds the edge set
+      - node: CompiledIndex
+        action: merges nodes, journeys, and connections into the final compiled structure
+
+  EnforceNoIsolation:
+    steps:
+      - node: CompiledIndex
+        action: provides the full graph with all nodes and connections
+      - node: NoIsolationRule
+        action: scans for nodes that appear in no journey and flags them as orphans
+      - node: _actors/Compiler
+        action: reports orphan nodes as validation errors
+
+  ResolvePublishedInterface:
+    steps:
+      - node: CompiledIndex
+        action: provides the full compiled graph for a box
+      - node: PublishedInterfaceDefinition
+        action: selects which nodes and journeys to export as the box's public interface
+      - node: _actors/DependentBox
+        action: references the published interface to connect across box boundaries

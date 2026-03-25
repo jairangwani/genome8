@@ -1,0 +1,69 @@
+spec_sections: [1]
+
+nodes:
+  ProjectOwner:
+    type: actor
+    description: describes a project via spec.md and triggers convergence
+  HumanDeveloper:
+    type: actor
+    description: reads, edits, and maintains modules and spec files directly
+  LLMWorker:
+    type: actor
+    description: persistent Claude Code process that creates module content, fills code, and fills test assertions when asked
+  Compiler:
+    type: actor
+    description: validates the graph by checking for duplicates, dangling refs, YAML errors, orphans, and isolated modules
+  Auditor:
+    type: actor
+    description: LLM that checks coverage from a specific angle (spec, actor, or cross-module) and identifies gaps
+  ParentEngine:
+    type: actor
+    description: convergence.ts instance that splits organization into children, validates cross-engine refs, and publishes parent interface
+  ChildEngine:
+    type: actor
+    description: convergence.ts instance running at a scoped level with inherited actors, converging independently
+  DependentBox:
+    type: actor
+    description: a box that watches another box's event files via fs.watch and triggers targeted reconvergence on change
+  FileSystem:
+    type: actor
+    description: the OS file system that delivers watch events, stores modules, and hosts event files for ripple propagation
+  MaliciousSpecAuthor:
+    type: actor
+    description: injects prompt-injection or adversarial content into spec.md to manipulate LLM behavior during convergence
+  YAMLTamperer:
+    type: actor
+    description: directly edits module YAML files to introduce invalid refs, corrupt hashes, or inject malicious node definitions
+  RogueWorker:
+    type: actor
+    description: an LLMWorker that produces subtly wrong content — hallucinated nodes, phantom connections, or code with hidden vulnerabilities
+  EventSpoofer:
+    type: actor
+    description: writes fake event files to trigger unnecessary reconvergence cascades or inject stale data into dependent boxes
+  InfiniteLoopTrigger:
+    type: actor
+    description: crafts circular dependencies or oscillating changes between boxes that cause unbounded ripple chains despite convergence rules
+  HashCollisionExploiter:
+    type: actor
+    description: manipulates artifact content to produce identical SHA256 hashes, causing sync.ts to miss real changes
+  PrivilegeEscalator:
+    type: actor
+    description: exploits LLMWorker's native tool access (Read, Write, Edit, Bash) to touch files outside the box scope or execute arbitrary commands
+  ResourceExhauster:
+    type: actor
+    description: submits specs or triggers hierarchies designed to spawn unbounded child engines, exhausting memory, disk, or API quota
+  NewProjectAdopter:
+    type: actor
+    description: encounters genome8 for the first time, runs convergence on their first spec.md, and evaluates whether the protocol fits their system
+  MigratingProject:
+    type: actor
+    description: an existing codebase with legacy documentation being onboarded into genome8, requiring initial graph bootstrapping from pre-existing artifacts
+  StaleBox:
+    type: actor
+    description: a box whose event watcher has stopped or whose upstream dependencies have been removed, silently drifting out of sync with the living graph
+  DeprecatedModule:
+    type: actor
+    description: a module that is no longer relevant to the current spec but still exists on disk with orphaned nodes and dangling inbound references
+  ReturningOwner:
+    type: actor
+    description: a ProjectOwner who re-triggers convergence after a long period of inactivity, facing stale hashes, outdated interfaces, and potentially broken child engines
