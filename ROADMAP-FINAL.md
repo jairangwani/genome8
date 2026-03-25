@@ -253,11 +253,11 @@ Use genome as the test subject. Real code. Real changes. Real ripple. No stubs.
 - [x] SELF-HEALING WORKS: broken code → detected → restored ✅
 
 ### Test 5: Add a whole new module
-- [ ] Write new file src/metrics.ts (tracks LLM calls, tokens, time per step)
-- [ ] Don't update graph manually
-- [ ] Run Step 4d → finds untracked file → adds metrics module to graph
-- [ ] Creates nodes + journeys → connected to convergence and llm modules
-- [ ] Verify: new module fully integrated into graph
+- [x] Wrote src/metrics.ts (tracks LLM calls, tokens, step timings)
+- [x] Graph had 0 metrics nodes — file completely untracked
+- [x] Step 4d created metrics.yaml with 11 nodes (TrackLLMCall, StartStepTimer, etc.)
+- [x] Graph: 579→589 nodes, 375→380 journeys
+- [x] New module fully integrated into graph autonomously ✅
 
 ### Test 6: Full cycle with hierarchy
 - [ ] Split genome into 2 engines (core: compile/types/excerpt, orchestration: convergence/llm/hierarchy)

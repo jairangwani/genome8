@@ -1,0 +1,97 @@
+spec_sections: [3, 5]
+
+nodes:
+  ConvergenceMetricsRecord:
+    type: artifact
+    description: in-memory accumulator that holds LLM call count, total tokens, per-step wall-clock timings, modules processed, nodes created, and journeys created
+    files: ["src/metrics.ts"]
+  MetricsJsonFile:
+    type: artifact
+    description: genome/metrics.json written to disk after each convergence with the finalized metrics snapshot
+    files: ["src/metrics.ts"]
+  TrackLLMCall:
+    type: process
+    description: increments the LLM call counter and adds the token count from a single call to the running total
+    files: ["src/metrics.ts"]
+  StartStepTimer:
+    type: process
+    description: records the wall-clock start time for a named pipeline step in the step timings map
+    files: ["src/metrics.ts"]
+  EndStepTimer:
+    type: process
+    description: computes elapsed milliseconds for a named pipeline step by subtracting its start time from the current time
+    files: ["src/metrics.ts"]
+  TrackModuleCount:
+    type: process
+    description: records the number of modules processed during convergence into the metrics accumulator
+    files: ["src/metrics.ts"]
+  TrackGraphCounts:
+    type: process
+    description: records the total node count and journey count from the compiled graph into the metrics accumulator
+    files: ["src/metrics.ts"]
+  FinalizeMetrics:
+    type: process
+    description: stamps the completion timestamp and returns a frozen snapshot of the accumulated metrics
+    files: ["src/metrics.ts"]
+  WriteMetricsToDisk:
+    type: process
+    description: serializes the finalized metrics snapshot to JSON and writes it to genome/metrics.json
+    files: ["src/metrics.ts"]
+  StepTimingInvariant:
+    type: rule
+    description: endStep silently skips if startStep was never called for that step name, preventing negative or nonsensical elapsed times
+
+journeys:
+  TrackPipelineStepPerformance:
+    description: times a single pipeline step from start to completion
+    steps:
+      - node: convergence/ReadSpec
+        action: begins a pipeline step that needs timing
+      - node: StartStepTimer
+        action: records the wall-clock start time for the step
+      - node: ConvergenceMetricsRecord
+        action: stores the start timestamp keyed by step name
+      - node: StepTimingInvariant
+        action: ensures startStep was called before endStep resolves timing
+      - node: EndStepTimer
+        action: computes elapsed ms when the step completes
+      - node: ConvergenceMetricsRecord
+        action: replaces the start timestamp with the elapsed duration
+
+  RecordLLMUsage:
+    description: tracks an LLM call and its token consumption
+    steps:
+      - node: _actors/LLMWorker
+        action: completes an LLM call and reports the token count
+      - node: TrackLLMCall
+        action: increments the call counter and adds tokens to the running total
+      - node: ConvergenceMetricsRecord
+        action: stores the updated llmCalls and totalTokens fields
+
+  TrackConvergenceScope:
+    description: records the scale of a convergence run after compilation
+    steps:
+      - node: convergence/CompileCheck
+        action: finishes compilation and reports module, node, and journey counts
+      - node: TrackModuleCount
+        action: records the number of modules processed
+      - node: TrackGraphCounts
+        action: records the node and journey totals from the compiled graph
+      - node: ConvergenceMetricsRecord
+        action: stores modulesProcessed, nodesCreated, and journeysCreated
+
+  FinalizeAndPersistMetrics:
+    description: snapshots the accumulated metrics and writes them to disk after convergence completes
+    steps:
+      - node: convergence/TriggerPublish
+        action: signals that convergence has completed and metrics can be finalized
+      - node: FinalizeMetrics
+        action: stamps completedAt and returns a frozen metrics snapshot
+      - node: ConvergenceMetricsRecord
+        action: provides the accumulated data for the snapshot
+      - node: WriteMetricsToDisk
+        action: serializes the snapshot to JSON
+      - node: MetricsJsonFile
+        action: receives the written metrics at genome/metrics.json
+      - node: _actors/HumanDeveloper
+        action: reads genome/metrics.json to review pipeline performance
