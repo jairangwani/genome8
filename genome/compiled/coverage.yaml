@@ -1,0 +1,128 @@
+_generated: '2026-03-25T09:16:13.131Z'
+modules:
+  actors:
+    nodes: 24
+    journeys: 26
+    connections: 125
+    cross_module_connections: 43
+    spec_sections:
+      - 3
+      - 4
+      - 5
+  audit:
+    nodes: 33
+    journeys: 19
+    connections: 179
+    cross_module_connections: 49
+    spec_sections:
+      - 3
+      - 5
+  codegen:
+    nodes: 24
+    journeys: 12
+    connections: 141
+    cross_module_connections: 45
+    spec_sections:
+      - 3
+      - 5
+  compilation:
+    nodes: 28
+    journeys: 23
+    connections: 218
+    cross_module_connections: 101
+    spec_sections:
+      - 3
+  convergence:
+    nodes: 54
+    journeys: 28
+    connections: 364
+    cross_module_connections: 209
+    spec_sections:
+      - 3
+      - 5
+      - 6
+  events:
+    nodes: 39
+    journeys: 25
+    connections: 223
+    cross_module_connections: 47
+    spec_sections:
+      - 3
+      - 5
+      - 6
+  excerpt:
+    nodes: 21
+    journeys: 12
+    connections: 127
+    cross_module_connections: 39
+    spec_sections:
+      - 3
+  graph:
+    nodes: 25
+    journeys: 19
+    connections: 240
+    cross_module_connections: 96
+    spec_sections:
+      - 2
+  hierarchy:
+    nodes: 40
+    journeys: 20
+    connections: 244
+    cross_module_connections: 53
+    spec_sections:
+      - 2
+      - 3
+      - 5
+      - 6
+  llm:
+    nodes: 48
+    journeys: 25
+    connections: 239
+    cross_module_connections: 63
+    spec_sections:
+      - 3
+  organization:
+    nodes: 30
+    journeys: 19
+    connections: 174
+    cross_module_connections: 48
+    spec_sections:
+      - 3
+      - 5
+  publish:
+    nodes: 33
+    journeys: 16
+    connections: 196
+    cross_module_connections: 35
+    spec_sections:
+      - 2
+      - 3
+  sync:
+    nodes: 27
+    journeys: 14
+    connections: 162
+    cross_module_connections: 50
+    spec_sections:
+      - 3
+      - 5
+  testgen:
+    nodes: 28
+    journeys: 14
+    connections: 158
+    cross_module_connections: 32
+    spec_sections:
+      - 2
+      - 3
+      - 5
+  _actors:
+    nodes: 22
+    journeys: 3
+    connections: 220
+    cross_module_connections: 190
+    spec_sections:
+      - 1
+orphans:
+  - compilation/BiometricAuthValidator
+  - excerpt/CompressModuleSummaries
+  - llm/ProactiveWorkerReplacement
+isolated_modules: []

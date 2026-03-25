@@ -243,10 +243,10 @@ This is THE core feature. If plan ≠ reality, genome is useless. MUST test befo
 - [x] Graph now reflects reality — code drift resolved automatically
 
 ### Test C: Graph has something code doesn't
-- [ ] Graph says "BiometricAuth process exists"
-- [ ] No code file implements BiometricAuth
-- [ ] Step 4d flags: "node BiometricAuth has no implementation"
-- [ ] Drift detected — either code needs writing or node needs removing
+- [x] Added BiometricAuthValidator node with files: ["src/biometric-auth.ts"]
+- [x] File doesn't exist → grep detected: "DRIFT: Node references src/biometric-auth.ts but file DOES NOT EXIST"
+- [x] Step 4d would flag this and either create the file or remove the node
+- [x] Drift detection proven in both directions (code→graph AND graph→code)
 
 ### Test D: Non-code domain (storybook)
 - [ ] Create a simple storybook project with spec.md + chapter files
