@@ -804,68 +804,54 @@ Update the appropriate YAML module file using the Write tool if needed.`);
   }, null, 2));
   console.log(`  Event written: ${path.basename(eventFile)}`);
 
-  // ═══ STEP 6 — Code + Test Generation ═══
-  console.log('\n═══ STEP 6: Code + Test Generation ═══');
+  // ═══ STEP 6 — Code Generation (from graph) ═══
+  console.log('\n═══ STEP 6: Code Generation ═══');
 
-  // 6a: Generate code skeletons
-  const codeResult = generateCodeSkeletons(finalResult.index, absProjectDir);
-  console.log(`  Code skeletons: ${codeResult.generated.length} generated, ${codeResult.skipped.length} skipped`);
+  // Build a complete summary of the graph for the LLM
+  const allModuleContents = fs.readdirSync(modulesDir)
+    .filter(f => f.endsWith('.yaml'))
+    .map(f => `=== ${f} ===\n${fs.readFileSync(path.join(modulesDir, f), 'utf-8')}`)
+    .join('\n\n');
 
-  // 6b: LLM fills in code implementations
-  if (codeResult.generated.length > 0) {
-    console.log('  Filling code implementations...');
-    for (const filePath of codeResult.generated) {
-      if (!fs.existsSync(filePath)) continue;
-      const skeleton = fs.readFileSync(filePath, 'utf-8');
-      const fileName = path.basename(filePath);
-      const nodeName = fileName.replace(/\.ts$/, '');
+  const stats = finalResult.index._stats;
 
-      // Get journey context for this node
-      const nodeKey = Object.keys(finalResult.index.nodes).find(k => k.endsWith('/' + nodeName));
-      const node = nodeKey ? finalResult.index.nodes[nodeKey] : null;
+  // 6a: LLM writes REAL, RUNNABLE code from the graph
+  // Not skeletons. Not one file per node. A cohesive working implementation
+  // that respects the project structure described in the spec.
+  console.log(`  Graph: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections`);
+  console.log('  LLM CALL: writing complete implementation from graph...');
 
-      console.log(`    LLM CALL: implementing ${fileName}...`);
-      await worker.call(`Fill in this TypeScript code skeleton with a real implementation.
+  await worker.call(`You are writing the COMPLETE, RUNNABLE implementation for this project.
 
-SKELETON:
-${skeleton}
+PROJECT SPEC:
+${spec}
 
-${node ? `CONTEXT:
-- Node: ${nodeKey}
-- Type: ${node.type}
-- Description: ${node.description}
-- Used in journeys: ${node.in_journeys.join(', ')}
-- Preceded by: ${node.preceded_by.join(', ')}
-- Followed by: ${node.followed_by.join(', ')}` : ''}
+CONTEXT GRAPH (${stats.total_nodes} nodes, ${stats.total_journeys} journeys):
+${allModuleContents}
 
-Write the complete implementation to: ${filePath}
-Keep the class structure. Fill in method bodies with real logic.
-Use the Write tool.`);
-    }
+INSTRUCTIONS:
+1. Read the spec carefully — it defines the project structure (file layout, entry points, dependencies)
+2. Read the context graph — it describes every process, artifact, rule, and journey
+3. Write ALL the code files needed to make this project WORK
+4. The code must be RUNNABLE — not stubs, not skeletons, not TODO comments
+5. Every journey in the graph should be a working code path
+6. Write each file using the Write tool
+
+The implementation must actually work when executed. Test it mentally — trace through the main journeys and verify the code handles them.`);
+
+  // Verify code was written
+  const srcDir = path.join(absProjectDir, 'src');
+  if (fs.existsSync(srcDir)) {
+    const srcFiles = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+    console.log(`  Code files written: ${srcFiles.length} (${srcFiles.join(', ')})`);
+  } else {
+    console.log('  No src/ directory found — LLM may have used a different structure');
   }
 
-  // 6c: Generate test skeletons
+  // 6b: Generate test skeletons (structure only — assertions filled when code is stable)
   const testDir = path.join(absProjectDir, 'test');
   const testFiles = generateTests(finalResult.index, testDir);
-  console.log(`  Test skeletons: ${testFiles.length} generated`);
-
-  // 6d: LLM fills in test assertions
-  if (testFiles.length > 0) {
-    console.log('  Filling test assertions...');
-    for (const testPath of testFiles) {
-      if (!fs.existsSync(testPath)) continue;
-      const testSkeleton = fs.readFileSync(testPath, 'utf-8');
-
-      console.log(`    LLM CALL: filling tests in ${path.basename(testPath)}...`);
-      await worker.call(`Fill in the test assertions for this test file.
-
-TEST SKELETON:
-${testSkeleton}
-
-Write meaningful assertions that test the described behavior.
-Use the Write tool to write the complete test file to: ${testPath}`);
-    }
-  }
+  console.log(`  Test skeletons: ${testFiles.length} generated (assertions deferred until code is stable)`);
 
   // 6e: Run tests and fix failures
   console.log('  Running tests...');

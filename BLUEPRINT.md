@@ -701,25 +701,26 @@ HUMAN RUNS: genome converge /path/to/project
 
   CODE: publishInterface() → writes published/interface.yaml + changelog.yaml
 
-═══ STEP 6 — Code generation (1 LLM call per process node) ═══
+═══ STEP 6 — Code generation (from graph, not per-node skeletons) ═══
 
-  CODE: generate code skeletons (codegen.ts) for all process nodes with files: field
+  LLM receives the COMPLETE graph + the original spec.
+  LLM writes RUNNABLE code — not skeletons, not stubs, not TODOs.
 
-  For each skeleton:
-    LLM CALL: "Here's the journey context for {NodeName}:
-      - Used in journeys: {list}
-      - Preceded by: {nodes}
-      - Followed by: {nodes}
-      - Properties: {properties}
-      Fill in the implementation. The class structure is already generated."
+  The spec defines the project structure (file layout, entry points).
+  The graph defines WHAT to implement (every process, every journey).
+  The LLM writes a cohesive implementation that makes all journeys work.
 
-  CODE: generate test skeletons (testgen.ts) from all journeys
+  LLM CALL: "Here's the spec and the context graph.
+    Write ALL code files. Must be RUNNABLE.
+    Every journey should be a working code path.
+    Respect the project structure from the spec."
 
-  For each test skeleton:
-    LLM CALL: "Here's the journey step and the code implementation.
-      Fill in meaningful test assertions."
+  CODE: generate test skeletons from journeys (structure only)
+  CODE: run the app to verify it works
 
-  CODE: run all tests
+  If it doesn't work:
+    LLM CALL: "This error occurred: {error}. Fix the code."
+    CODE: retry up to 3 times
 
   For each failure:
     LLM CALL: "This test fails: {error}. Fix the code."
