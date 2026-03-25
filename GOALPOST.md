@@ -25,16 +25,36 @@ Every tool today solves a slice: Jira tracks tasks. npm tracks packages. Terrafo
 
 **Solve the context problem. For anything. At any scale. Forever.**
 
-Genome is a protocol that captures ALL context as a living, connected graph. Not documents. Not notes. Not separate files that drift apart. ONE graph where everything connects to everything else through journeys.
+Genome is a protocol that keeps the PLAN and the REALITY in sync — always, automatically, in both directions. This is the core value. Without bidirectional sync, genome is just another documentation tool that drifts.
 
-**The only human input is spec.md** — plain English describing what the system should be. Everything else is auto-generated, auto-connected, auto-synced:
+**Two directions, both mandatory:**
 
-- **Goals** are rule nodes in the graph (connected to the journeys they govern)
-- **Architecture** is process + interface nodes (connected to the code that implements them)
-- **Roadmap** is process nodes with status (connected to the goals they serve)
-- **Tests** are generated from journeys (connected to the code they verify)
-- **Code** is generated from nodes (connected to the tests that validate it)
-- **Documentation** doesn't exist — the graph IS the documentation
+```
+TOP-DOWN: spec → graph → output (plan drives creation)
+BOTTOM-UP: output → graph → plan (reality drives the plan)
+    ↑                                    │
+    └────────────────────────────────────┘
+    Both directions. Always. In any domain.
+```
+
+**Why both directions matter:**
+- Top-down only = plan exists but reality drifts. Same as every documentation tool ever.
+- Bottom-up only = reality exists but nobody knows how it connects. Same as undocumented code.
+- BOTH = plan and reality are always the same thing. Change either one, the other updates.
+
+**How it works:**
+- **Top-down (Step 4a-c):** spec → graph → create output (code, chapters, procedures)
+- **Bottom-up (Step 4d):** scan output files → compare to graph → update graph to match
+- **Ripple (Step 7):** change in one box → event → dependents wake → reconverge both directions
+
+**The only human input is spec.md.** Everything else is auto-generated, auto-connected, auto-synced in BOTH directions:
+
+- **Goals** are rule nodes (connected to journeys they govern)
+- **Architecture** is process + interface nodes (connected to the output that implements them)
+- **Roadmap** is process nodes with status (connected to goals they serve)
+- **Tests** are generated from journeys (connected to output they verify)
+- **Output** (code, chapters, anything) is generated from nodes AND feeds back into the graph
+- **Documentation** doesn't exist — the graph IS the documentation, synced with reality
 
 Nothing exists in isolation. Every node connects to something. Every journey crosses boundaries. When one thing changes, everything connected to it knows — automatically, through compiled connections and event-driven ripple.
 

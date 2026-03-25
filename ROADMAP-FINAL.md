@@ -225,6 +225,38 @@ This is the ultimate test: genome replaces ALL its own documentation with a livi
 
 ## Known Gaps (honest, to fix in future)
 
+## CRITICAL: Bidirectional Sync Tests (Step 4d)
+
+This is THE core feature. If plan ≠ reality, genome is useless. MUST test before anything else.
+
+### Test A: Genome on itself (code exists, graph being built)
+- [ ] Run convergence.ts on genome8 WITH Step 4d (current run uses old code without it)
+- [ ] Step 4d scans src/*.ts files → finds compile.ts, convergence.ts, llm.ts, etc.
+- [ ] Compares actual code against graph nodes → flags drift
+- [ ] Untracked files get added to graph
+- [ ] Graph matches what the code ACTUALLY does, not just what spec says
+
+### Test B: Edit code, verify graph updates
+- [ ] Manually add a function to compile.ts (e.g., a new validation check)
+- [ ] Run convergence → Step 4d detects: "code has function X but no node for it"
+- [ ] LLM adds node + journey for the new function
+- [ ] Graph now reflects reality
+
+### Test C: Graph has something code doesn't
+- [ ] Graph says "BiometricAuth process exists"
+- [ ] No code file implements BiometricAuth
+- [ ] Step 4d flags: "node BiometricAuth has no implementation"
+- [ ] Drift detected — either code needs writing or node needs removing
+
+### Test D: Non-code domain (storybook)
+- [ ] Create a simple storybook project with spec.md + chapter files
+- [ ] Run convergence → graph built from spec
+- [ ] Write a new chapter file manually
+- [ ] Run convergence → Step 4d detects new chapter → adds to graph
+- [ ] Edit a chapter to change a character's action → graph updates
+
+---
+
 ### Gap 1: No negotiation between engines
 When engine A changes something that breaks engine B's design, the system just tries to make B work with the new reality. It can't push back and say "hey A, can you make 2FA optional instead of required?" Real teams negotiate. The system doesn't.
 **Future fix:** Parent engine mediates — reads both children's constraints, proposes a compromise, both reconverge.

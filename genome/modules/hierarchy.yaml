@@ -49,6 +49,39 @@ nodes:
   GenerateChildOrganization:
     type: process
     description: creates a scoped ORGANIZATION.md for each child listing only the modules assigned to that child's group
+  TrackHierarchyDepth:
+    type: process
+    description: reads the depth parameter passed at spawn time and records the current nesting level for this engine instance
+  EnforceMaxDepth:
+    type: process
+    description: compares the current hierarchy depth against the maximum allowed and forces a no-split decision if the limit is reached
+  FlattenGrandchildInterfaces:
+    type: process
+    description: when a child engine has split into grandchildren, merges all grandchild published interfaces into the child's own interface as a flat node and journey set
+  PropagateUnresolvedRefsUpward:
+    type: process
+    description: collects external ref warnings that a child could not resolve against its own grandchildren and passes them up to the parent level for cross-engine resolution
+  NarrowScopedSpec:
+    type: process
+    description: further narrows an already-scoped spec when a child itself splits, producing sub-scoped specs containing only sections relevant to each grandchild group
+  LimitConcurrentChildren:
+    type: process
+    description: caps the number of simultaneously running child engine subprocesses by maintaining a queue and spawning the next child only when a running one completes
+  BatchChildDirectoryCreation:
+    type: process
+    description: creates all child directories, scoped specs, scoped organizations, and actor copies in a single batch pass to reduce disk I/O overhead when child count is high
+  StreamingInterfaceMerge:
+    type: process
+    description: merges child interfaces into the parent compiled index one at a time in sequence instead of loading all interfaces into memory simultaneously
+  DetectChildTimeout:
+    type: process
+    description: compares each running child engine's wall-clock elapsed time against the configured timeout threshold and flags children that exceed it
+  CompactSplitDecisionContext:
+    type: process
+    description: summarizes the organization and independence analysis into a compact form that fits within LLM context limits when the full module list and coupling data is too large
+  IndexChildNodesForRefLookup:
+    type: process
+    description: builds a hash-indexed lookup table of all child interface node names to accelerate cross-engine ref validation when child count is high
   ChildDirectory:
     type: artifact
     description: a directory containing scoped spec.md, shared _actors.yaml, and modules/ for one child engine
@@ -67,6 +100,9 @@ nodes:
   ChildOrganizationFile:
     type: artifact
     description: a child-specific ORGANIZATION.md listing only the modules assigned to that child engine
+  HierarchyDepthCounter:
+    type: artifact
+    description: the current nesting depth passed to each engine at spawn time — 0 for root, 1 for child, 2 for grandchild, and so on
   SameCodeEveryLevel:
     type: rule
     description: convergence.ts is the exact same code at parent, child, and grandchild levels — no level-specific logic
@@ -76,12 +112,29 @@ nodes:
   ExternalRefsWarningsInChildrenErrorsInParent:
     type: rule
     description: children emit warnings for unresolved cross-engine refs, parent promotes them to errors if they remain unresolved
+  MaxDepthLimit:
+    type: rule
+    description: hierarchy depth is bounded to a configurable maximum to prevent infinite recursive splitting — engines at the limit always choose no-split
+  ChildConcurrencyLimit:
+    type: rule
+    description: maximum number of child engine subprocesses that may run simultaneously — additional children are queued until a running child completes
+  ChildTimeoutThreshold:
+    type: rule
+    description: maximum wall-clock time a child engine may run before being flagged as timed out and reported to the parent
 
 journeys:
   DecideHierarchySplit:
     steps:
       - node: convergence/HierarchyDecision
         action: invokes the hierarchy decision step after organization and actor discovery
+      - node: TrackHierarchyDepth
+        action: reads the current engine's depth parameter to determine nesting level
+      - node: HierarchyDepthCounter
+        action: provides the current depth for the split decision
+      - node: EnforceMaxDepth
+        action: checks whether current depth has reached the maximum allowed level
+      - node: MaxDepthLimit
+        action: if at max depth, forces the decision to no-split regardless of module count
       - node: AnalyzeModuleIndependence
         action: reads the independence analysis from ORGANIZATION.md
       - node: _actors/LLMWorker
@@ -128,12 +181,16 @@ journeys:
         action: has all child directories prepared and ready to spawn
       - node: SameCodeEveryLevel
         action: confirms that each child runs the same convergence.ts code as the parent
+      - node: HierarchyDepthCounter
+        action: provides the current depth to increment for child engines
+      - node: TrackHierarchyDepth
+        action: computes child depth as current depth plus one
       - node: SpawnChildEngine
-        action: launches a convergence.ts subprocess for the first child directory
+        action: launches a convergence.ts subprocess for the first child directory with incremented depth parameter
       - node: _actors/ChildEngine
-        action: begins independent convergence in its scoped directory
+        action: begins independent convergence in its scoped directory at the new depth level
       - node: SpawnChildEngine
-        action: launches convergence.ts for each additional child directory
+        action: launches convergence.ts for each additional child directory with the same incremented depth
       - node: _actors/ChildEngine
         action: each child converges independently with its scoped spec and inherited actors
       - node: MonitorChildConvergence
@@ -159,6 +216,8 @@ journeys:
         action: checks every external ref warning from children against sibling interfaces
       - node: ExternalRefsWarningsInChildrenErrorsInParent
         action: enforces that unresolved refs become errors at the parent level
+      - node: PropagateUnresolvedRefsUpward
+        action: collects any refs children could not resolve against their own grandchildren
       - node: PromoteExternalRefsToErrors
         action: converts any remaining unresolved external refs to compilation errors
       - node: _actors/Compiler
@@ -201,6 +260,8 @@ journeys:
     steps:
       - node: convergence/HierarchyDecision
         action: invokes the hierarchy decision step in the convergence pipeline
+      - node: TrackHierarchyDepth
+        action: reads the current engine's depth parameter
       - node: AnalyzeModuleIndependence
         action: reads ORGANIZATION.md independence analysis for the LLM
       - node: _actors/LLMWorker
@@ -260,6 +321,8 @@ journeys:
     steps:
       - node: convergence/HierarchyDecision
         action: triggers the hierarchy decision step in the convergence pipeline
+      - node: TrackHierarchyDepth
+        action: reads the current depth to pass to children
       - node: AnalyzeModuleIndependence
         action: reads independence analysis from ORGANIZATION.md
       - node: DecideSplit
@@ -275,7 +338,7 @@ journeys:
       - node: DistributeSharedActors
         action: copies _actors.yaml into each child directory
       - node: SpawnChildEngine
-        action: launches convergence.ts for each child
+        action: launches convergence.ts for each child with incremented depth
       - node: MonitorChildConvergence
         action: tracks child convergence progress until all complete
       - node: WaitForAllChildren
@@ -315,3 +378,273 @@ journeys:
         action: stores each additional child's scoped ORGANIZATION.md
       - node: SameCodeEveryLevel
         action: confirms children will use their scoped organization the same way the parent uses its full one
+
+  RecursiveChildSplit:
+    steps:
+      - node: _actors/ChildEngine
+        action: reaches its own hierarchy decision step during convergence
+      - node: TrackHierarchyDepth
+        action: reads this child's depth parameter which was set to parent depth plus one
+      - node: HierarchyDepthCounter
+        action: confirms the current depth is below the maximum allowed
+      - node: EnforceMaxDepth
+        action: verifies the depth limit has not been reached so splitting is permitted
+      - node: AnalyzeModuleIndependence
+        action: reads the child's scoped ORGANIZATION.md for independence analysis
+      - node: _actors/LLMWorker
+        action: analyzes the child's module groups and decides to split further
+      - node: DecideSplit
+        action: produces a split decision with grandchild groupings
+      - node: AssignModulesToChildren
+        action: maps the child's modules to grandchild engine groups
+      - node: NarrowScopedSpec
+        action: further narrows the child's already-scoped spec to produce sub-scoped specs for each grandchild
+      - node: ScopedSpecFile
+        action: stores each grandchild's sub-scoped spec in its directory
+      - node: CreateChildDirectory
+        action: creates directory structures for grandchild engines
+      - node: DistributeSharedActors
+        action: copies inherited _actors.yaml into each grandchild directory
+      - node: SpawnChildEngine
+        action: launches convergence.ts for each grandchild with depth incremented again
+      - node: WaitForAllChildren
+        action: child blocks until all grandchildren have converged and published
+
+  EnforceDepthLimitAtMaxLevel:
+    steps:
+      - node: _actors/ChildEngine
+        action: reaches its hierarchy decision step during convergence
+      - node: TrackHierarchyDepth
+        action: reads this engine's depth parameter from spawn arguments
+      - node: HierarchyDepthCounter
+        action: reports the current depth value
+      - node: EnforceMaxDepth
+        action: compares current depth against the configured maximum
+      - node: MaxDepthLimit
+        action: current depth equals or exceeds the limit, forcing no-split
+      - node: DecideSplit
+        action: is bypassed entirely since the depth limit overrides the LLM decision
+      - node: ContinueWithoutSplit
+        action: proceeds directly to bounded module creation at this level
+      - node: convergence/ConvergenceState
+        action: records the depth-limited no-split decision
+      - node: convergence/BoundedCreationLoop
+        action: begins creating modules in the current engine without further splitting
+
+  FlattenGrandchildInterfacesIntoChild:
+    steps:
+      - node: _actors/ChildEngine
+        action: has split into grandchildren and all grandchildren have converged
+      - node: CollectChildInterfaces
+        action: reads interface.yaml from each grandchild directory
+      - node: ChildInterfaceCollection
+        action: stores all grandchild interfaces for the child to process
+      - node: ValidateCrossEngineRefs
+        action: checks external refs across grandchild sibling interfaces
+      - node: PromoteExternalRefsToErrors
+        action: converts unresolved grandchild refs to errors at the child level
+      - node: FlattenGrandchildInterfaces
+        action: merges all grandchild exported nodes into a single flat set
+      - node: FlattenGrandchildInterfaces
+        action: merges all grandchild exported journeys into the flat set
+      - node: MergeChildGraphsIntoParent
+        action: incorporates the flattened grandchild graph into the child's compiled index
+      - node: graph/CompiledIndex
+        action: the child's index now contains its own nodes plus flattened grandchild nodes
+      - node: publish/ComputeInterfaceHash
+        action: computes SHA256 hash over the child's combined interface including grandchild nodes
+      - node: publish/GenerateInterfaceYaml
+        action: writes the child's interface.yaml with flattened grandchild content
+      - node: publish/InterfaceYamlFile
+        action: the child's published interface is visible to its parent
+
+  PropagateUnresolvedRefsAcrossLevels:
+    steps:
+      - node: _actors/ChildEngine
+        action: has grandchildren with external refs that could not be resolved against grandchild siblings
+      - node: CollectChildInterfaces
+        action: reads grandchild interfaces including their unresolved external ref warnings
+      - node: ValidateCrossEngineRefs
+        action: attempts to resolve grandchild external refs against other grandchild siblings
+      - node: PropagateUnresolvedRefsUpward
+        action: identifies refs that remain unresolved even after grandchild-sibling checking
+      - node: PropagateUnresolvedRefsUpward
+        action: re-emits those refs as warnings in the child's own published interface
+      - node: compilation/WarningReport
+        action: records the propagated warnings in the child's compilation output
+      - node: publish/GenerateInterfaceYaml
+        action: includes the propagated warnings in the child's interface metadata
+      - node: _actors/ParentEngine
+        action: receives the child's interface containing propagated grandchild warnings
+      - node: ValidateCrossEngineRefs
+        action: attempts to resolve the propagated refs against sibling child interfaces
+      - node: PromoteExternalRefsToErrors
+        action: converts any still-unresolved propagated refs to errors at the parent level
+
+  EndToEndDeepHierarchy:
+    steps:
+      - node: _actors/ParentEngine
+        action: begins convergence at depth 0 with a large module set
+      - node: TrackHierarchyDepth
+        action: records depth 0 for the root engine
+      - node: DecideSplit
+        action: root decides to split into children
+      - node: SpawnChildEngine
+        action: launches child engines at depth 1
+      - node: _actors/ChildEngine
+        action: begins convergence and reaches its own hierarchy decision
+      - node: TrackHierarchyDepth
+        action: records depth 1 for the child engine
+      - node: DecideSplit
+        action: child decides to split further into grandchildren
+      - node: NarrowScopedSpec
+        action: narrows the child's scoped spec into sub-scoped specs for grandchildren
+      - node: SpawnChildEngine
+        action: launches grandchild engines at depth 2
+      - node: _actors/ChildEngine
+        action: grandchild converges its scoped modules without further splitting
+      - node: FlattenGrandchildInterfaces
+        action: child merges grandchild interfaces into its own flat interface
+      - node: PropagateUnresolvedRefsUpward
+        action: child passes any unresolvable grandchild refs up as warnings
+      - node: publish/InterfaceYamlFile
+        action: child publishes its flattened interface including grandchild content
+      - node: WaitForAllChildren
+        action: root parent detects all children have published
+      - node: CollectChildInterfaces
+        action: root reads all child interfaces which include flattened grandchild nodes
+      - node: ValidateCrossEngineRefs
+        action: root resolves all cross-engine refs including propagated grandchild warnings
+      - node: PromoteExternalRefsToErrors
+        action: root converts any remaining unresolved refs to errors
+      - node: MergeChildGraphsIntoParent
+        action: root incorporates all child and grandchild nodes into its compiled index
+      - node: publish/GenerateInterfaceYaml
+        action: root publishes its interface containing the full flattened hierarchy
+
+  SpawnChildrenWithConcurrencyLimit:
+    steps:
+      - node: _actors/ParentEngine
+        action: has many child directories prepared and needs to spawn them within resource constraints
+      - node: ChildConcurrencyLimit
+        action: provides the maximum number of simultaneous child subprocesses allowed
+      - node: LimitConcurrentChildren
+        action: initializes a spawn queue with all child directories ordered by assignment
+      - node: SpawnChildEngine
+        action: launches the first batch of child engines up to the concurrency limit
+      - node: _actors/ChildEngine
+        action: first batch of children begin independent convergence
+      - node: MonitorChildConvergence
+        action: polls all running children for completion status
+      - node: ChildConvergenceStatus
+        action: detects that one child in the batch has completed
+      - node: LimitConcurrentChildren
+        action: dequeues the next waiting child now that a slot has opened
+      - node: SpawnChildEngine
+        action: launches the next child engine into the freed slot
+      - node: _actors/ChildEngine
+        action: the newly spawned child begins convergence
+      - node: LimitConcurrentChildren
+        action: repeats spawn-on-completion until the queue is empty
+      - node: WaitForAllChildren
+        action: blocks until the final batch of children has completed
+
+  HandleChildTimeout:
+    steps:
+      - node: _actors/ParentEngine
+        action: is waiting for children to converge and one is taking too long
+      - node: ChildTimeoutThreshold
+        action: provides the maximum allowed wall-clock time per child engine
+      - node: MonitorChildConvergence
+        action: checks elapsed time for each running child engine
+      - node: DetectChildTimeout
+        action: identifies a child whose elapsed time exceeds the threshold
+      - node: ChildConvergenceStatus
+        action: marks the timed-out child as failed with a timeout reason
+      - node: DetectChildTimeout
+        action: logs the timeout with child directory path and elapsed time
+      - node: compilation/ErrorReport
+        action: records the child timeout as a compilation error at the parent level
+      - node: WaitForAllChildren
+        action: stops waiting for the timed-out child and reports partial completion
+      - node: compilation/CompilationResult
+        action: outputs a non-zero error result due to the child timeout
+
+  MergeChildInterfacesIncrementally:
+    steps:
+      - node: _actors/ParentEngine
+        action: has many child interfaces to merge and wants to avoid loading all simultaneously
+      - node: CollectChildInterfaces
+        action: reads the first child's interface.yaml from disk
+      - node: StreamingInterfaceMerge
+        action: merges the first child's nodes into the parent's initially empty index
+      - node: StreamingInterfaceMerge
+        action: merges the first child's journeys into the parent index
+      - node: CollectChildInterfaces
+        action: reads the next child's interface.yaml from disk
+      - node: StreamingInterfaceMerge
+        action: merges the next child's nodes into the growing parent index
+      - node: StreamingInterfaceMerge
+        action: merges the next child's journeys into the growing parent index
+      - node: StreamingInterfaceMerge
+        action: repeats one-at-a-time merge for each remaining child interface
+      - node: graph/CompiledIndex
+        action: the parent index now contains all child nodes merged incrementally
+      - node: _actors/Compiler
+        action: validates the fully merged parent graph
+      - node: compilation/CompilationResult
+        action: confirms the incrementally merged graph is valid
+
+  CompactContextForLargeSplitDecision:
+    steps:
+      - node: convergence/HierarchyDecision
+        action: triggers the hierarchy decision for an engine with a very large module set
+      - node: AnalyzeModuleIndependence
+        action: reads the full independence analysis which is too large for LLM context
+      - node: CompactSplitDecisionContext
+        action: counts total modules and identifies the largest independent groups
+      - node: CompactSplitDecisionContext
+        action: summarizes coupling between groups as a compact adjacency list instead of full matrix
+      - node: CompactSplitDecisionContext
+        action: produces a condensed summary with group names, module counts, and key coupling edges
+      - node: llm/ContextBudget
+        action: confirms the compacted summary fits within the LLM's available context window
+      - node: _actors/LLMWorker
+        action: receives the compacted summary and makes the split decision
+      - node: DecideSplit
+        action: produces a split decision based on the summarized analysis
+
+  HandleHighChildCountHierarchy:
+    steps:
+      - node: _actors/ParentEngine
+        action: decides to split into a large number of children
+      - node: AssignModulesToChildren
+        action: maps modules across many child groups
+      - node: BatchChildDirectoryCreation
+        action: creates all child directories in a single batch pass
+      - node: BatchChildDirectoryCreation
+        action: writes all scoped specs in the same batch pass
+      - node: BatchChildDirectoryCreation
+        action: writes all scoped organizations in the same batch pass
+      - node: BatchChildDirectoryCreation
+        action: copies _actors.yaml into all child directories in the same batch pass
+      - node: ChildConcurrencyLimit
+        action: caps simultaneous child processes to prevent resource exhaustion
+      - node: LimitConcurrentChildren
+        action: queues all children and spawns the first batch up to the limit
+      - node: SpawnChildEngine
+        action: launches the initial batch of children
+      - node: DetectChildTimeout
+        action: monitors for slow children in the batch
+      - node: LimitConcurrentChildren
+        action: spawns queued children as slots open from completed ones
+      - node: WaitForAllChildren
+        action: blocks until all batches have completed
+      - node: IndexChildNodesForRefLookup
+        action: builds a hash index of all child interface node names
+      - node: ValidateCrossEngineRefs
+        action: validates cross-engine refs using the indexed lookup instead of linear scan
+      - node: StreamingInterfaceMerge
+        action: merges child interfaces one at a time into the parent index
+      - node: MergeChildGraphsIntoParent
+        action: completes the parent compiled index with all child content

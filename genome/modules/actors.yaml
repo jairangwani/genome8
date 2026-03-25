@@ -22,6 +22,21 @@ nodes:
   ValidateActorCoverage:
     type: process
     description: checks that every discovered actor appears in at least one journey across all modules
+  ValidateThreeAngleCompleteness:
+    type: process
+    description: checks that all 3 discovery angles produced at least one actor each, preventing partial discovery from proceeding to merge
+  ProvideActorsForModuleCreation:
+    type: process
+    description: supplies the actor list to the excerpt generator so module workers know which _actors/ references are valid during module creation
+  RediscoverActorsOnSpecChange:
+    type: process
+    description: re-runs 3-angle discovery when the spec changes during reconvergence, producing a diff of added and removed actors against the existing set
+  UpdateActorsFileAfterRediscovery:
+    type: process
+    description: merges newly discovered actors with the existing set, adding new actors and flagging removed ones for orphan detection rather than deleting immediately
+  ValidateActorYAMLStructure:
+    type: process
+    description: checks that each entry in _actors.yaml has type actor and a non-empty description before the file is passed to compilation
   ActorsFile:
     type: artifact
     description: the _actors.yaml file containing all discovered actors with type and description
@@ -43,6 +58,21 @@ nodes:
   ParentDiscoversChildrenInherit:
     type: rule
     description: only the parent engine discovers actors — children inherit them to prevent duplication
+  DetectActorImpersonation:
+    type: process
+    description: checks that every _actors/ reference in journey steps resolves to a validated actor in the registry, flagging references to non-existent or removed actors
+  DetectActorDescriptionPoisoning:
+    type: process
+    description: scans actor descriptions for adversarial content patterns such as prompt injection fragments, encoded instructions, or excessively long text before they are included in excerpt context
+  DetectChildActorTampering:
+    type: process
+    description: compares a child engine's _actors.yaml content against the parent's original hash to detect unauthorized additions, removals, or description modifications
+  DetectDiscoveryAngleBias:
+    type: process
+    description: checks that no single discovery angle produced more than a threshold proportion of total actors, flagging potential angle suppression or spec manipulation
+  EnforceActorCountLimit:
+    type: process
+    description: caps the maximum number of actors that can be stored in _actors.yaml to prevent graph bloat and context window exhaustion from adversarial specs
 
 journeys:
   DiscoverActorsFromSpec:
@@ -107,6 +137,125 @@ journeys:
         action: places the shared actors in each child's modules directory
       - node: _actors/ChildEngine
         action: receives the inherited actors and uses them during its own convergence
+
+  ValidateActorsBeforeProceeding:
+    steps:
+      - node: ActivitiesActorList
+        action: provides the activities-angle results for completeness checking
+      - node: ThreatsActorList
+        action: provides the threats-angle results for completeness checking
+      - node: LifecycleActorList
+        action: provides the lifecycle-angle results for completeness checking
+      - node: ValidateThreeAngleCompleteness
+        action: checks that the activities angle produced at least one actor
+      - node: ValidateThreeAngleCompleteness
+        action: checks that the threats angle produced at least one actor
+      - node: ValidateThreeAngleCompleteness
+        action: checks that the lifecycle angle produced at least one actor
+      - node: ThreeAngleDiscovery
+        action: confirms all 3 angles are satisfied
+      - node: ActorsFile
+        action: provides the written _actors.yaml for structural validation
+      - node: ValidateActorYAMLStructure
+        action: checks that every entry has type actor and a non-empty description
+      - node: ValidateActorYAMLStructure
+        action: flags any malformed entries for correction before compilation
+      - node: convergence/ValidateActorCompleteness
+        action: receives the validation result and proceeds if all checks pass
+
+  ProvideActorsToCompilation:
+    steps:
+      - node: ActorsFile
+        action: provides the validated _actors.yaml file on disk
+      - node: _actors/Compiler
+        action: includes _actors.yaml in the set of files to parse
+      - node: compilation/YAMLParsing
+        action: parses _actors.yaml into structured actor node definitions
+      - node: graph/NodeDefinition
+        action: creates a node definition for each discovered actor
+      - node: graph/NodeRegistry
+        action: registers each actor node so _actors/ references in journeys can resolve
+      - node: graph/CompiledIndex
+        action: the compiled index now contains all actor nodes alongside module nodes
+
+  ProvideActorsForExcerptContext:
+    steps:
+      - node: convergence/ModuleCreation
+        action: begins creating a module and requests an excerpt for context
+      - node: ActorsFile
+        action: provides the full actor list as context source
+      - node: ProvideActorsForModuleCreation
+        action: extracts actor names and descriptions relevant to the target module
+      - node: excerpt/CollectReferencedActors
+        action: gathers actor references needed by the target module's domain
+      - node: excerpt/AssembleExcerpt
+        action: includes the relevant actors in the excerpt so the worker can reference them
+      - node: llm/TaskPayload
+        action: packages the excerpt including actor context into the creation task
+
+  RediscoverActorsAfterSpecChange:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: signals that the spec has changed and actors may need updating
+      - node: convergence/SpecFile
+        action: provides the changed spec content
+      - node: RediscoverActorsOnSpecChange
+        action: reads the current _actors.yaml to know the existing actor set
+      - node: _actors/LLMWorker
+        action: re-analyzes the changed spec from the activities perspective
+      - node: DiscoverFromActivities
+        action: re-identifies activity actors from the updated spec
+      - node: _actors/LLMWorker
+        action: re-analyzes the changed spec from the threats perspective
+      - node: DiscoverFromThreats
+        action: re-identifies threat actors from the updated spec
+      - node: _actors/LLMWorker
+        action: re-analyzes the changed spec from the lifecycle perspective
+      - node: DiscoverFromLifecycle
+        action: re-identifies lifecycle actors from the updated spec
+      - node: MergeAndDeduplicate
+        action: merges the rediscovered actors and removes duplicates
+      - node: UpdateActorsFileAfterRediscovery
+        action: diffs the rediscovered set against the existing actors to find additions and removals
+      - node: UpdateActorsFileAfterRediscovery
+        action: adds new actors to _actors.yaml and flags removed actors for orphan detection
+      - node: WriteActorsFile
+        action: writes the updated _actors.yaml to disk
+      - node: ActorsFile
+        action: the updated actor file is ready for recompilation
+
+  EndToEndActorDiscoveryToModuleCreation:
+    steps:
+      - node: _actors/ProjectOwner
+        action: has written spec.md describing their system
+      - node: convergence/ReadSpec
+        action: reads the spec from disk
+      - node: convergence/WriteOrganization
+        action: organization step produces the module list
+      - node: convergence/DiscoverActors
+        action: triggers actor discovery after organization is complete
+      - node: DiscoverFromActivities
+        action: discovers activity actors from the spec
+      - node: DiscoverFromThreats
+        action: discovers threat actors from the spec
+      - node: DiscoverFromLifecycle
+        action: discovers lifecycle actors from the spec
+      - node: MergeAndDeduplicate
+        action: merges and deduplicates actors from all 3 angles
+      - node: WriteActorsFile
+        action: writes _actors.yaml to disk
+      - node: ValidateActorYAMLStructure
+        action: validates the written file has correct structure
+      - node: _actors/Compiler
+        action: compiles _actors.yaml into the graph alongside module files
+      - node: graph/NodeRegistry
+        action: registers actor nodes so journey steps can reference _actors/ActorName
+      - node: convergence/ModuleCreation
+        action: begins creating modules with actors available as valid references
+      - node: ProvideActorsForModuleCreation
+        action: supplies the actor list to each module's excerpt context
+      - node: excerpt/AssembleExcerpt
+        action: includes relevant actors in the module creation excerpt
 
   SpecInjectionDefense:
     steps:
@@ -324,3 +473,110 @@ journeys:
         action: audits coverage after reconvergence
       - node: convergence/ConvergenceState
         action: records the system is back in sync after the returning owner's trigger
+
+  ActorImpersonationDefense:
+    steps:
+      - node: _actors/RogueWorker
+        action: creates a module with journey steps referencing _actors/FakeAdmin that does not exist in the registry
+      - node: graph/ModuleFile
+        action: stores the module containing the impersonation reference
+      - node: compilation/YAMLParsing
+        action: parses the module and extracts the _actors/ references from journey steps
+      - node: DetectActorImpersonation
+        action: compares each _actors/ reference against the validated actor registry
+      - node: DetectActorImpersonation
+        action: flags the unregistered _actors/FakeAdmin reference as a validation error
+      - node: compilation/DanglingRefDetection
+        action: confirms the reference does not resolve to any known node
+      - node: compilation/ErrorReport
+        action: records the impersonation attempt with the specific step location and fake actor name
+      - node: convergence/AuditGapFix
+        action: targeted fix removes or replaces the fake actor reference with a valid one
+
+  ActorDescriptionPoisoningDefense:
+    steps:
+      - node: _actors/MaliciousSpecAuthor
+        action: crafts a spec where actor descriptions contain hidden instructions or prompt injection fragments
+      - node: DiscoverFromActivities
+        action: extracts actors whose descriptions carry the embedded adversarial payload
+      - node: MergeAndDeduplicate
+        action: merges the poisoned actors into the final set without content filtering
+      - node: WriteActorsFile
+        action: writes the poisoned descriptions to _actors.yaml
+      - node: DetectActorDescriptionPoisoning
+        action: scans each actor description for known adversarial patterns such as instruction overrides or encoded payloads
+      - node: DetectActorDescriptionPoisoning
+        action: flags descriptions exceeding the maximum length threshold as potential payload carriers
+      - node: ValidateActorYAMLStructure
+        action: rejects actors whose descriptions fail the poisoning check
+      - node: compilation/ErrorReport
+        action: records each flagged description with the specific adversarial pattern detected
+      - node: convergence/AuditGapFix
+        action: targeted fix sanitizes or removes the poisoned actor descriptions
+
+  ChildActorTamperingDefense:
+    steps:
+      - node: _actors/ChildEngine
+        action: receives inherited _actors.yaml from the parent engine
+      - node: InheritActorsFromParent
+        action: copies the parent's _actors.yaml with a known content hash
+      - node: _actors/RogueWorker
+        action: modifies the child's _actors.yaml to add unauthorized actors or alter descriptions
+      - node: DetectChildActorTampering
+        action: computes the hash of the child's current _actors.yaml content
+      - node: DetectChildActorTampering
+        action: compares the child hash against the parent's original hash
+      - node: DetectChildActorTampering
+        action: detects the mismatch and flags the child's _actors.yaml as tampered
+      - node: ParentDiscoversChildrenInherit
+        action: confirms the rule violation since children must not modify inherited actors
+      - node: compilation/ErrorReport
+        action: records the tampering as a validation error with the specific differences found
+      - node: hierarchy/ValidateChildGraph
+        action: blocks the child's compilation result from merging into the parent until the tampering is resolved
+
+  DiscoveryAngleBiasDefense:
+    steps:
+      - node: _actors/MaliciousSpecAuthor
+        action: writes a spec heavily weighted toward one domain to suppress other discovery angles
+      - node: DiscoverFromActivities
+        action: discovers a disproportionately large number of actors from the biased spec
+      - node: DiscoverFromThreats
+        action: discovers zero or very few threat actors because the spec avoids threat language
+      - node: DiscoverFromLifecycle
+        action: discovers zero or very few lifecycle actors because the spec omits lifecycle scenarios
+      - node: ActivitiesActorList
+        action: stores the inflated activities actor set
+      - node: ThreatsActorList
+        action: stores the suppressed threats actor set
+      - node: LifecycleActorList
+        action: stores the suppressed lifecycle actor set
+      - node: DetectDiscoveryAngleBias
+        action: computes the ratio of actors from each angle to the total
+      - node: DetectDiscoveryAngleBias
+        action: flags angles producing less than the minimum threshold proportion as suppressed
+      - node: ValidateThreeAngleCompleteness
+        action: confirms that the suppressed angles violate the completeness requirement
+      - node: compilation/ErrorReport
+        action: records the angle bias with the specific ratios and which angles were suppressed
+
+  ActorCountInflationDefense:
+    steps:
+      - node: _actors/ResourceExhauster
+        action: submits a spec designed to produce hundreds of distinct actors
+      - node: DiscoverFromActivities
+        action: discovers an excessive number of activity actors from the adversarial spec
+      - node: DiscoverFromThreats
+        action: discovers an excessive number of threat actors from the adversarial spec
+      - node: DiscoverFromLifecycle
+        action: discovers an excessive number of lifecycle actors from the adversarial spec
+      - node: MergeAndDeduplicate
+        action: merges the inflated actor lists but deduplication only partially reduces the count
+      - node: EnforceActorCountLimit
+        action: checks the merged actor count against the maximum allowed threshold
+      - node: EnforceActorCountLimit
+        action: rejects the actor set because it exceeds the limit, preventing context window exhaustion
+      - node: compilation/ErrorReport
+        action: records the inflation attempt with the actual count and the maximum allowed
+      - node: convergence/AuditGapFix
+        action: targeted fix triggers rediscovery with a stricter prompt to consolidate actors

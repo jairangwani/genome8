@@ -691,7 +691,9 @@ HUMAN RUNS: genome converge /path/to/project
   - Creation is bounded (modules × lenses). No infinite loop.
   - Convergence is CODE (compile). Instant, deterministic.
   - Audit is targeted (fix SPECIFIC gaps, not "what's missing?").
-  - Code-to-graph sync ensures the plan matches reality, not just the spec.
+  - **Output-to-graph sync (Step 4d) is MANDATORY, not optional.** Without it,
+    the plan drifts from reality — making genome no better than documentation.
+    This is THE core feature that makes genome a protocol, not a planning tool.
   - No delta tracking. No quiet rounds. No wasteful re-examination.
   - Boxes sleep after convergence. Wake ONLY on ripple (dependency change).
 

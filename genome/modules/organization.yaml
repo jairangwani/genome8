@@ -25,6 +25,54 @@ nodes:
   WriteOrganizationFile:
     type: process
     description: writes the assembled organization to ORGANIZATION.md on disk
+  AssignSpecSectionsToModules:
+    type: process
+    description: maps each identified module to the spec section numbers it covers based on the module's domain and the section content
+  ValidateBuildOrder:
+    type: process
+    description: checks the dependency graph for circular dependencies and confirms a valid topological ordering exists
+  ValidateSpecCoverage:
+    type: process
+    description: checks that every numbered spec section is covered by at least one module ensuring no requirements are dropped
+  DetectNewModulesInSpec:
+    type: process
+    description: compares the current module list against the spec to find newly added concerns that would require new modules during reconvergence
+  ProvideSpecSectionsToExcerpt:
+    type: process
+    description: supplies each module's assigned spec_sections to the excerpt generator so workers know which spec sections are relevant to their module
+  HandleMissingSpecFile:
+    type: process
+    description: detects that spec.md does not exist or is unreadable on disk and reports a fatal error blocking the convergence pipeline
+  ValidateLLMOrganizationOutput:
+    type: process
+    description: checks that the LLM-produced organization contains all required sections — scope, module list with names and descriptions, dependency graph, and independence classification
+  RepairCircularDependency:
+    type: process
+    description: sends the detected cycle path back to the LLM with an error message so it can propose a corrected dependency ordering
+  RepairSpecCoverageGap:
+    type: process
+    description: sends the list of uncovered spec sections back to the LLM to either assign them to existing modules or propose new modules to cover them
+  HandleEmptyModuleList:
+    type: process
+    description: detects that the LLM identified zero modules from the spec and retries with an explicit prompt explaining the expected output format
+  HandleOrganizationWriteFailure:
+    type: process
+    description: detects a disk write failure when creating ORGANIZATION.md and retries the write or reports the error to convergence
+  DetectSelfReferentialModules:
+    type: process
+    description: identifies modules in the list that describe parts of the convergence pipeline itself such as organization, convergence, compilation, and graph
+  ValidateMetaModulePresence:
+    type: process
+    description: checks that all required infrastructure modules are present in the module list when the spec describes a self-referential system like genome
+  DetectSpecChangeToOwnSections:
+    type: process
+    description: determines whether changed spec sections overlap with the sections organization itself covers, indicating the organization step must re-analyze its own structure
+  DiffModuleListAgainstExisting:
+    type: process
+    description: compares the newly identified module list against module YAML files already on disk to detect additions, removals, and renames
+  PreserveExistingModulesOnReorganize:
+    type: process
+    description: ensures existing module YAML files are not deleted when the module list changes during reconvergence, flagging removed modules for human review instead
   OrganizationFile:
     type: artifact
     description: the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis
@@ -40,6 +88,9 @@ nodes:
   IndependenceClassification:
     type: artifact
     description: the classification of each module's standalone capability, used by hierarchy for split decisions
+  ModuleSpecSectionMap:
+    type: artifact
+    description: the mapping from each module name to its assigned spec section numbers used in each module's spec_sections field
 
 journeys:
   AnalyzeSpecAndWriteOrganization:
@@ -72,6 +123,10 @@ journeys:
         action: classifies each module's standalone capability
       - node: IndependenceClassification
         action: stores the independence analysis
+      - node: AssignSpecSectionsToModules
+        action: maps each module to the spec sections it covers
+      - node: ModuleSpecSectionMap
+        action: stores the module-to-section assignments
       - node: AssembleOrganization
         action: combines all sections into the ORGANIZATION.md structure
       - node: WriteOrganizationFile
@@ -87,6 +142,8 @@ journeys:
         action: supplies the list of modules to create
       - node: DependencyGraph
         action: supplies the build order for module creation sequence
+      - node: ModuleSpecSectionMap
+        action: supplies each module's assigned spec sections for the spec_sections field
       - node: convergence/ModuleCreation
         action: receives the module list and begins creating modules in build order
       - node: convergence/BoundedCreationLoop
@@ -113,17 +170,312 @@ journeys:
         action: re-reads spec.md in case the spec itself changed
       - node: _actors/LLMWorker
         action: re-analyzes the spec for any new or removed modules
+      - node: DetectNewModulesInSpec
+        action: compares the current module list against the spec to find new concerns
       - node: IdentifyModules
-        action: re-identifies modules from the updated spec
+        action: re-identifies modules from the updated spec including any new ones
       - node: ModuleList
         action: updates the module list with any changes
       - node: AnalyzeDependencies
         action: re-computes dependencies for the updated module set
       - node: DependencyGraph
         action: updates the build order
+      - node: AssignSpecSectionsToModules
+        action: re-maps spec sections to the updated module set
+      - node: ModuleSpecSectionMap
+        action: updates the section assignments
       - node: AssembleOrganization
         action: rebuilds the organization structure
       - node: WriteOrganizationFile
         action: overwrites ORGANIZATION.md with the updated content
       - node: OrganizationFile
         action: the updated organization is now on disk
+
+  ValidateOrganizationBeforeProceeding:
+    steps:
+      - node: WriteOrganizationFile
+        action: has just written ORGANIZATION.md to disk
+      - node: OrganizationFile
+        action: provides the written organization for validation
+      - node: ModuleList
+        action: provides the module list to check for completeness
+      - node: ValidateSpecCoverage
+        action: checks that every numbered spec section is assigned to at least one module
+      - node: SpecSectionIndex
+        action: provides the full list of spec sections for the coverage check
+      - node: ValidateSpecCoverage
+        action: flags any spec sections not covered by any module
+      - node: DependencyGraph
+        action: provides the dependency graph for cycle detection
+      - node: ValidateBuildOrder
+        action: checks for circular dependencies in the module graph
+      - node: ValidateBuildOrder
+        action: confirms a valid topological build order exists
+      - node: convergence/ConvergenceState
+        action: receives the validated organization and proceeds to the next pipeline step
+
+  ProvideOrganizationForActorDiscovery:
+    steps:
+      - node: OrganizationFile
+        action: provides the organization file after it has been written and validated
+      - node: ModuleList
+        action: supplies the full module list so actors can be discovered from module activities
+      - node: IdentifyModules
+        action: provides the module descriptions which contain the activities actors participate in
+      - node: convergence/DiscoverActors
+        action: receives the organization and begins the actor discovery phase
+      - node: actors/DiscoverFromActivities
+        action: analyzes module descriptions to find actors involved in each activity
+
+  ProvideModuleListForCompletenessCheck:
+    steps:
+      - node: OrganizationFile
+        action: provides the organization as the source of truth for expected modules
+      - node: ModuleList
+        action: supplies the complete list of expected module names
+      - node: compilation/ValidateModuleCompleteness
+        action: checks that every expected module exists in the compiled index
+      - node: convergence/ValidateCreationCompleteness
+        action: checks that every expected module has been created during bounded creation
+
+  ProvideDependencyGraphForCodegen:
+    steps:
+      - node: OrganizationFile
+        action: provides the organization containing the dependency graph
+      - node: DependencyGraph
+        action: supplies the module dependency relationships
+      - node: ModuleList
+        action: supplies the module names and descriptions for import structure
+      - node: codegen/SkeletonFile
+        action: uses the dependency graph to determine import relationships between generated source files
+
+  ProvideSpecSectionsForModuleCreation:
+    steps:
+      - node: convergence/ModuleCreation
+        action: is about to create a new module and needs to know its spec_sections
+      - node: ModuleSpecSectionMap
+        action: provides the mapping of module name to spec section numbers
+      - node: ProvideSpecSectionsToExcerpt
+        action: passes the assigned spec sections to the excerpt generator
+      - node: excerpt/SelectTargetModule
+        action: receives the target module identity including its spec_sections
+      - node: excerpt/AssembleExcerpt
+        action: includes the relevant spec sections in the excerpt context for the LLM worker
+      - node: llm/TaskPayload
+        action: packages the excerpt with spec_sections into the creation task sent to the worker
+
+  HandleMissingSpec:
+    steps:
+      - node: convergence/ReadSpec
+        action: triggers the organization step expecting spec.md on disk
+      - node: ReadSpecFile
+        action: attempts to read spec.md from the project directory
+      - node: HandleMissingSpecFile
+        action: detects that the file does not exist or cannot be read
+      - node: HandleMissingSpecFile
+        action: logs the missing file path and error reason
+      - node: convergence/ConvergenceState
+        action: receives the fatal error and halts the pipeline with a clear message to the project owner
+      - node: _actors/ProjectOwner
+        action: is notified that spec.md must be created before convergence can proceed
+
+  RecoverFromMalformedOrganization:
+    steps:
+      - node: _actors/LLMWorker
+        action: produces an organization output from the spec analysis
+      - node: ValidateLLMOrganizationOutput
+        action: checks for the presence of the scope section in the output
+      - node: ValidateLLMOrganizationOutput
+        action: checks for the presence of a non-empty module list with names and descriptions
+      - node: ValidateLLMOrganizationOutput
+        action: checks for the presence of a dependency graph section
+      - node: ValidateLLMOrganizationOutput
+        action: checks for the presence of an independence classification section
+      - node: ValidateLLMOrganizationOutput
+        action: detects one or more missing or malformed sections in the output
+      - node: llm/SendTask
+        action: sends the validation errors as a correction task back to the LLM worker
+      - node: _actors/LLMWorker
+        action: receives the error feedback and re-generates the organization with the missing sections
+      - node: ValidateLLMOrganizationOutput
+        action: re-validates the corrected output and confirms all required sections are present
+      - node: AssembleOrganization
+        action: proceeds with the validated output to build ORGANIZATION.md
+
+  RecoverFromCircularDependency:
+    steps:
+      - node: DependencyGraph
+        action: provides the dependency graph produced by the LLM
+      - node: ValidateBuildOrder
+        action: runs topological sort and detects a circular dependency
+      - node: RepairCircularDependency
+        action: extracts the exact cycle path from the graph for the error message
+      - node: RepairCircularDependency
+        action: formats the cycle as a clear error showing which modules form the loop
+      - node: llm/SendTask
+        action: sends the cycle path as a correction task to the LLM worker
+      - node: _actors/LLMWorker
+        action: receives the cycle error and re-analyzes dependencies to break the cycle
+      - node: AnalyzeDependencies
+        action: re-computes the dependency graph with the corrected ordering
+      - node: DependencyGraph
+        action: stores the corrected dependency graph
+      - node: ValidateBuildOrder
+        action: re-validates and confirms no circular dependencies remain
+      - node: AssembleOrganization
+        action: proceeds with the corrected build order
+
+  RecoverFromSpecCoverageGap:
+    steps:
+      - node: ValidateSpecCoverage
+        action: detects that one or more spec sections are not covered by any module
+      - node: RepairSpecCoverageGap
+        action: collects the list of uncovered section numbers and their titles
+      - node: RepairSpecCoverageGap
+        action: formats the uncovered sections into a structured prompt for the LLM
+      - node: llm/SendTask
+        action: sends the uncovered sections as a correction task to the LLM worker
+      - node: _actors/LLMWorker
+        action: reads the gap report and proposes module assignments or new modules for the uncovered sections
+      - node: IdentifyModules
+        action: updates the module list with any newly proposed modules
+      - node: ModuleList
+        action: stores the updated module list including gap-filling modules
+      - node: AssignSpecSectionsToModules
+        action: re-maps spec sections to include the previously uncovered ones
+      - node: ModuleSpecSectionMap
+        action: stores the updated section assignments
+      - node: ValidateSpecCoverage
+        action: re-validates and confirms all spec sections are now covered
+
+  RecoverFromEmptyModuleList:
+    steps:
+      - node: _actors/LLMWorker
+        action: returns an organization output from spec analysis
+      - node: IdentifyModules
+        action: parses the LLM output and finds zero modules identified
+      - node: HandleEmptyModuleList
+        action: detects the empty module list condition
+      - node: HandleEmptyModuleList
+        action: constructs a retry prompt with explicit instructions to identify at least one concern per spec section
+      - node: llm/SendTask
+        action: sends the retry prompt with original spec content as a correction task
+      - node: _actors/LLMWorker
+        action: re-analyzes the spec with the explicit prompt and produces a non-empty module list
+      - node: IdentifyModules
+        action: parses the retried output and extracts the identified modules
+      - node: ModuleList
+        action: stores the modules from the successful retry
+      - node: AnalyzeDependencies
+        action: computes dependencies for the newly identified modules
+      - node: DependencyGraph
+        action: stores the dependency graph from the retried analysis
+
+  OrganizationRecognizesSelf:
+    steps:
+      - node: _actors/LLMWorker
+        action: analyzes genome's own spec.md which describes the convergence pipeline
+      - node: IdentifyModules
+        action: discovers modules including one named organization that describes this very step
+      - node: DetectSelfReferentialModules
+        action: identifies that organization, convergence, compilation, and graph modules describe parts of the tool itself
+      - node: ModuleList
+        action: stores the module list including the self-referential entries
+      - node: AssignSpecSectionsToModules
+        action: maps spec sections to modules including assigning organization its own sections
+      - node: ModuleSpecSectionMap
+        action: records that the organization module covers the spec sections describing organizational analysis
+      - node: AnalyzeDependencies
+        action: computes dependencies noting that organization depends on convergence which depends on organization
+      - node: DependencyGraph
+        action: stores the dependency graph with the meta-circular relationship resolved by convergence.ts being hand-coded
+      - node: ValidateBuildOrder
+        action: confirms the build order is valid because the bootstrap code breaks the circular dependency
+
+  DetectSpecChangeToOrganizationSections:
+    steps:
+      - node: sync/DependencyHashComparison
+        action: detects that genome's own spec.md has changed via hash mismatch
+      - node: ReadSpecFile
+        action: re-reads the changed spec.md from disk
+      - node: ParseSpecSections
+        action: re-parses the spec into numbered sections
+      - node: SpecSectionIndex
+        action: provides the updated section index
+      - node: DetectSpecChangeToOwnSections
+        action: compares changed sections against the sections organization covers
+      - node: DetectSpecChangeToOwnSections
+        action: determines that sections describing organizational analysis have changed
+      - node: ModuleSpecSectionMap
+        action: provides organization's current spec_sections for the overlap check
+      - node: convergence/TargetedReconvergence
+        action: triggers re-analysis of the organization step because its own spec sections changed
+      - node: _actors/LLMWorker
+        action: re-analyzes the updated spec sections that describe how organization works
+      - node: IdentifyModules
+        action: re-identifies modules accounting for changes in how the organization step is described
+
+  ValidateInfrastructureModulesPresent:
+    steps:
+      - node: IdentifyModules
+        action: has produced a module list from the spec analysis
+      - node: ModuleList
+        action: provides the identified modules for infrastructure validation
+      - node: DetectSelfReferentialModules
+        action: scans the module list for infrastructure modules that the tool requires
+      - node: ValidateMetaModulePresence
+        action: checks that a convergence module exists in the list
+      - node: ValidateMetaModulePresence
+        action: checks that a compilation module exists in the list
+      - node: ValidateMetaModulePresence
+        action: checks that a graph module exists in the list
+      - node: ValidateMetaModulePresence
+        action: checks that an organization module exists in the list
+      - node: ValidateMetaModulePresence
+        action: flags any missing infrastructure modules as errors requiring LLM correction
+      - node: llm/SendTask
+        action: sends the missing infrastructure module list as a correction task if any are absent
+      - node: _actors/LLMWorker
+        action: adds the missing infrastructure modules to the organization output
+
+  DiffModuleListForIncrementalUpdate:
+    steps:
+      - node: convergence/TargetedReconvergence
+        action: triggers re-analysis of the organization after a spec or dependency change
+      - node: ReadSpecFile
+        action: reads the current spec.md
+      - node: IdentifyModules
+        action: produces a new module list from the current spec
+      - node: ModuleList
+        action: provides the newly identified module list
+      - node: DiffModuleListAgainstExisting
+        action: reads the modules/ directory to find existing module YAML files on disk
+      - node: DiffModuleListAgainstExisting
+        action: compares new module names against existing file names to find additions
+      - node: DiffModuleListAgainstExisting
+        action: identifies existing modules not in the new list as potential removals
+      - node: PreserveExistingModulesOnReorganize
+        action: flags removed modules for human review rather than deleting their files
+      - node: PreserveExistingModulesOnReorganize
+        action: retains existing module YAML files on disk even if the new list omits them
+      - node: convergence/ConvergenceState
+        action: records the diff result showing added, preserved, and flagged modules
+
+  HandleOrganizationWriteError:
+    steps:
+      - node: AssembleOrganization
+        action: has assembled the complete ORGANIZATION.md content in memory
+      - node: WriteOrganizationFile
+        action: attempts to write ORGANIZATION.md to disk
+      - node: HandleOrganizationWriteFailure
+        action: detects that the write failed due to disk full, permissions, or path error
+      - node: HandleOrganizationWriteFailure
+        action: logs the failure reason and file path
+      - node: HandleOrganizationWriteFailure
+        action: retries the write operation once after a brief pause
+      - node: WriteOrganizationFile
+        action: attempts the retry write to disk
+      - node: OrganizationFile
+        action: if retry succeeds the organization file is now on disk
+      - node: convergence/ConvergenceState
+        action: if retry also fails receives a fatal error halting the pipeline
