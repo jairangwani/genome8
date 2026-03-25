@@ -125,6 +125,36 @@ nodes:
   DetectPipelineStall:
     type: process
     description: detects when the overall pipeline has not made measurable forward progress across consecutive cycles, indicating a stuck state requiring human intervention
+  VerifyReconvergenceIdempotency:
+    type: process
+    description: runs targeted reconvergence a second time on the same stale module set and compares the resulting graph against the first pass to confirm no additional changes were introduced
+  VerifyAuditDeterminism:
+    type: process
+    description: runs the same 3 auditors twice on an identical compiled graph and compares the two sets of findings to detect non-deterministic audit results from LLM-based auditors
+  VerifyPublishDeterminism:
+    type: process
+    description: runs publish twice on the same converged graph and compares the interface.yaml and changelog.yaml outputs byte-for-byte to confirm deterministic publish output
+  VerifyEnrichmentStability:
+    type: process
+    description: re-examines an already-enriched module from the same perspective and verifies the LLM proposes no further additions, confirming the enrichment reached a stable fixpoint
+  VerifyConvergenceStateDeterminism:
+    type: process
+    description: compares two ConvergenceState snapshots produced from identical spec inputs to confirm the pipeline produces deterministic end states regardless of timing or execution order
+  ParallelModuleCreation:
+    type: process
+    description: identifies modules at the same dependency depth that have no dependencies on each other and dispatches their creation to separate workers concurrently, compiling after each batch completes
+  ParallelPerspectiveEnrichment:
+    type: process
+    description: identifies independent module-perspective pairs that touch no overlapping modules and dispatches their enrichment to separate workers concurrently, compiling after each batch completes
+  ChunkLargeSpec:
+    type: process
+    description: splits a spec that exceeds the LLM context limit into overlapping sections with shared context headers so each chunk can be processed independently while preserving cross-section references
+  ThrottleWakeEvents:
+    type: process
+    description: limits the number of concurrent wake-reconverge cycles when many dependencies publish events simultaneously, queuing excess events for sequential processing after the current batch
+  ConcurrentChildLimit:
+    type: rule
+    description: caps the number of child engine processes that can run simultaneously during hierarchy splits, queuing remaining children until a running child completes
   SpecFile:
     type: artifact
     description: the spec.md file written by the ProjectOwner as the sole human input
@@ -1014,3 +1044,343 @@ journeys:
         action: records that reconvergence depth limit was reached and further cascading events are deferred
       - node: EnterSleepMode
         action: returns to sleep without reconverging, deferring the cascading event until the next manual or scheduled wake
+
+  VerifyReconvergenceIsIdempotent:
+    steps:
+      - node: TargetedReconvergence
+        action: completes the first reconvergence pass on the stale module set
+      - node: _actors/Compiler
+        action: compiles the graph after the first reconvergence pass
+      - node: compilation/CompilationResult
+        action: records the compilation result after the first pass
+      - node: graph/CompiledIndex
+        action: snapshots the compiled graph state after the first reconvergence
+      - node: VerifyReconvergenceIdempotency
+        action: stores the first-pass graph snapshot for comparison
+      - node: TargetedReconvergence
+        action: runs a second reconvergence pass on the same stale module set
+      - node: _actors/Compiler
+        action: compiles the graph after the second reconvergence pass
+      - node: compilation/CompilationResult
+        action: records the compilation result after the second pass
+      - node: graph/CompiledIndex
+        action: snapshots the compiled graph state after the second reconvergence
+      - node: VerifyReconvergenceIdempotency
+        action: compares the second-pass graph snapshot against the first-pass snapshot node by node, journey by journey, and connection by connection
+      - node: compilation/CompilationResultComparison
+        action: checks that both compilation results are structurally identical
+      - node: VerifyReconvergenceIdempotency
+        action: flags any differences as reconvergence drift indicating non-deterministic LLM output
+      - node: compilation/ErrorReport
+        action: records any drift as an idempotency violation with the specific nodes or journeys that changed
+      - node: ConvergenceState
+        action: records whether reconvergence idempotency check passed or failed
+
+  VerifyAuditIsRepeatable:
+    steps:
+      - node: _actors/Compiler
+        action: produces a clean compilation with zero errors as the stable baseline for audit
+      - node: compilation/CompilationResult
+        action: confirms the graph is error-free before the first audit run
+      - node: TargetedAudit
+        action: dispatches 3 auditors on the stable graph for the first audit run
+      - node: _actors/Auditor
+        action: checks spec coverage and returns findings for the first run
+      - node: _actors/Auditor
+        action: checks actor coverage and returns findings for the first run
+      - node: _actors/Auditor
+        action: checks cross-module coverage and returns findings for the first run
+      - node: audit/AuditFindingsList
+        action: collects and stores the first-run findings
+      - node: VerifyAuditDeterminism
+        action: stores the first-run findings for comparison
+      - node: TargetedAudit
+        action: dispatches the same 3 auditors on the same stable graph for the second audit run
+      - node: _actors/Auditor
+        action: checks spec coverage and returns findings for the second run
+      - node: _actors/Auditor
+        action: checks actor coverage and returns findings for the second run
+      - node: _actors/Auditor
+        action: checks cross-module coverage and returns findings for the second run
+      - node: audit/AuditFindingsList
+        action: collects and stores the second-run findings
+      - node: VerifyAuditDeterminism
+        action: compares the second-run findings against the first-run findings gap by gap
+      - node: VerifyAuditDeterminism
+        action: flags any gaps found in one run but not the other as non-deterministic audit behavior
+      - node: compilation/ErrorReport
+        action: records any non-deterministic findings as idempotency violations
+      - node: ConvergenceState
+        action: records whether audit determinism check passed or failed
+
+  VerifyPublishIsDeterministic:
+    steps:
+      - node: ConvergenceState
+        action: confirms convergence is complete with zero errors and zero audit gaps
+      - node: TriggerPublish
+        action: runs publish.ts for the first time on the converged graph
+      - node: publish/ComputeInterfaceHash
+        action: computes the SHA256 hash for the first publish run
+      - node: publish/GenerateInterfaceYaml
+        action: generates interface.yaml for the first run
+      - node: publish/GenerateChangelogYaml
+        action: generates changelog.yaml for the first run
+      - node: VerifyPublishDeterminism
+        action: stores the first-run interface.yaml, changelog.yaml, and hash for comparison
+      - node: TriggerPublish
+        action: runs publish.ts a second time on the same converged graph
+      - node: publish/ComputeInterfaceHash
+        action: computes the SHA256 hash for the second publish run
+      - node: publish/GenerateInterfaceYaml
+        action: generates interface.yaml for the second run
+      - node: publish/GenerateChangelogYaml
+        action: generates changelog.yaml for the second run
+      - node: VerifyPublishDeterminism
+        action: compares the second-run interface.yaml against the first-run interface.yaml byte by byte
+      - node: VerifyPublishDeterminism
+        action: compares the second-run changelog.yaml against the first-run changelog.yaml byte by byte
+      - node: VerifyPublishDeterminism
+        action: compares the two SHA256 hashes and flags any mismatch as non-deterministic publish output
+      - node: compilation/ErrorReport
+        action: records any differences as publish determinism violations
+      - node: ConvergenceState
+        action: records whether publish determinism check passed or failed
+
+  VerifyEnrichmentReachesFixpoint:
+    steps:
+      - node: ExamineFromPerspective
+        action: completes the initial enrichment of a module from a specific perspective
+      - node: _actors/LLMWorker
+        action: writes the enriched module with new nodes and journeys
+      - node: graph/ModuleFile
+        action: stores the enriched module on disk
+      - node: CompileCheck
+        action: validates the enriched module compiles cleanly
+      - node: _actors/Compiler
+        action: confirms zero errors after the initial enrichment
+      - node: VerifyEnrichmentStability
+        action: stores the post-enrichment module content as the baseline
+      - node: ExamineFromPerspective
+        action: re-examines the same module from the same perspective a second time
+      - node: _actors/LLMWorker
+        action: analyzes the already-enriched module and reports whether any additions are needed
+      - node: graph/ModuleFile
+        action: provides the module content after the second examination
+      - node: VerifyEnrichmentStability
+        action: compares the post-second-examination content against the baseline
+      - node: VerifyEnrichmentStability
+        action: checks whether any new nodes were added in the second pass
+      - node: VerifyEnrichmentStability
+        action: checks whether any new journeys were added in the second pass
+      - node: VerifyEnrichmentStability
+        action: flags any additions as a fixpoint failure indicating the enrichment did not converge in one pass
+      - node: compilation/ErrorReport
+        action: records any fixpoint failures with the specific additions the second pass introduced
+      - node: ConvergenceState
+        action: records whether enrichment fixpoint check passed or failed for this module-perspective pair
+
+  VerifyPipelineEndStateDeterminism:
+    steps:
+      - node: _actors/ProjectOwner
+        action: provides the same spec.md for two independent convergence runs
+      - node: SpecFile
+        action: stores the identical spec on disk for the first run
+      - node: ReadSpec
+        action: reads the spec for the first convergence run
+      - node: ConvergenceState
+        action: records the final state after the first complete convergence run including all phase completions, module list, and audit results
+      - node: VerifyConvergenceStateDeterminism
+        action: stores the first-run ConvergenceState snapshot for comparison
+      - node: ReadSpec
+        action: reads the same spec for the second convergence run
+      - node: ConvergenceState
+        action: records the final state after the second complete convergence run
+      - node: VerifyConvergenceStateDeterminism
+        action: compares the two ConvergenceState snapshots field by field
+      - node: VerifyConvergenceStateDeterminism
+        action: checks that both runs produced the same module list in the same order
+      - node: VerifyConvergenceStateDeterminism
+        action: checks that both runs recorded the same phase completion sequence
+      - node: VerifyConvergenceStateDeterminism
+        action: checks that both runs produced the same audit findings count
+      - node: compilation/CompilationResultComparison
+        action: compares the final compilation results from both runs for structural equality
+      - node: compilation/ErrorReport
+        action: records any differences between the two end states as determinism violations
+      - node: ConvergenceState
+        action: records whether pipeline end-state determinism check passed or failed
+
+  ParallelModuleCreationPipeline:
+    steps:
+      - node: ConvergenceState
+        action: provides the full module list with dependency graph from ORGANIZATION.md
+      - node: organization/DependencyGraph
+        action: provides the dependency edges so independent modules at the same depth can be identified
+      - node: ParallelModuleCreation
+        action: groups modules by dependency depth and identifies which modules at each depth have no dependencies on each other
+      - node: ParallelModuleCreation
+        action: dispatches creation of all independent modules at the current depth concurrently
+      - node: llm/SpawnWorkerProcess
+        action: spawns a separate worker process for each module in the concurrent batch
+      - node: _actors/LLMWorker
+        action: each worker creates its assigned module using its own excerpt and spec sections
+      - node: _actors/LLMWorker
+        action: a second concurrent worker creates its assigned module independently
+      - node: graph/ModuleFile
+        action: stores each concurrently created module on disk
+      - node: ParallelModuleCreation
+        action: waits for all workers in the current depth batch to complete before proceeding
+      - node: CompileCheck
+        action: invokes compile.ts on all modules created in the batch to validate them together
+      - node: _actors/Compiler
+        action: validates the batch of new modules against the graph including cross-references between them
+      - node: compilation/CompilationResult
+        action: provides the batch compilation result
+      - node: BoundedCreationLoop
+        action: advances to the next dependency depth and repeats parallel creation for the next batch
+      - node: NeverOpenEndedLoop
+        action: ensures the parallel loop is bounded by the number of dependency depths
+      - node: ConvergenceState
+        action: records all parallel batches completed and the final compilation result
+
+  ParallelPerspectiveEnrichmentPipeline:
+    steps:
+      - node: ConvergenceState
+        action: indicates all modules have been created and provides the perspective mapping
+      - node: MapPerspectives
+        action: provides the full mapping of modules to their relevant perspectives
+      - node: ParallelPerspectiveEnrichment
+        action: identifies module-perspective pairs that target different modules and can run concurrently without conflict
+      - node: ParallelPerspectiveEnrichment
+        action: dispatches enrichment of independent module-perspective pairs to separate workers concurrently
+      - node: llm/SpawnWorkerProcess
+        action: spawns a separate worker process for each module-perspective pair in the concurrent batch
+      - node: _actors/LLMWorker
+        action: each worker examines its assigned module from its assigned perspective and writes the enriched module
+      - node: _actors/LLMWorker
+        action: a second concurrent worker enriches a different module from a different perspective
+      - node: graph/ModuleFile
+        action: stores each concurrently enriched module on disk
+      - node: ParallelPerspectiveEnrichment
+        action: waits for all workers in the current batch to complete before proceeding
+      - node: CompileCheck
+        action: invokes compile.ts on all enriched modules in the batch to validate them together
+      - node: _actors/Compiler
+        action: validates the batch of enriched modules against the full graph
+      - node: compilation/CompilationResult
+        action: provides the batch enrichment compilation result
+      - node: BoundedCreationLoop
+        action: advances to the next batch of independent module-perspective pairs
+      - node: NeverOpenEndedLoop
+        action: ensures the parallel enrichment loop terminates after all mapped pairs are processed
+      - node: ConvergenceState
+        action: records all parallel enrichment batches completed
+
+  HandleLargeSpec:
+    steps:
+      - node: _actors/ProjectOwner
+        action: provides a spec.md that exceeds the LLM context window size
+      - node: SpecFile
+        action: stores the large spec on disk
+      - node: ReadSpec
+        action: reads the spec and measures its token count
+      - node: ChunkLargeSpec
+        action: determines that the spec exceeds the context limit and needs to be split
+      - node: ChunkLargeSpec
+        action: identifies natural section boundaries in the spec for splitting
+      - node: ChunkLargeSpec
+        action: generates overlapping chunks with shared context headers preserving cross-section references
+      - node: WriteOrganization
+        action: processes each spec chunk sequentially to build the complete ORGANIZATION.md
+      - node: _actors/LLMWorker
+        action: analyzes the first spec chunk and identifies modules scoped to those sections
+      - node: _actors/LLMWorker
+        action: analyzes the next spec chunk and identifies additional modules, merging with previous results
+      - node: ChunkLargeSpec
+        action: reconciles module lists from all chunks, deduplicating and resolving cross-chunk references
+      - node: organization/OrganizationFile
+        action: stores the merged ORGANIZATION.md covering all spec chunks
+      - node: ConvergenceState
+        action: records that spec chunking and organization are complete for the large spec
+
+  ThrottleHighFanoutWake:
+    steps:
+      - node: _actors/DependentBox
+        action: publishes a change event while many other dependencies are also publishing
+      - node: _actors/DependentBox
+        action: a second dependency publishes a change event simultaneously
+      - node: _actors/DependentBox
+        action: a third dependency publishes a change event simultaneously
+      - node: _actors/FileSystem
+        action: delivers multiple fs.watch events in a burst from many dependencies
+      - node: WakeOnEvent
+        action: wakes from sleep on the first event in the burst
+      - node: events/DebounceEvents
+        action: holds processing to collect the full burst of events within the debounce window
+      - node: ThrottleWakeEvents
+        action: counts the number of distinct dependency events in the burst
+      - node: ThrottleWakeEvents
+        action: determines that the event count exceeds the concurrent processing threshold
+      - node: ThrottleWakeEvents
+        action: selects the first batch of events up to the concurrency limit for immediate processing
+      - node: ThrottleWakeEvents
+        action: queues remaining events for sequential processing after the current batch completes
+      - node: sync/FindAffectedModules
+        action: traces affected modules for the first batch of dependency changes
+      - node: sync/MarkModulesStale
+        action: marks modules affected by the first batch as stale
+      - node: TargetedReconvergence
+        action: reconverges stale modules from the first batch
+      - node: _actors/Compiler
+        action: validates stale modules from the first batch
+      - node: ThrottleWakeEvents
+        action: dequeues the next batch of events after the first batch reconvergence completes
+      - node: sync/FindAffectedModules
+        action: traces affected modules for the second batch of dependency changes
+      - node: sync/MarkModulesStale
+        action: marks additional modules affected by the second batch as stale
+      - node: TargetedReconvergence
+        action: reconverges stale modules from the second batch
+      - node: _actors/Compiler
+        action: validates stale modules from the second batch
+      - node: TriggerPublish
+        action: publishes the updated interface once after all batches are processed
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep after processing all throttled event batches
+
+  BoundConcurrentChildEngines:
+    steps:
+      - node: HierarchyDecision
+        action: determines that the module set should split into many child engines
+      - node: hierarchy/AssignModulesToChildren
+        action: maps modules to a large number of child engines
+      - node: SplitIntoChildEngines
+        action: prepares all child engines with their scoped specs and module assignments
+      - node: ConcurrentChildLimit
+        action: checks the number of child engines against the maximum concurrent process limit
+      - node: ConcurrentChildLimit
+        action: selects the first batch of children up to the concurrency limit for immediate spawning
+      - node: hierarchy/SpawnChildEngine
+        action: launches child engines for the first batch concurrently
+      - node: hierarchy/WaitForAllChildren
+        action: waits for any child in the first batch to complete and free a slot
+      - node: ConcurrentChildLimit
+        action: spawns the next queued child engine into the freed slot
+      - node: hierarchy/SpawnChildEngine
+        action: launches the next child engine as a slot becomes available
+      - node: hierarchy/WaitForAllChildren
+        action: continues waiting until all child engines across all batches have converged
+      - node: CollectChildResults
+        action: collects published interfaces from all child engines regardless of which batch they ran in
+      - node: hierarchy/CollectChildInterfaces
+        action: gathers all child interface.yaml files into the parent
+      - node: hierarchy/ValidateCrossEngineRefs
+        action: validates cross-engine references across all children
+      - node: CompileCheck
+        action: runs parent-level compilation across all child interfaces
+      - node: _actors/Compiler
+        action: validates the parent graph with all child interfaces integrated
+      - node: compilation/CompilationResult
+        action: provides the parent-level compilation result
+      - node: ConvergenceState
+        action: records that all child engines converged within the concurrency limit

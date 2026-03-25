@@ -230,7 +230,7 @@ This is the ultimate test: genome replaces ALL its own documentation with a livi
 This is THE core feature. If plan ≠ reality, genome is useless. MUST test before anything else.
 
 ### Test A: Genome on itself (code exists, graph being built)
-- [ ] Run convergence.ts on genome8 WITH Step 4d (current run uses old code without it)
+- [x] Run convergence.ts on genome8 WITH Step 4d — 10 untracked files linked, code drift detected + fixed ✅
 - [x] Step 4d scans src/*.ts → found 10 untracked files
 - [x] LLM reconciled all 10 → linked to 11 graph nodes (cli.ts maps to 2 nodes)
 - [x] Graph now has files: fields pointing to actual source code
