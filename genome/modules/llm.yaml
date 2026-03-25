@@ -92,6 +92,36 @@ nodes:
   PrioritizeContextByRelevance:
     type: process
     description: when the compiled index contains many modules, selects only the modules and connections most relevant to the current task for payload inclusion
+  DetectMalformedYAMLOutput:
+    type: process
+    description: checks worker-produced YAML files for structural schema violations beyond basic parsing, including wrong node types, flat string journey steps, missing spec_sections, and absent node or action fields in steps
+  DetectEmptyWorkerResponse:
+    type: process
+    description: detects when a worker completes a task without producing any output file or meaningful response, a silent failure mode distinct from crash or timeout where the worker simply returns nothing
+  RetryTaskWithFeedback:
+    type: process
+    description: resends the same task to the worker with the specific validation errors or failure details appended to the context so the worker can self-correct without requiring a full respawn
+  ClassifyFailureType:
+    type: process
+    description: examines a failure report and classifies it as crash, timeout, malformed output, empty response, scope violation, or quality degradation to route to the appropriate recovery strategy
+  TrackTaskFailureRate:
+    type: process
+    description: tracks the ratio of failed tasks to total tasks for the current worker session and signals when the failure rate exceeds the quality threshold indicating the worker should be replaced
+  ManageWorkerPool:
+    type: process
+    description: coordinates multiple concurrent worker processes during parallel creation or enrichment phases, tracking each worker's assigned task, session state, and compaction counter independently
+  RouteTaskToAvailableWorker:
+    type: process
+    description: selects an idle worker from the active pool for the next task or queues the task if all workers are busy, ensuring even distribution across available workers
+  HandleLargeModuleFile:
+    type: process
+    description: detects when a target module file exceeds the Read tool line limit and reads it in offset-based chunks, reassembling the full content before including it in the worker's task context
+  EstimateTaskContextCost:
+    type: process
+    description: estimates the token count of the next task payload against the worker's remaining context capacity and triggers proactive worker replacement if the task would exhaust the context window
+  CleanupParallelWorker:
+    type: process
+    description: shuts down and cleans up a single worker from the parallel pool after its assigned task completes, freeing resources without affecting other active workers in the pool
   StreamJsonProtocol:
     type: interface
     description: the stream-json communication protocol between convergence.ts and the Claude Code worker process
@@ -146,6 +176,9 @@ nodes:
   ReplaceAfterNCompactions:
     type: rule
     description: worker is proactively replaced after N compaction events to maintain output quality rather than waiting for observable degradation
+  ParallelWorkerPoolLimit:
+    type: rule
+    description: caps the maximum number of concurrent worker processes during parallel creation or enrichment operations, preventing host machine resource exhaustion from too many simultaneous Claude Code subprocesses
 
 journeys:
   SpawnAndInitializeWorker:
@@ -586,3 +619,303 @@ journeys:
         action: assembles context using only high and medium priority modules
       - node: TaskPayload
         action: stores the focused payload containing relevant context without distant module noise
+
+  DetectAndRetryMalformedOutput:
+    steps:
+      - node: _actors/LLMWorker
+        action: completes a module creation or enrichment task and writes a YAML file
+      - node: WriteFile
+        action: stores the worker-produced YAML file on disk
+      - node: TaskResult
+        action: provides the file path and content for validation
+      - node: ValidateWorkerOutput
+        action: confirms the file exists and parses as valid YAML
+      - node: DetectMalformedYAMLOutput
+        action: checks that spec_sections exists and is a number array
+      - node: DetectMalformedYAMLOutput
+        action: checks that every node has a type field with one of the 5 valid types
+      - node: DetectMalformedYAMLOutput
+        action: checks that every journey step has node and action fields and is not a flat string
+      - node: DetectMalformedYAMLOutput
+        action: checks that every cross-module reference uses valid module/NodeName syntax
+      - node: CrashReport
+        action: records the structural violations with specific field paths and expected values
+      - node: RetryTaskWithFeedback
+        action: appends the structural violation details to the original task context
+      - node: SendTask
+        action: resends the task to the same worker with the error feedback included
+      - node: _actors/LLMWorker
+        action: receives the feedback and rewrites the module correcting the structural violations
+      - node: WriteFile
+        action: stores the corrected YAML file on disk
+      - node: DetectMalformedYAMLOutput
+        action: re-validates the corrected output for structural compliance
+      - node: TaskResult
+        action: packages the corrected output as the final task result
+
+  HandleEmptyWorkerResponse:
+    steps:
+      - node: _actors/LLMWorker
+        action: completes processing a task without writing any output file
+      - node: StreamJsonProtocol
+        action: receives a complete response with no file write tool calls
+      - node: ReceiveResult
+        action: parses the response and finds no created content
+      - node: DetectEmptyWorkerResponse
+        action: checks the task result for expected output files and finds none on disk
+      - node: DetectEmptyWorkerResponse
+        action: checks the stream response for any content and finds it empty or contains only commentary
+      - node: TaskPayload
+        action: provides the original task to determine what output was expected
+      - node: CrashReport
+        action: records the empty response as a silent failure with the task that produced no output
+      - node: RetryTaskWithFeedback
+        action: appends explicit instruction that the task requires writing a file to the specified path
+      - node: SendTask
+        action: resends the task to the worker with the empty-response feedback
+      - node: _actors/LLMWorker
+        action: receives the reinforced task and produces the expected output file
+      - node: ValidateWorkerOutput
+        action: verifies the retry produced the expected output
+      - node: TaskResult
+        action: packages the output from the retry as the task result
+
+  ClassifyAndRouteFailure:
+    steps:
+      - node: TaskResult
+        action: provides a task result that failed validation or was flagged as problematic
+      - node: ClassifyFailureType
+        action: checks whether the failure is a process crash by examining exit code and process status
+      - node: ClassifyFailureType
+        action: checks whether the failure is a timeout by examining duration and response completeness
+      - node: ClassifyFailureType
+        action: checks whether the failure is malformed output by examining structural validation results
+      - node: ClassifyFailureType
+        action: checks whether the failure is an empty response by examining output file existence
+      - node: ClassifyFailureType
+        action: checks whether the failure is a scope violation by examining unauthorized file changes
+      - node: CrashReport
+        action: records the classified failure type alongside the raw failure details
+      - node: RetryTaskWithFeedback
+        action: handles malformed output and empty response failures by retrying with error context
+      - node: CleanupFailedSession
+        action: handles crash and timeout failures by tearing down the session for respawn
+      - node: convergence/DetectWorkerFailure
+        action: receives failures that require orchestration-level recovery beyond local retry
+
+  DetectWorkerQualityDegradation:
+    steps:
+      - node: TaskResult
+        action: provides the result of the latest task for quality tracking
+      - node: TrackTaskFailureRate
+        action: increments the total task count for the current worker session
+      - node: TrackTaskFailureRate
+        action: increments the failure count if the task failed validation or required retry
+      - node: TrackTaskFailureRate
+        action: computes the failure rate as failed tasks divided by total tasks
+      - node: TrackTaskFailureRate
+        action: compares the failure rate against the quality degradation threshold
+      - node: CompactionCounter
+        action: provides the current compaction count as supporting evidence for degradation
+      - node: ProactiveWorkerReplacement
+        action: triggers worker replacement when failure rate exceeds the threshold indicating quality has degraded beyond acceptable levels
+      - node: ShutdownWorker
+        action: gracefully terminates the degraded worker process
+      - node: CleanupFailedSession
+        action: tears down the session and communication channel
+      - node: SingleWorkerConstraint
+        action: enforces that cleanup completes before spawning the replacement
+      - node: SpawnWorkerProcess
+        action: launches a fresh worker with a clean context window
+      - node: SystemPrompt
+        action: provides the system prompt for the fresh worker
+      - node: InjectSystemPrompt
+        action: sends the system prompt to initialize the replacement worker
+      - node: CompactionCounter
+        action: resets to zero for the new session
+      - node: TrackTaskFailureRate
+        action: resets the failure rate counters for the new worker session
+      - node: WorkerSession
+        action: initializes a fresh session ready to resume pipeline tasks
+
+  RetryMalformedModuleCreation:
+    steps:
+      - node: _actors/LLMWorker
+        action: creates a module YAML file that compiles but contains subtle schema violations
+      - node: WriteFile
+        action: stores the module file on disk
+      - node: convergence/CompileCheck
+        action: invokes compile.ts which detects the schema violations as compilation errors
+      - node: _actors/Compiler
+        action: reports the specific violations including wrong node types and malformed steps
+      - node: compilation/CompilationResult
+        action: provides the non-zero error count with detailed error messages
+      - node: compilation/ErrorReport
+        action: lists each violation with the node or journey name and the expected format
+      - node: ClassifyFailureType
+        action: classifies the failure as malformed output based on the compilation error types
+      - node: RetryTaskWithFeedback
+        action: packages the compilation errors as feedback context for the worker
+      - node: TaskPayload
+        action: combines the original task context with the error feedback
+      - node: SendTask
+        action: sends the retry task to the worker with compilation errors included
+      - node: _actors/LLMWorker
+        action: reads the error feedback and rewrites the module correcting all reported violations
+      - node: WriteFile
+        action: stores the corrected module on disk
+      - node: convergence/CompileCheck
+        action: recompiles the corrected module
+      - node: _actors/Compiler
+        action: validates the corrected module
+      - node: compilation/CompilationResult
+        action: provides the recompilation result
+      - node: TaskResult
+        action: packages the corrected module path and compilation result as the final task output
+
+  SpawnParallelWorkerPool:
+    steps:
+      - node: convergence/ParallelModuleCreation
+        action: requests multiple concurrent workers for parallel module creation
+      - node: ParallelWorkerPoolLimit
+        action: checks the requested worker count against the maximum concurrent process limit
+      - node: ManageWorkerPool
+        action: initializes the pool tracker with the approved worker count
+      - node: SpawnWorkerProcess
+        action: launches the first worker subprocess in the pool
+      - node: StreamJsonProtocol
+        action: establishes a dedicated stream-json channel for the first worker
+      - node: SystemPrompt
+        action: provides the system prompt for the first worker
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the first worker
+      - node: SpawnWorkerProcess
+        action: launches the second worker subprocess in the pool
+      - node: StreamJsonProtocol
+        action: establishes a dedicated stream-json channel for the second worker
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the second worker
+      - node: ManageWorkerPool
+        action: registers each worker with its own session state, compaction counter, and assigned task slot
+      - node: CompactionCounter
+        action: initializes a separate compaction counter for each worker in the pool
+      - node: WorkerSession
+        action: initializes independent session state for each worker in the pool
+
+  DispatchTaskAcrossPool:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the next batch of tasks for parallel execution
+      - node: ManageWorkerPool
+        action: provides the list of active workers and their current status
+      - node: RouteTaskToAvailableWorker
+        action: identifies an idle worker in the pool for the next task
+      - node: excerpt/ExcerptOutput
+        action: provides the focused context for the task's target module
+      - node: BuildTaskContext
+        action: assembles task-specific context for the routed worker
+      - node: TaskPayload
+        action: packages the context into a task payload for the selected worker
+      - node: SendTask
+        action: sends the task to the selected worker via its dedicated stream-json channel
+      - node: StreamJsonProtocol
+        action: transmits the task on the worker-specific channel
+      - node: _actors/LLMWorker
+        action: the selected worker receives and processes the task
+      - node: ReceiveResult
+        action: reads the result from the worker's dedicated channel
+      - node: TaskResult
+        action: stores the result tagged with the worker identity and task assignment
+      - node: ManageWorkerPool
+        action: marks the worker as idle and available for the next task
+      - node: convergence/ConvergenceState
+        action: receives the validated result for the parallel task
+
+  HandleParallelWorkerCrash:
+    steps:
+      - node: _actors/LLMWorker
+        action: one worker in the parallel pool crashes while other workers are still active
+      - node: DetectProcessExit
+        action: detects the non-zero exit code from the crashed worker process
+      - node: ManageWorkerPool
+        action: identifies which worker in the pool crashed and which task it was processing
+      - node: DrainPartialOutput
+        action: scans disk for any files the crashed worker wrote before failure
+      - node: CrashReport
+        action: records the crash details scoped to the specific pool worker
+      - node: CleanupParallelWorker
+        action: tears down only the crashed worker's session without affecting other active workers
+      - node: StreamJsonProtocol
+        action: closes only the crashed worker's communication channel
+      - node: ManageWorkerPool
+        action: removes the crashed worker from the active pool and marks its task as unfinished
+      - node: SpawnWorkerProcess
+        action: launches a replacement worker into the pool slot freed by the crash
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the replacement worker
+      - node: RouteTaskToAvailableWorker
+        action: reassigns the crashed worker's unfinished task to the replacement worker
+      - node: SendTask
+        action: sends the reassigned task to the replacement worker
+      - node: _actors/LLMWorker
+        action: the replacement worker begins processing the reassigned task
+
+  HandleOversizedModuleContext:
+    steps:
+      - node: convergence/ConvergenceState
+        action: assigns a task targeting a module that has grown very large through many enrichment rounds
+      - node: graph/ModuleFile
+        action: provides the target module file which exceeds comfortable single-read size
+      - node: HandleLargeModuleFile
+        action: detects that the module file exceeds the Read tool's line limit
+      - node: HandleLargeModuleFile
+        action: reads the first chunk of the module using offset zero and a bounded line limit
+      - node: HandleLargeModuleFile
+        action: reads subsequent chunks using incremented offsets until the entire file is covered
+      - node: HandleLargeModuleFile
+        action: reassembles the chunks into the complete module content in memory
+      - node: PrioritizeContextByRelevance
+        action: identifies which parts of the large module are most relevant to the current task
+      - node: BuildTaskContext
+        action: assembles the task context using prioritized sections of the large module
+      - node: PayloadSizeBudget
+        action: checks whether the assembled context fits within the maximum payload size
+      - node: TruncatePayloadToFit
+        action: truncates the lowest-priority sections of the large module context to fit the budget
+      - node: TaskPayload
+        action: stores the right-sized payload with the most relevant parts of the large module preserved
+      - node: SendTask
+        action: sends the payload to the worker within message size limits
+
+  PreemptiveWorkerRefreshBeforeExhaustion:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the next task to be sent to the worker
+      - node: BuildTaskContext
+        action: assembles the full context for the upcoming task
+      - node: EstimateTaskContextCost
+        action: computes the estimated token count of the assembled task payload
+      - node: EstimateTaskContextCost
+        action: reads the worker's current compaction count and task history to estimate remaining context capacity
+      - node: EstimateTaskContextCost
+        action: determines that the next task would consume more tokens than the estimated remaining capacity
+      - node: CompactionCounter
+        action: provides the current compaction count confirming the worker is already significantly loaded
+      - node: ShutdownWorker
+        action: gracefully terminates the current worker before the exhaustion occurs
+      - node: CleanupFailedSession
+        action: tears down the old session and communication channel
+      - node: SingleWorkerConstraint
+        action: enforces cleanup is complete before spawning the replacement
+      - node: SpawnWorkerProcess
+        action: launches a fresh worker with a full context window
+      - node: SystemPrompt
+        action: provides the system prompt for the fresh worker
+      - node: InjectSystemPrompt
+        action: sends the system prompt to the fresh worker
+      - node: CompactionCounter
+        action: resets to zero for the new worker session
+      - node: WorkerSession
+        action: initializes a fresh session with full capacity for the large upcoming task
+      - node: SendTask
+        action: sends the large task to the fresh worker which now has ample context space

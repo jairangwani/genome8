@@ -249,11 +249,10 @@ This is THE core feature. If plan ≠ reality, genome is useless. MUST test befo
 - [x] Drift detection proven in both directions (code→graph AND graph→code)
 
 ### Test D: Non-code domain (storybook)
-- [ ] Create a simple storybook project with spec.md + chapter files
-- [ ] Run convergence → graph built from spec
-- [ ] Write a new chapter file manually
-- [ ] Run convergence → Step 4d detects new chapter → adds to graph
-- [ ] Edit a chapter to change a character's action → graph updates
+- [x] Create storybook project (mystery story, 17-line spec, chapter1.md written)
+- [x] Run convergence → 10 modules, 75+ nodes, 72+ journeys, 10 story-specific lenses. WORKS.
+- [ ] Write a new chapter file manually → Step 4d detects → adds to graph (after convergence completes)
+- [ ] Edit chapter to change character action → graph updates (after convergence completes)
 
 ---
 

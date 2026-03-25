@@ -152,6 +152,21 @@ nodes:
   ThrottleWakeEvents:
     type: process
     description: limits the number of concurrent wake-reconverge cycles when many dependencies publish events simultaneously, queuing excess events for sequential processing after the current batch
+  ValidateConvergenceStateIntegrity:
+    type: process
+    description: reads the ConvergenceState file on startup and validates its structure including required fields, valid phase values, and consistent module lists before the pipeline trusts it
+  RecoverFromCorruptState:
+    type: process
+    description: rebuilds ConvergenceState from disk artifacts when the state file is missing, corrupted, or structurally invalid by scanning existing module files, compilation results, and published interfaces
+  DetectPartialModuleWrite:
+    type: process
+    description: scans module YAML files on disk for truncation or structural damage such as missing required fields or broken YAML syntax that could result from a crash during a write operation
+  RecoverSleepWatcher:
+    type: process
+    description: detects that the fs.watch file watcher has stopped firing events by using a periodic heartbeat check and restarts the watcher to ensure the box does not silently stop monitoring dependency changes
+  RecoverFromChildEngineCrash:
+    type: process
+    description: detects when a child engine process has crashed during a hierarchy split and restarts the child from its scoped spec and last known module state or escalates to the parent for manual review
   ConcurrentChildLimit:
     type: rule
     description: caps the number of child engine processes that can run simultaneously during hierarchy splits, queuing remaining children until a running child completes
@@ -1384,3 +1399,148 @@ journeys:
         action: provides the parent-level compilation result
       - node: ConvergenceState
         action: records that all child engines converged within the concurrency limit
+
+  ValidateStateOnStartup:
+    steps:
+      - node: _actors/ProjectOwner
+        action: starts or restarts the convergence pipeline
+      - node: ConvergenceCLI
+        action: receives the start or restart command
+      - node: ValidateConvergenceStateIntegrity
+        action: reads the ConvergenceState file from disk
+      - node: ValidateConvergenceStateIntegrity
+        action: checks that the file parses as valid JSON or YAML without syntax errors
+      - node: ValidateConvergenceStateIntegrity
+        action: checks that required fields exist including currentStep, completedModules, and phaseStatuses
+      - node: ValidateConvergenceStateIntegrity
+        action: checks that phase status values are valid enum members not arbitrary strings
+      - node: ValidateConvergenceStateIntegrity
+        action: checks that the completedModules list references modules that actually exist as YAML files on disk
+      - node: ValidateConvergenceStateIntegrity
+        action: checks that the recorded currentStep is consistent with the recorded phase statuses
+      - node: ConvergenceState
+        action: provides the validated state for pipeline resumption
+      - node: ResumePipeline
+        action: proceeds to resume from the validated last completed step
+
+  RecoverFromCorruptConvergenceState:
+    steps:
+      - node: _actors/ProjectOwner
+        action: starts the pipeline and the ConvergenceState file is missing or corrupt
+      - node: ConvergenceCLI
+        action: receives the start command
+      - node: ValidateConvergenceStateIntegrity
+        action: reads the ConvergenceState file and detects it is missing, empty, truncated, or unparseable
+      - node: RecoverFromCorruptState
+        action: scans the modules directory to find all existing YAML module files on disk
+      - node: RecoverFromCorruptState
+        action: reads each module file header to determine which modules were successfully written
+      - node: compilation/YAMLParsing
+        action: attempts to parse each module file to confirm it is structurally valid
+      - node: DetectPartialModuleWrite
+        action: identifies any module files that fail to parse due to truncation or corruption
+      - node: RecoverFromCorruptState
+        action: deletes or quarantines any module files that cannot be parsed
+      - node: CompileCheck
+        action: runs compile.ts on all remaining valid module files to determine graph integrity
+      - node: _actors/Compiler
+        action: reports the compilation result for the reconstructed set of modules
+      - node: compilation/CompilationResult
+        action: provides error count and details for the recovered state
+      - node: RecoverFromCorruptState
+        action: reconstructs ConvergenceState from the compilation result including which modules exist, which phases are complete, and what errors remain
+      - node: organization/ModuleList
+        action: provides the expected module list to determine which modules are still missing
+      - node: RecoverFromCorruptState
+        action: marks missing modules as incomplete so the pipeline knows to recreate them
+      - node: ConvergenceState
+        action: stores the reconstructed state to disk as the new starting point
+      - node: ResumePipeline
+        action: resumes the pipeline from the reconstructed state treating missing modules as the next work items
+
+  DetectAndRepairPartialWrites:
+    steps:
+      - node: ResumePipeline
+        action: begins scanning disk state after a crash to assess module integrity
+      - node: DetectPartialModuleWrite
+        action: reads each module YAML file from the modules directory
+      - node: DetectPartialModuleWrite
+        action: checks each file for valid YAML syntax by attempting to parse it
+      - node: DetectPartialModuleWrite
+        action: checks each parsed file for the required top-level structure including spec_sections, nodes, and journeys
+      - node: DetectPartialModuleWrite
+        action: checks that no file ends mid-line or mid-value indicating a truncated write
+      - node: graph/ModuleSchemaRule
+        action: validates the structural schema of each file that parsed successfully
+      - node: DetectPartialModuleWrite
+        action: collects a list of damaged files with their specific failure reasons
+      - node: RollbackFailedFix
+        action: reverts each damaged module file to the last known good version from git or backup
+      - node: graph/ModuleFile
+        action: restores each reverted module on disk
+      - node: CompileCheck
+        action: runs compile.ts on all modules after repairs to verify the graph is consistent
+      - node: _actors/Compiler
+        action: validates the repaired module set
+      - node: compilation/CompilationResult
+        action: provides the post-repair compilation result
+      - node: ConvergenceState
+        action: records which modules were repaired and updates the completed module list accordingly
+
+  RecoverFromSleepWatcherFailure:
+    steps:
+      - node: EnterSleepMode
+        action: sets up fs.watch on dependency event files and enters sleep
+      - node: _actors/FileSystem
+        action: the fs.watch handle becomes invalid due to OS-level watcher limit exhaustion or file descriptor leak
+      - node: RecoverSleepWatcher
+        action: runs a periodic heartbeat that writes and reads a sentinel file to verify the watcher is still active
+      - node: RecoverSleepWatcher
+        action: detects that the sentinel file change did not trigger the expected watch callback within the heartbeat timeout
+      - node: RecoverSleepWatcher
+        action: tears down the stale fs.watch handle and cleans up associated resources
+      - node: RecoverSleepWatcher
+        action: re-reads the dependency list to ensure all event file paths are still correct
+      - node: sync/ReadDependencyList
+        action: provides the current list of dependency event file paths
+      - node: EnterSleepMode
+        action: sets up fresh fs.watch handles on all dependency event files
+      - node: RecoverSleepWatcher
+        action: re-checks for any events that arrived during the watcher downtime by comparing event file timestamps against the last processed timestamp
+      - node: WakeOnEvent
+        action: processes any events that were missed during the watcher gap
+      - node: TargetedReconvergence
+        action: reconverges any stale modules identified from missed events
+      - node: _actors/Compiler
+        action: validates the stale modules from missed events
+      - node: EnterSleepMode
+        action: returns to sleep with the restored watcher confirmed active
+
+  RecoverCrashedChildEngine:
+    steps:
+      - node: SplitIntoChildEngines
+        action: has spawned multiple child engine processes for a hierarchy split
+      - node: hierarchy/SpawnChildEngine
+        action: one of the child engine processes crashes during its convergence pipeline
+      - node: hierarchy/WaitForAllChildren
+        action: detects that a child process exited with a non-zero exit code or became unresponsive
+      - node: RecoverFromChildEngineCrash
+        action: identifies which child engine crashed and reads its last known ConvergenceState
+      - node: RecoverFromChildEngineCrash
+        action: checks whether the crashed child had completed enough work to salvage its partial results
+      - node: RecoverFromChildEngineCrash
+        action: determines whether to restart the child from scratch or resume from its checkpoint
+      - node: BoundedRetryRule
+        action: checks that the restart count for this child engine has not exceeded the cap
+      - node: hierarchy/GenerateScopedSpec
+        action: provides the scoped spec for the crashed child so it can be relaunched
+      - node: hierarchy/SpawnChildEngine
+        action: relaunches the child engine process with its scoped spec and recovered module state
+      - node: hierarchy/WaitForAllChildren
+        action: resumes waiting for all children including the relaunched one to converge
+      - node: RecoverFromChildEngineCrash
+        action: if retry cap is reached, promotes the crashed child's partial results and remaining errors to the parent
+      - node: compilation/ErrorReport
+        action: records the child engine crash as an error with the child name, crash reason, and recovery outcome
+      - node: ConvergenceState
+        action: records the child engine recovery outcome and whether the hierarchy split can proceed
