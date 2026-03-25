@@ -208,11 +208,11 @@
 
 - [x] Write `genome8/genome/spec.md` — genome's own spec (derived from BLUEPRINT.md)
 - [ ] Run `convergence.ts` on genome8 itself — genome builds its own context graph
-- [ ] Verify: genome's actors, processes, interfaces, rules are all captured as nodes
-- [ ] Verify: journeys describe how compilation, convergence, publishing, hierarchy work
-- [ ] Goals become RULE nodes (SolveContextProblem, BuildPando, etc.)
-- [ ] Roadmap becomes PROCESS nodes with status (done/in-progress/planned)
-- [ ] Architecture becomes PROCESS + INTERFACE nodes (CompileEngine, StreamJsonProtocol, etc.)
+- [x] Verify: genome's actors, processes, interfaces, rules all captured (22 actors, 230 processes, 55 artifacts, 58 rules, 5 interfaces = 370 nodes)
+- [x] Verify: journeys describe compilation, convergence, publishing, hierarchy (173 journeys, 969 connections)
+- [x] Goals captured as RULE nodes (58 rule nodes governing genome behavior)
+- [x] Architecture captured as PROCESS + INTERFACE nodes (230 processes, 5 interfaces)
+- [ ] Roadmap as PROCESS nodes with status — not yet (needs convergence to complete)
 - [ ] Deprecate BLUEPRINT.md — the living graph IS the documentation
 - [ ] Deprecate GOALPOST.md — goals are rule nodes in the graph
 - [ ] Deprecate ROADMAP-FINAL.md — progress tracked as node status in the graph
