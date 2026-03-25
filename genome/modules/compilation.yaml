@@ -35,6 +35,27 @@ nodes:
   ValidateModuleCompleteness:
     type: process
     description: checks that every module listed in ORGANIZATION.md exists as a compiled module in the index, ensuring no module was missed during bounded creation
+  StaleConnectionDetection:
+    type: process
+    description: validates that every edge in the ConnectionSet has both source and target nodes present in the NodeRegistry, catching connections left stale after node removal or module rewrite
+  CompilationResultComparison:
+    type: process
+    description: compares two CompilationResults or CompiledIndexes field by field for structural equality, flagging any differences as non-determinism or merge-order drift
+  ParallelValidationDispatch:
+    type: process
+    description: dispatches independent validation checks (duplicates, dangling refs, orphans, isolation, stale connections) concurrently on the same CompiledIndex and collects their ErrorReports when all complete
+  DirtyModuleTracking:
+    type: process
+    description: tracks which modules changed since the last successful compilation and identifies their cross-module dependents, enabling targeted revalidation instead of full recompilation
+  SchemaViolationDetection:
+    type: process
+    description: validates each parsed module file has the required top-level structure (spec_sections as number array, nodes as map, journeys as map) before content parsing proceeds
+  FieldLossDetection:
+    type: process
+    description: compares a module file before and after an LLM rewrite to detect any fields (including extension fields like files) that were silently dropped during the edit
+  ValidateDescriptionQuality:
+    type: process
+    description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions
   CompilationResult:
     type: artifact
     description: the output of compile.ts containing error count, warning count, orphan list, duplicate list, and dangling ref list
@@ -51,6 +72,12 @@ nodes:
   ZeroErrorConvergence:
     type: rule
     description: convergence requires compile.ts to report exactly 0 errors and 0 orphans before proceeding
+  DeterministicOrdering:
+    type: rule
+    description: all output lists in CompilationResult, ErrorReport, and WarningReport are sorted by a canonical key (module name, then node name, then journey name) so file system read order and check execution order never affect the output
+  EarlyTerminationRule:
+    type: rule
+    description: halts remaining validation checks when accumulated error count exceeds a configurable threshold, returning the partial result immediately to avoid wasted work on a clearly failing compilation
   ValidateActionQuality:
     type: process
     description: checks that every journey step has a meaningful action description, flagging steps with empty or too-short actions
@@ -68,6 +95,10 @@ journeys:
         action: reads each YAML file and parses it into structured data
       - node: YAMLErrorReporting
         action: catches syntax errors in any malformed YAML file and records them
+      - node: SchemaViolationDetection
+        action: validates each parsed module has spec_sections, nodes, and journeys top-level keys with correct types
+      - node: graph/ModuleSchemaRule
+        action: enforces that malformed modules missing required structure are rejected before content parsing
       - node: graph/NodeDefinition
         action: parses each node entry from the parsed YAML
       - node: graph/JourneyDefinition
@@ -121,6 +152,28 @@ journeys:
       - node: ErrorReport
         action: records each isolated module as a validation error
 
+  DetectMissingModules:
+    steps:
+      - node: organization/ModuleList
+        action: provides the expected list of modules identified from ORGANIZATION.md
+      - node: graph/CompiledIndex
+        action: provides the set of modules that were successfully compiled into the index
+      - node: ValidateModuleCompleteness
+        action: compares each expected module name against the compiled set and flags any that are absent
+      - node: ErrorReport
+        action: records each missing module as a validation error with the expected module name
+
+  DetectStaleConnections:
+    steps:
+      - node: graph/ConnectionSet
+        action: provides all computed directed edges between nodes
+      - node: graph/NodeRegistry
+        action: provides the current set of all defined node names
+      - node: StaleConnectionDetection
+        action: checks each connection's source and target node against the registry and flags edges referencing nodes that no longer exist
+      - node: ErrorReport
+        action: records each stale connection as a validation error with the edge endpoints and originating journey
+
   FullCompilation:
     steps:
       - node: _actors/Compiler
@@ -145,8 +198,12 @@ journeys:
         action: checks for unreferenced nodes
       - node: IsolatedModuleDetection
         action: checks for modules with no cross-module connections
+      - node: StaleConnectionDetection
+        action: checks for connections referencing nodes no longer in the registry
       - node: ValidationAggregation
         action: collects all errors and warnings into a single result
+      - node: DeterministicOrdering
+        action: sorts all error, warning, orphan, and duplicate lists by canonical key before output
       - node: CompilationResult
         action: outputs final counts of errors, warnings, orphans, duplicates, and dangling refs
       - node: ZeroErrorConvergence
@@ -175,6 +232,8 @@ journeys:
         action: parses the new module's YAML content
       - node: YAMLErrorReporting
         action: checks the new module for YAML syntax errors
+      - node: SchemaViolationDetection
+        action: validates the new module has the required top-level structure before content parsing
       - node: graph/IncrementalMerge
         action: merges the new module into the existing compiled index
       - node: IncrementalValidation
@@ -200,6 +259,10 @@ journeys:
         action: reparses all modules including the edited one
       - node: YAMLErrorReporting
         action: checks for YAML errors in the edited module
+      - node: FieldLossDetection
+        action: compares the edited module's YAML before and after the fix to detect any fields silently dropped by the LLM rewrite
+      - node: graph/FieldPreservation
+        action: verifies that all original fields including extension fields still exist in the rewritten module
       - node: graph/ConnectionComputation
         action: recomputes all connections with the fix applied
       - node: DuplicateDetection
@@ -208,6 +271,8 @@ journeys:
         action: rechecks for dangling refs after the fix
       - node: OrphanDetection
         action: rechecks for orphans after the fix
+      - node: StaleConnectionDetection
+        action: checks for connections referencing nodes removed or renamed by the fix
       - node: ValidationAggregation
         action: collects all results from the recompilation
       - node: CompilationResult
@@ -252,6 +317,8 @@ journeys:
         action: attempts to parse the new module's YAML
       - node: YAMLErrorReporting
         action: detects YAML syntax errors or malformed structure in the LLM output
+      - node: SchemaViolationDetection
+        action: checks whether the LLM output has the required top-level structure (spec_sections, nodes, journeys)
       - node: ErrorReport
         action: records the specific errors with locations and messages
       - node: CompilationResult
@@ -262,6 +329,10 @@ journeys:
         action: reads the error report and edits the module to fix the specific errors
       - node: graph/ModuleFile
         action: stores the corrected module on disk
+      - node: FieldLossDetection
+        action: compares the original and corrected module files to detect any fields silently dropped during the LLM fix
+      - node: graph/FieldPreservation
+        action: verifies that extension fields like files were not stripped during the LLM rewrite
       - node: YAMLParsing
         action: reparses the corrected module
       - node: YAMLErrorReporting
@@ -307,6 +378,8 @@ journeys:
         action: confirms zero orphans in the final graph
       - node: IsolatedModuleDetection
         action: confirms zero isolated modules in the final graph
+      - node: StaleConnectionDetection
+        action: confirms zero stale connections referencing removed nodes in the final graph
       - node: ValidationAggregation
         action: collects all final validation results
       - node: CompilationResult
@@ -326,3 +399,165 @@ journeys:
         action: iterates every journey step and flags actions that are empty or shorter than 5 characters
       - node: ErrorReport
         action: records each low-quality action as a validation issue with journey name and step number
+
+  VerifyCompilationIdempotency:
+    steps:
+      - node: _actors/Compiler
+        action: runs full compilation on all module files and stores the first CompilationResult
+      - node: CompilationResult
+        action: records the first compilation output with all counts and sorted lists
+      - node: _actors/Compiler
+        action: runs full compilation a second time on the same unmodified module files
+      - node: CompilationResult
+        action: records the second compilation output
+      - node: DeterministicOrdering
+        action: confirms both results have identically sorted error, warning, orphan, and duplicate lists
+      - node: CompilationResultComparison
+        action: compares the two results field by field and flags any difference as a non-determinism defect
+      - node: ErrorReport
+        action: records any differences found between the two compilation runs
+
+  VerifyIncrementalMatchesFull:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the compiled index built incrementally during module-by-module convergence
+      - node: _actors/Compiler
+        action: runs a from-scratch full compilation over all module files
+      - node: CompilationResult
+        action: records the from-scratch full compilation result
+      - node: CompilationResultComparison
+        action: compares the incremental compiled index against the full compilation, checking node registries, journey registries, and connection sets
+      - node: ErrorReport
+        action: records any structural differences as drift errors indicating merge-order sensitivity
+
+  ScaledParallelValidation:
+    steps:
+      - node: _actors/Compiler
+        action: initiates compilation on a large graph with many modules
+      - node: YAMLParsing
+        action: parses all module YAML files
+      - node: YAMLErrorReporting
+        action: reports any YAML syntax errors found
+      - node: graph/ConnectionComputation
+        action: computes all connections from journey steps
+      - node: graph/CrossModuleRefResolution
+        action: resolves all cross-module node references
+      - node: graph/ActorRefResolution
+        action: resolves all actor references
+      - node: ParallelValidationDispatch
+        action: dispatches DuplicateDetection, DanglingRefDetection, OrphanDetection, IsolatedModuleDetection, and StaleConnectionDetection concurrently
+      - node: DuplicateDetection
+        action: checks for duplicate node names concurrently with other checks
+      - node: DanglingRefDetection
+        action: checks for unresolved node references concurrently with other checks
+      - node: OrphanDetection
+        action: checks for unreferenced nodes concurrently with other checks
+      - node: IsolatedModuleDetection
+        action: checks for isolated modules concurrently with other checks
+      - node: StaleConnectionDetection
+        action: checks for stale connections concurrently with other checks
+      - node: ParallelValidationDispatch
+        action: collects all ErrorReports from completed concurrent checks
+      - node: ValidationAggregation
+        action: merges the concurrent check results into a single compilation result
+      - node: DeterministicOrdering
+        action: sorts all output lists by canonical key to ensure parallel execution order does not affect output
+      - node: CompilationResult
+        action: outputs the final compilation result identical to sequential FullCompilation
+
+  TerminateOnExcessiveErrors:
+    steps:
+      - node: _actors/Compiler
+        action: begins compilation on a graph with many pre-existing problems
+      - node: YAMLParsing
+        action: parses all module YAML files
+      - node: YAMLErrorReporting
+        action: detects YAML syntax errors across multiple modules
+      - node: ErrorReport
+        action: accumulates errors from the parsing phase
+      - node: EarlyTerminationRule
+        action: checks accumulated error count against the threshold after parsing
+      - node: DuplicateDetection
+        action: runs the first validation check and reports errors
+      - node: ErrorReport
+        action: accumulates errors from duplicate detection
+      - node: EarlyTerminationRule
+        action: rechecks accumulated error count and triggers termination because the threshold is exceeded
+      - node: ValidationAggregation
+        action: collects the partial results from completed checks only
+      - node: CompilationResult
+        action: outputs a partial result flagged as early-terminated with the error count at termination
+
+  RevalidateChangedModulesOnly:
+    steps:
+      - node: convergence/RecompileAfterFix
+        action: triggers recompilation after an audit fix edited a single module
+      - node: DirtyModuleTracking
+        action: identifies the edited module and all modules whose journeys reference its nodes
+      - node: graph/CompiledIndex
+        action: provides the existing compiled index for scoped revalidation
+      - node: YAMLParsing
+        action: reparses only the edited module file
+      - node: YAMLErrorReporting
+        action: checks the edited module for YAML syntax errors
+      - node: graph/ScopedValidation
+        action: extracts the subgraph of nodes and journeys affected by the dirty module set
+      - node: DuplicateDetection
+        action: checks only nodes from dirty modules against the full registry
+      - node: DanglingRefDetection
+        action: checks only journey steps in dirty modules for unresolved refs
+      - node: OrphanDetection
+        action: checks only nodes in dirty modules for orphan status
+      - node: StaleConnectionDetection
+        action: checks only connections involving dirty module nodes for staleness
+      - node: ValidationAggregation
+        action: collects results from the scoped checks
+      - node: CompilationResult
+        action: outputs a scoped revalidation result covering only the affected subgraph
+
+  ValidateModuleStructure:
+    steps:
+      - node: _actors/Compiler
+        action: reads a module YAML file during the parsing phase
+      - node: YAMLParsing
+        action: parses the raw YAML into a structured object
+      - node: SchemaViolationDetection
+        action: checks that spec_sections exists and is a number array
+      - node: SchemaViolationDetection
+        action: checks that nodes exists and is a map where each entry has type and description
+      - node: SchemaViolationDetection
+        action: checks that journeys exists and is a map where each entry has a steps array
+      - node: graph/ModuleSchemaRule
+        action: enforces that any module failing these structural checks is rejected before content parsing
+      - node: ErrorReport
+        action: records each schema violation with the field path and expected structure
+
+  DetectFieldLossAfterRewrite:
+    steps:
+      - node: graph/ModuleFile
+        action: provides the original module YAML content before an LLM rewrite
+      - node: _actors/LLMWorker
+        action: edits the module file to add, modify, or fix nodes or journeys
+      - node: graph/ModuleFile
+        action: provides the rewritten module YAML content after the LLM edit
+      - node: FieldLossDetection
+        action: compares original and rewritten YAML field by field to identify any keys that were dropped
+      - node: FieldLossDetection
+        action: specifically checks that extension fields like files on nodes were preserved through the rewrite
+      - node: graph/FieldPreservation
+        action: enforces that the rewritten file retains all fields from the original, blocking the write if any were lost
+      - node: ErrorReport
+        action: records each dropped field as a data-loss error with the node or journey name and the missing field key
+
+  ValidateNodeDescriptions:
+    steps:
+      - node: _actors/Compiler
+        action: completes compilation and produces a CompiledIndex with all nodes
+      - node: graph/NodeRegistry
+        action: provides all nodes with their descriptions across all modules
+      - node: ValidateDescriptionQuality
+        action: iterates every node and flags descriptions that are empty or shorter than 10 characters
+      - node: ValidateDescriptionQuality
+        action: flags descriptions that are duplicated verbatim across different nodes
+      - node: ErrorReport
+        action: records each low-quality or duplicate description as a validation issue with the node name and module

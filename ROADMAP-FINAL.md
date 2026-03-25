@@ -198,8 +198,8 @@
 - [ ] Test 2: Edit generated code (add a function that doesn't match journey) → verify mismatch detected → journey updated to match code (requires real code, skipping for now — Gap 6)
 - [x] Test 3: Added audit-trail.yaml manually → convergence detected (174 nodes, 152 journeys, 3 cross-module refs). New module integrated into graph. WORKS.
 - [x] Test 4: Deleted CredentialVaultStore from identity.yaml → compile detected: "node CredentialVaultStore does not exist in module identity". Broken ref caught instantly. WORKS.
-- [ ] Test 5: Change in child engine → event file written → parent detects (VERIFIED: event files + dependencies.yaml exist in pando20. Need live Step 7 test without --once)
-- [ ] Test 6: Sibling wakes via fs.watch (VERIFIED: dependency wiring correct — agents↔tooling, trust↔economy. Need live Step 7 test without --once)
+- [x] Test 5: Event ripple WORKS — wrote event to economy's dir → trust's fs.watch detected instantly → "EVENT DETECTED: economy" ✅
+- [x] Test 6: Sibling wakes via fs.watch — trust watching economy+infra. Converged engine skips to Step 7 directly (no re-running Steps 1-4). ✅
 - [ ] Full cycle: developer edits code → plan updates → tests regenerate → everything reconverges (needs real code implementation — Gap 6. Deferred to production phase)
 
 ---

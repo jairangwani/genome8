@@ -113,6 +113,18 @@ nodes:
   ValidateSelfConsistency:
     type: process
     description: checks that self-referential modules accurately describe the behavior of the running code they were generated from
+  DetectAuditCycleExhaustion:
+    type: process
+    description: detects when audit-fix-reaudit cycles have reached the audit round limit without converging to zero gaps, halting further audit cycles
+  DetectWakeOscillation:
+    type: process
+    description: detects when the sleep-wake-reconverge-publish cycle has repeated beyond the oscillation threshold, suppressing further wake responses
+  DetectEnrichmentExhaustion:
+    type: process
+    description: detects when a perspective enrichment pass has exhausted its retry budget after repeated compilation failures on the same module-perspective pair
+  DetectPipelineStall:
+    type: process
+    description: detects when the overall pipeline has not made measurable forward progress across consecutive cycles, indicating a stuck state requiring human intervention
   SpecFile:
     type: artifact
     description: the spec.md file written by the ProjectOwner as the sole human input
@@ -150,6 +162,9 @@ nodes:
   NeverModifyRunningCode:
     type: rule
     description: generated code must be staged and tested before replacing the running pipeline code — never overwrite in place
+  ReconvergenceDepthLimit:
+    type: rule
+    description: enforces a maximum nesting depth for targeted reconvergence chains to prevent unbounded reconvergence-triggers-reconvergence loops
 
 journeys:
   ProjectConvergence:
@@ -838,3 +853,164 @@ journeys:
         action: determines if any self-consistency mismatches were found
       - node: ConvergenceState
         action: records self-consistency validation results — either clean or flagging mismatches for manual review
+
+  HandleAuditCycleExhaustion:
+    steps:
+      - node: ConvergenceState
+        action: provides the current audit-fix-reaudit cycle count
+      - node: AuditGapFix
+        action: attempts to fix the remaining audit gaps
+      - node: _actors/LLMWorker
+        action: applies the fix to the relevant module
+      - node: RecompileAfterFix
+        action: runs compile.ts to verify the fix
+      - node: _actors/Compiler
+        action: validates the patched graph
+      - node: ReauditAfterFix
+        action: runs the auditor again on the fixed area
+      - node: _actors/Auditor
+        action: reports that gaps still remain after the fix
+      - node: audit/TrackAuditRound
+        action: increments the audit round counter
+      - node: audit/AuditRoundLimit
+        action: detects that the maximum audit-fix-reaudit rounds have been reached
+      - node: DetectAuditCycleExhaustion
+        action: confirms that the audit cycle is exhausted and further fix attempts will not converge
+      - node: NeverOpenEndedLoop
+        action: enforces that the audit-fix cycle must terminate at the round limit
+      - node: audit/AuditFindingsList
+        action: preserves the remaining unclosed gaps as the final audit state
+      - node: compilation/ErrorReport
+        action: records the unconverged audit gaps as errors with full details
+      - node: ConvergenceState
+        action: records that audit cycle exhausted with unresolved gaps, blocking convergence and requiring human review
+
+  HandleWakeOscillation:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers a wake event while the box is in sleep mode
+      - node: WakeOnEvent
+        action: wakes from sleep and begins processing the event
+      - node: events/DebounceEvents
+        action: collects any additional events within the debounce window
+      - node: events/OscillationCooldown
+        action: checks the cooldown period and detects that the last wake cycle completed too recently
+      - node: DetectWakeOscillation
+        action: counts consecutive wake cycles within the cooldown window and finds the oscillation threshold exceeded
+      - node: DetectWakeOscillation
+        action: identifies the dependency chain causing the oscillation pattern
+      - node: NeverOpenEndedLoop
+        action: enforces that the wake-reconverge-publish cycle must not repeat indefinitely
+      - node: compilation/ErrorReport
+        action: records the oscillation as an error with the dependency chain and cycle count
+      - node: ConvergenceState
+        action: records that oscillation was detected and the box is suppressing further wake responses
+      - node: _actors/ProjectOwner
+        action: receives notification that the box entered oscillation suppression and requires manual investigation
+      - node: EnterSleepMode
+        action: returns to sleep without reconverging, waiting for the cooldown period to fully elapse
+
+  HandleEnrichmentExhaustion:
+    steps:
+      - node: ExamineFromPerspective
+        action: delegates to LLM to enrich a module from a specific perspective
+      - node: _actors/LLMWorker
+        action: writes updated module content with additions from the perspective
+      - node: graph/ModuleFile
+        action: stores the enriched module on disk
+      - node: CompileCheck
+        action: invokes compile.ts to validate the enriched module
+      - node: _actors/Compiler
+        action: reports compilation errors introduced by the enrichment
+      - node: compilation/CompilationResult
+        action: provides non-zero error count from the enrichment attempt
+      - node: compilation/ErrorReport
+        action: lists the specific errors caused by the enrichment
+      - node: BoundedRetryRule
+        action: checks that the retry count for this module-perspective pair has not exceeded the cap
+      - node: RollbackFailedFix
+        action: reverts the module to its pre-enrichment state
+      - node: graph/ModuleFile
+        action: restores the module content before the failed enrichment
+      - node: ExamineFromPerspective
+        action: retries the enrichment with the error report as additional context
+      - node: _actors/LLMWorker
+        action: reads the error report and attempts a corrected enrichment
+      - node: CompileCheck
+        action: validates the retried enrichment
+      - node: _actors/Compiler
+        action: reports whether the retry fixed the compilation errors
+      - node: compilation/CompilationResult
+        action: provides the retry result
+      - node: DetectEnrichmentExhaustion
+        action: detects that all retries for this module-perspective pair have been exhausted without a clean compilation
+      - node: NeverOpenEndedLoop
+        action: enforces that the enrichment retry cycle must terminate
+      - node: compilation/ErrorReport
+        action: records the exhausted enrichment as an error with the module name, perspective, and failure details
+      - node: BoundedCreationLoop
+        action: skips the failed module-perspective pair and proceeds to the next one
+      - node: ConvergenceState
+        action: records the skipped enrichment so it can be flagged during final convergence gate
+
+  DetectAndHaltStalledPipeline:
+    steps:
+      - node: ConvergenceState
+        action: provides the pipeline progress snapshot including completed modules, closed gaps, and cycle count
+      - node: DetectPipelineStall
+        action: compares the current progress snapshot against the previous cycle's snapshot
+      - node: DetectPipelineStall
+        action: checks whether any new modules were completed since the last snapshot
+      - node: DetectPipelineStall
+        action: checks whether any audit gaps were closed since the last snapshot
+      - node: DetectPipelineStall
+        action: checks whether any compilation errors were reduced since the last snapshot
+      - node: DetectPipelineStall
+        action: determines that zero forward progress was made across the configured stall threshold of consecutive cycles
+      - node: NeverOpenEndedLoop
+        action: enforces that the pipeline must not continue cycling without progress
+      - node: DataDecidesWhenToStop
+        action: confirms that the data shows no improvement, overriding any remaining retry budget
+      - node: compilation/ErrorReport
+        action: records the stall condition with the stagnant metrics and cycle count
+      - node: ConvergenceState
+        action: transitions to STALLED status, halting all pipeline activity
+      - node: _actors/ProjectOwner
+        action: receives notification that the pipeline has stalled and requires manual intervention
+
+  BoundReconvergenceDepth:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers a wake event triggering targeted reconvergence
+      - node: WakeOnEvent
+        action: wakes from sleep and reads the event
+      - node: ConvergenceState
+        action: provides the current reconvergence depth counter tracking how many consecutive reconvergence cycles have occurred
+      - node: ReconvergenceDepthLimit
+        action: checks the reconvergence depth against the maximum allowed nesting depth
+      - node: TargetedReconvergence
+        action: begins reconvergence on the stale modules
+      - node: _actors/Compiler
+        action: validates the stale modules
+      - node: _actors/Auditor
+        action: audits the affected coverage areas
+      - node: TriggerPublish
+        action: publishes the updated interface, which may trigger dependent boxes
+      - node: ConvergenceState
+        action: increments the reconvergence depth counter
+      - node: _actors/FileSystem
+        action: delivers another wake event from a dependent box that was triggered by the publish
+      - node: WakeOnEvent
+        action: wakes from sleep on the cascading event
+      - node: ConvergenceState
+        action: provides the incremented reconvergence depth counter
+      - node: ReconvergenceDepthLimit
+        action: detects that the reconvergence depth has exceeded the maximum allowed nesting depth
+      - node: NeverOpenEndedLoop
+        action: enforces that reconvergence chains must terminate at the depth limit
+      - node: compilation/ErrorReport
+        action: records the depth limit breach with the reconvergence chain trace
+      - node: ConvergenceState
+        action: records that reconvergence depth limit was reached and further cascading events are deferred
+      - node: EnterSleepMode
+        action: returns to sleep without reconverging, deferring the cascading event until the next manual or scheduled wake
