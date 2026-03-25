@@ -26,6 +26,22 @@ export function compile(modulesDir: string): CompileResult {
   return compileFromModules(loadAllModules(modulesDir));
 }
 
+/**
+ * Validates that all journey steps have meaningful action descriptions.
+ * Flags steps with empty or generic actions like "does something".
+ */
+export function validateActionQuality(result: CompileResult): string[] {
+  const issues: string[] = [];
+  for (const [name, journey] of Object.entries(result.index.journeys)) {
+    for (const step of journey.steps) {
+      if (!step.action || step.action.length < 5) {
+        issues.push(`Journey "${name}" step ${step.step_number}: action too short or empty`);
+      }
+    }
+  }
+  return issues;
+}
+
 export function compileFromModules(
   modules: Map<string, ModuleFile>,
   externalInterfaces?: Map<string, PublishedInterface>

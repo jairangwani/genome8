@@ -51,6 +51,10 @@ nodes:
   ZeroErrorConvergence:
     type: rule
     description: convergence requires compile.ts to report exactly 0 errors and 0 orphans before proceeding
+  ValidateActionQuality:
+    type: process
+    description: checks that every journey step has a meaningful action description, flagging steps with empty or too-short actions
+    files: ["src/compile.ts"]
   ExternalRefsAreWarnings:
     type: rule
     description: unresolved refs to sibling engines are warnings in children, errors only at parent level
@@ -311,3 +315,14 @@ journeys:
         action: confirms the zero-error threshold is met
       - node: audit/DeclareConverged
         action: receives the clean final compilation and marks the graph as CONVERGED
+
+  ValidateActionDescriptions:
+    steps:
+      - node: _actors/Compiler
+        action: completes compilation and produces a CompileResult
+      - node: CompilationResult
+        action: provides the compiled index containing all journeys and their steps
+      - node: ValidateActionQuality
+        action: iterates every journey step and flags actions that are empty or shorter than 5 characters
+      - node: ErrorReport
+        action: records each low-quality action as a validation issue with journey name and step number

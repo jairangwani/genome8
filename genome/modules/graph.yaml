@@ -28,6 +28,21 @@ nodes:
   ConnectionDeduplication:
     type: process
     description: merges duplicate directed edges that appear in multiple journeys into unique entries in the ConnectionSet while preserving journey provenance
+  BatchMerge:
+    type: process
+    description: merges multiple newly created modules into the compiled index in a single pass, deferring validation until all modules are integrated
+  ScopedValidation:
+    type: process
+    description: validates only the subgraph affected by a module change, checking rules against changed nodes and their connections rather than the entire graph
+  PartialConnectionComputation:
+    type: process
+    description: recomputes connections only for journeys containing nodes from a changed module, reusing cached connections for unchanged journeys
+  FieldPreservation:
+    type: process
+    description: preserves all YAML fields including unknown or extension fields when a module file is read, modified, and written back, preventing silent data loss on round-trip
+  ModuleSchemaRule:
+    type: rule
+    description: enforces that every module file must have the required top-level structure (spec_sections as number array, nodes as a map of name to type+description, journeys as a map of name to steps array)
   NodeTypeSchema:
     type: rule
     description: enforces that every node must be exactly one of the 5 universal types (actor, process, artifact, interface, rule)
@@ -287,3 +302,100 @@ journeys:
         action: rejects the journey because it cannot produce any connections with fewer than 2 steps
       - node: _actors/Compiler
         action: reports a validation error identifying the journey with insufficient steps
+
+  BatchIncrementalBuild:
+    steps:
+      - node: CompiledIndex
+        action: provides the existing compiled graph as the base for batch integration
+      - node: ModuleFile
+        action: provides multiple newly created modules queued for merge
+      - node: NodeDefinition
+        action: parses nodes from all queued modules in a single pass
+      - node: NodeRegistry
+        action: adds all new nodes to the deduplicated map before any connection computation
+      - node: JourneyDefinition
+        action: parses journeys from all queued modules
+      - node: JourneyRegistry
+        action: adds all new journeys to the collection
+      - node: ConnectionComputation
+        action: computes connections for all new journeys in a single batch
+      - node: CrossModuleRefResolution
+        action: resolves cross-module references across all queued modules and existing modules
+      - node: ActorRefResolution
+        action: resolves actor references across all queued modules
+      - node: ConnectionDeduplication
+        action: deduplicates edges produced by the batch of new journeys
+      - node: ConnectionSet
+        action: integrates all new edges into the existing connection set
+      - node: BatchMerge
+        action: merges all queued modules into the compiled index in a single atomic operation
+      - node: CompiledIndex
+        action: updated with all new modules integrated without intermediate revalidation
+
+  ScopedRevalidation:
+    steps:
+      - node: CompiledIndex
+        action: identifies which nodes and journeys were affected by the latest module change
+      - node: ScopedValidation
+        action: extracts the subgraph of affected nodes, their journeys, and their connections
+      - node: NodeTypeSchema
+        action: validates types only for newly added or modified nodes
+      - node: UniqueNodeNameRule
+        action: checks new node names against the existing registry for collisions
+      - node: StepFormatRule
+        action: validates step format only in new or modified journeys
+      - node: AllRefsResolveRule
+        action: checks that references in affected journeys resolve to known targets
+      - node: NoIsolationRule
+        action: checks that affected nodes still participate in at least one journey
+      - node: compilation/CompilationResult
+        action: reports validation results scoped to the affected subgraph only
+
+  PartialRecomputeConnections:
+    steps:
+      - node: CompiledIndex
+        action: identifies which module changed and which nodes it defines
+      - node: JourneyRegistry
+        action: selects only journeys that reference nodes from the changed module
+      - node: PartialConnectionComputation
+        action: recomputes connections only for the selected journeys
+      - node: CrossModuleRefResolution
+        action: re-resolves cross-module references in the affected journeys
+      - node: ActorRefResolution
+        action: re-resolves actor references in the affected journeys
+      - node: ConnectionDeduplication
+        action: deduplicates recomputed edges against unchanged edges
+      - node: ConnectionSet
+        action: replaces only the affected edges while preserving all unchanged edges
+
+  EnforceModuleSchema:
+    steps:
+      - node: ModuleFile
+        action: provides the raw YAML content of a module file for structural validation
+      - node: ModuleSchemaRule
+        action: checks that spec_sections exists and is a number array
+      - node: ModuleSchemaRule
+        action: checks that nodes exists and is a map where each entry has type and description fields
+      - node: ModuleSchemaRule
+        action: checks that journeys exists and is a map where each entry has a steps array
+      - node: NodeDefinition
+        action: validates each node entry has a non-empty description string
+      - node: StepFormatRule
+        action: validates each step within each journey has node and action fields
+      - node: _actors/Compiler
+        action: reports schema violations with the specific field path and expected structure
+
+  PreserveFieldsOnRewrite:
+    steps:
+      - node: ModuleFile
+        action: provides the original YAML content of a module before modification
+      - node: _actors/LLMWorker
+        action: edits the module file to add or modify nodes or journeys
+      - node: FieldPreservation
+        action: verifies that all fields present in the original file still exist in the rewritten file
+      - node: FieldPreservation
+        action: verifies that extension fields like files were not stripped during the rewrite
+      - node: ModuleSchemaRule
+        action: validates the rewritten file still conforms to the required module structure
+      - node: ModuleFile
+        action: stores the rewritten module only after preservation checks pass

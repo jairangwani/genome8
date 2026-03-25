@@ -237,10 +237,10 @@ This is THE core feature. If plan ≠ reality, genome is useless. MUST test befo
 - [x] Bidirectional sync PROVEN: code drives plan, plan links to code
 
 ### Test B: Edit code, verify graph updates
-- [ ] Manually add a function to compile.ts (e.g., a new validation check)
-- [ ] Run convergence → Step 4d detects: "code has function X but no node for it"
-- [ ] LLM adds node + journey for the new function
-- [ ] Graph now reflects reality
+- [x] Added validateActionQuality() to compile.ts
+- [x] Step 4d detected: "code has new function not in graph"
+- [x] LLM added node ValidateActionQuality + journey ValidateActionDescriptions
+- [x] Graph now reflects reality — code drift resolved automatically
 
 ### Test C: Graph has something code doesn't
 - [ ] Graph says "BiometricAuth process exists"
