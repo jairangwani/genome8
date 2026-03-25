@@ -4,6 +4,7 @@ nodes:
   ReadDependencyList:
     type: process
     description: reads the list of dependencies for a box from its configuration to know which interfaces to check
+    files: ["src/sync.ts"]
   FetchDependencyHash:
     type: process
     description: reads the SHA256 hash from each dependency's published interface.yaml

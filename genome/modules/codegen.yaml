@@ -4,6 +4,7 @@ nodes:
   ReadConvergedGraph:
     type: process
     description: reads the compiled index after convergence to extract all nodes with their types and descriptions for skeleton generation
+    files: ["src/codegen.ts"]
   GenerateProcessSkeletons:
     type: process
     description: creates TypeScript function stubs for each process node with name, parameters inferred from connections, and return type

@@ -25,6 +25,9 @@ nodes:
   IncrementalMerge:
     type: process
     description: merges a single newly created module into the existing compiled index, adding its nodes, journeys, and connections without full rebuild
+  ConnectionDeduplication:
+    type: process
+    description: merges duplicate directed edges that appear in multiple journeys into unique entries in the ConnectionSet while preserving journey provenance
   NodeTypeSchema:
     type: rule
     description: enforces that every node must be exactly one of the 5 universal types (actor, process, artifact, interface, rule)
@@ -40,12 +43,16 @@ nodes:
   AllRefsResolveRule:
     type: rule
     description: every node reference in every journey step must resolve to a defined node, actor, or cross-module target
+  MinimumStepsRule:
+    type: rule
+    description: enforces that every journey must have at least 2 steps, since a single-step journey produces no connections and has no graph meaning
   ModuleFile:
     type: artifact
     description: a YAML file containing spec_sections, nodes, and journeys that defines one scoped piece of the graph
   CompiledIndex:
     type: artifact
     description: the merged in-memory structure of all modules containing all nodes, journeys, and computed connections
+    files: ["src/types.ts"]
   ConnectionSet:
     type: artifact
     description: the set of directed edges derived from consecutive journey steps across all journeys
@@ -238,3 +245,45 @@ journeys:
         action: updated with the orphan now connected through a journey
       - node: _actors/Compiler
         action: revalidates to confirm the orphan count decreased
+
+  DeduplicateConnections:
+    steps:
+      - node: JourneyRegistry
+        action: provides all journeys whose steps may produce overlapping directed edges
+      - node: ConnectionComputation
+        action: derives directed edges from all journey steps including potential duplicates
+      - node: ConnectionDeduplication
+        action: identifies edges that appear in multiple journeys and merges them into unique entries with provenance
+      - node: ConnectionSet
+        action: stores only unique directed edges with tracking back to their source journeys
+
+  RejectInvalidNodeType:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: writes a node entry with a type value not in the 5 universal types
+      - node: NodeDefinition
+        action: parses the node entry and extracts the type field
+      - node: NodeTypeSchema
+        action: rejects the node because the type is not actor, process, artifact, interface, or rule
+      - node: _actors/Compiler
+        action: reports a validation error identifying the invalid node type and its location
+
+  RejectMalformedStep:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: writes a journey step as a flat string or without the required node and action fields
+      - node: JourneyDefinition
+        action: parses the journey and encounters the malformed step
+      - node: StepFormatRule
+        action: rejects the step because it lacks the mandatory node or action field
+      - node: _actors/Compiler
+        action: reports a validation error identifying the malformed step and its journey
+
+  EnforceMinimumSteps:
+    steps:
+      - node: JourneyDefinition
+        action: parses a journey and finds it has fewer than 2 steps
+      - node: MinimumStepsRule
+        action: rejects the journey because it cannot produce any connections with fewer than 2 steps
+      - node: _actors/Compiler
+        action: reports a validation error identifying the journey with insufficient steps

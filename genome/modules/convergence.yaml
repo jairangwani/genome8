@@ -4,6 +4,7 @@ nodes:
   ReadSpec:
     type: process
     description: reads spec.md from disk as the sole human input to the convergence pipeline
+    files: ["src/convergence.ts"]
   WriteOrganization:
     type: process
     description: delegates to LLM to analyze the spec and write ORGANIZATION.md with modules, dependencies, and independence
@@ -124,6 +125,7 @@ nodes:
   ConvergenceCLI:
     type: interface
     description: command-line interface to trigger and monitor the convergence pipeline
+    files: ["src/cli.ts"]
   CodeOrchestratesLLMCreates:
     type: rule
     description: code decides WHEN to act, LLM only creates content when explicitly asked by code

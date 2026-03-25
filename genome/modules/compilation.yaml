@@ -4,6 +4,7 @@ nodes:
   YAMLParsing:
     type: process
     description: reads raw YAML module files from disk and parses them into structured data
+    files: ["src/compile.ts"]
   DuplicateDetection:
     type: process
     description: scans the node registry for duplicate node names across all modules
@@ -46,6 +47,7 @@ nodes:
   CompileCLI:
     type: interface
     description: command-line interface to run compile.ts and receive validation output
+    files: ["src/cli.ts"]
   ZeroErrorConvergence:
     type: rule
     description: convergence requires compile.ts to report exactly 0 errors and 0 orphans before proceeding

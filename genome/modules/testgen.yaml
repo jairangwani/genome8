@@ -7,6 +7,7 @@ nodes:
   GenerateTestFilePerJourney:
     type: process
     description: creates one TypeScript test file per journey with a describe block and one test case per step
+    files: ["src/testgen.ts"]
   GenerateStepTestCase:
     type: process
     description: creates an empty test case for a single journey step with the step's node and action as the test name

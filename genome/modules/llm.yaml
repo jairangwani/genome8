@@ -4,6 +4,7 @@ nodes:
   SpawnWorkerProcess:
     type: process
     description: launches a persistent Claude Code subprocess that stays alive for the duration of the convergence pipeline
+    files: ["src/llm.ts"]
   InjectSystemPrompt:
     type: process
     description: sends the genome worker system prompt to the freshly spawned worker, establishing its role, YAML format rules, and operational constraints

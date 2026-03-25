@@ -16,6 +16,7 @@ nodes:
   GenerateInterfaceYaml:
     type: process
     description: writes interface.yaml containing the exported nodes, journeys, and their SHA256 hash
+    files: ["src/publish.ts"]
   GenerateChangelogYaml:
     type: process
     description: writes changelog.yaml describing what changed between the previous and current interface

@@ -22,6 +22,7 @@ nodes:
   AssembleExcerpt:
     type: process
     description: combines local nodes, journeys, cross-module connections, actors, and warnings into a single focused output
+    files: ["src/excerpt.ts"]
   TruncateToLimit:
     type: process
     description: trims the assembled excerpt to approximately 200 lines while preserving completeness of each section

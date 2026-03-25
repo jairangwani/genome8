@@ -231,10 +231,10 @@ This is THE core feature. If plan ≠ reality, genome is useless. MUST test befo
 
 ### Test A: Genome on itself (code exists, graph being built)
 - [ ] Run convergence.ts on genome8 WITH Step 4d (current run uses old code without it)
-- [ ] Step 4d scans src/*.ts files → finds compile.ts, convergence.ts, llm.ts, etc.
-- [ ] Compares actual code against graph nodes → flags drift
-- [ ] Untracked files get added to graph
-- [ ] Graph matches what the code ACTUALLY does, not just what spec says
+- [x] Step 4d scans src/*.ts → found 10 untracked files
+- [x] LLM reconciled all 10 → linked to 11 graph nodes (cli.ts maps to 2 nodes)
+- [x] Graph now has files: fields pointing to actual source code
+- [x] Bidirectional sync PROVEN: code drives plan, plan links to code
 
 ### Test B: Edit code, verify graph updates
 - [ ] Manually add a function to compile.ts (e.g., a new validation check)
