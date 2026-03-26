@@ -505,7 +505,8 @@ Write the file NOW using the Write tool.`);
   // ── Check if spec changed since last convergence ──
   // If unchanged: skip creation passes (4a), go straight to compile check (4b)
   // If changed: ask LLM which modules are affected, only update those
-  const specHash = require('node:crypto').createHash('sha256').update(spec).digest('hex');
+  const crypto = await import('node:crypto');
+  const specHash = crypto.createHash('sha256').update(spec).digest('hex');
   const convergeStatePath2 = path.join(genomeDir, 'convergence-state.json');
   const knownModuleNames = extractModuleNames(orgContent);
   let affectedModules: string[] | null = null; // null = all modules, string[] = only these
