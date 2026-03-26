@@ -312,6 +312,10 @@ This is THE core feature. If plan ≠ reality, genome is useless. MUST test befo
 
 ---
 
+### Gap 9: Spec changes trigger full rebuild instead of targeted update
+When spec changes (e.g., add categories to todo app), convergence re-runs ALL creation passes on ALL modules (25+ passes). Should diff the spec, identify affected modules, only update those. For Pando (16 modules, 100+ passes), this is broken at scale.
+**Fix:** Store spec hash in convergence-state.json. On restart, diff spec. Ask LLM "what modules are affected?" Only run creation passes on affected modules. Skip unchanged modules entirely.
+
 ### Gap 1: No negotiation between engines
 When engine A changes something that breaks engine B's design, the system just tries to make B work with the new reality. It can't push back and say "hey A, can you make 2FA optional instead of required?" Real teams negotiate. The system doesn't.
 **Future fix:** Parent engine mediates — reads both children's constraints, proposes a compromise, both reconverge.
