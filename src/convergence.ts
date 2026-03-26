@@ -500,10 +500,46 @@ Write the file NOW using the Write tool.`);
   }
 
   // ═══ STEP 4 — Convergence (creation + validation + audit) ═══
-  // Creation is BOUNDED (modules × relevant lenses). Not an infinite loop.
-  // Convergence is CODE (compile). Instant, deterministic.
-  // Audit is TARGETED (fix specific gaps, not "what's missing?").
   console.log('\n═══ STEP 4: Convergence ═══');
+
+  // ── Check if spec changed since last convergence ──
+  // If unchanged: skip creation passes (4a), go straight to compile check (4b)
+  // If changed: ask LLM which modules are affected, only update those
+  const specHash = require('node:crypto').createHash('sha256').update(spec).digest('hex');
+  const convergeStatePath2 = path.join(genomeDir, 'convergence-state.json');
+  const knownModuleNames = extractModuleNames(orgContent);
+  let affectedModules: string[] | null = null; // null = all modules, string[] = only these
+
+  if (fs.existsSync(convergeStatePath2)) {
+    try {
+      const prevState = JSON.parse(fs.readFileSync(convergeStatePath2, 'utf-8'));
+      if (prevState.spec_hash === specHash) {
+        console.log('  Spec unchanged since last convergence. Skipping creation passes.');
+        affectedModules = []; // Empty = skip all creation
+      } else if (prevState.spec_hash) {
+        console.log('  Spec CHANGED since last convergence. Identifying affected modules...');
+        const affectedResponse = await worker.call(
+          'The project spec has changed. Which modules need updating?\n\n' +
+          'MODULES: ' + knownModuleNames.join(', ') + '\n\n' +
+          'PREVIOUS SPEC HASH: ' + prevState.spec_hash.substring(0, 12) + '\n' +
+          'CURRENT SPEC:\n' + spec + '\n\n' +
+          'Return ONLY the module names that are affected by the changes, one per line. ' +
+          'If a module is not affected, do NOT include it.'
+        );
+        affectedModules = affectedResponse.split('\n')
+          .map(l => l.replace(/^[-*\s]+/, '').trim().replace(/`/g, ''))
+          .filter(m => knownModuleNames.includes(m));
+        if (affectedModules.length === 0) affectedModules = null; // Couldn't parse → do all
+        console.log(`  Affected modules: ${affectedModules ? affectedModules.join(', ') : 'ALL (could not determine)'}`);
+      }
+    } catch { /* no valid state, run full */ }
+  }
+
+  if (affectedModules && affectedModules.length === 0) {
+    // Spec unchanged — skip to 4b
+    console.log('  Skipping Step 4a (no spec changes).\n');
+  } else {
+    // Run creation passes (full or targeted)
 
   // ── 4a: Discover domain-specific lenses ──
   console.log('\n  ── Step 4a: Discover Lenses ──');
@@ -572,8 +608,12 @@ One line per module. Only include relevant numbers.`);
   // ── 4a: Creation passes (bounded) ──
   console.log('\n  ── Step 4a: Creation Passes ──');
   let passCount = 0;
+  const modulesToProcess = affectedModules ? allModuleNames.filter(m => affectedModules!.includes(m)) : allModuleNames;
+  if (affectedModules && modulesToProcess.length < allModuleNames.length) {
+    console.log(`  TARGETED: only updating ${modulesToProcess.length}/${allModuleNames.length} modules (${modulesToProcess.join(', ')})`);
+  }
 
-  for (const modName of allModuleNames) {
+  for (const modName of modulesToProcess) {
     const modLenses = relevanceMatrix.get(modName) || [];
     for (const lensIdx of modLenses) {
       const lens = effectiveLenses[lensIdx];
@@ -602,6 +642,13 @@ From this perspective, what nodes and journeys are MISSING from ${modName}.yaml?
   }
 
   console.log(`  Creation complete: ${passCount} passes done.`);
+
+  } // end of: if spec changed (creation passes block)
+
+  // Store spec hash for next run
+  const stateForHash = fs.existsSync(convergeStatePath2) ? JSON.parse(fs.readFileSync(convergeStatePath2, 'utf-8')) : {};
+  stateForHash.spec_hash = specHash;
+  fs.writeFileSync(convergeStatePath2, JSON.stringify(stateForHash, null, 2));
 
   // ── 4b: Compile convergence (code, instant) ──
   console.log('\n  ── Step 4b: Compile Convergence ──');
