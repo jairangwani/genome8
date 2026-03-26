@@ -1720,14 +1720,16 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Windows: detect parent death via stdin close
+// Windows: detect parent death via stdin close (only in watch mode, not --once)
 // When TaskStop kills the bash wrapper, stdin closes → we self-terminate
-process.stdin.on('end', () => {
-  console.log('\nStdin closed (parent died). Cleaning up...');
-  cleanupAll();
-  process.exit(0);
-});
-process.stdin.resume(); // Keep stdin open so we can detect close
+if (!process.argv.includes('--once')) {
+  process.stdin.on('end', () => {
+    console.log('\nStdin closed (parent died). Cleaning up...');
+    cleanupAll();
+    process.exit(0);
+  });
+  process.stdin.resume();
+}
 
 process.on('exit', () => {
   // Best-effort cleanup on any exit
