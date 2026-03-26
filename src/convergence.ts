@@ -872,11 +872,34 @@ The implementation must actually work when executed. Test it mentally — trace 
   );
   console.log('  Validation result: ' + validationResponse.substring(0, 300));
 
-  // Try running software projects specifically
-  const hasTsFiles = fs.existsSync(path.join(absProjectDir, 'src')) &&
-    fs.readdirSync(path.join(absProjectDir, 'src')).some(f => f.endsWith('.ts'));
+  // Detect software project from spec (not from whether files exist — Step 6 might have failed)
+  const isSoftwareProject = /\.(ts|js|py|go|rs|java|tsx|jsx)\b/.test(spec) ||
+    /TypeScript|JavaScript|Node\.js|Python|npm|npx|CLI/.test(spec);
 
-  if (hasTsFiles) {
+  const hasTsFiles = fs.existsSync(path.join(absProjectDir, 'src')) &&
+    fs.readdirSync(path.join(absProjectDir, 'src')).some(f => f.endsWith('.ts') || f.endsWith('.js'));
+
+  if (isSoftwareProject && !hasTsFiles) {
+    console.log('  WARNING: Software project but no code files written. Step 6 may have failed.');
+    console.log('  Retrying code generation...');
+    await worker.call(`The previous code generation failed (possibly due to rate limiting).
+Write the COMPLETE implementation for this project NOW.
+
+SPEC:
+${spec}
+
+GRAPH: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys
+
+Write ALL code files to the src/ directory. Use the Write tool.`);
+
+    // Recheck
+    if (fs.existsSync(path.join(absProjectDir, 'src'))) {
+      const newFiles = fs.readdirSync(path.join(absProjectDir, 'src')).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+      console.log('  Retry result: ' + newFiles.length + ' files written');
+    }
+  }
+
+  if (hasTsFiles || (isSoftwareProject && fs.existsSync(path.join(absProjectDir, 'src')))) {
     console.log('  Software project detected — running smoke test...');
     while (!testsPassed && fixAttempts < MAX_FIX_ATTEMPTS) {
       try {
@@ -1696,6 +1719,15 @@ process.on('SIGTERM', () => {
   cleanupAll();
   process.exit(0);
 });
+
+// Windows: detect parent death via stdin close
+// When TaskStop kills the bash wrapper, stdin closes → we self-terminate
+process.stdin.on('end', () => {
+  console.log('\nStdin closed (parent died). Cleaning up...');
+  cleanupAll();
+  process.exit(0);
+});
+process.stdin.resume(); // Keep stdin open so we can detect close
 
 process.on('exit', () => {
   // Best-effort cleanup on any exit
