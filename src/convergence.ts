@@ -1091,25 +1091,60 @@ INSTRUCTIONS:
 5. Write each updated test file using the Write tool
 6. Make tests RUNNABLE with vitest — proper imports, setup/teardown for file state`);
 
-        // Step 3: Run tests
+        // Step 3: Run tests with feedback loop — failures get diagnosed and fixed
         console.log('  Running journey tests...');
-        try {
-          const testOutput = execSyncLocal('npx vitest run --reporter=verbose 2>&1', {
-            cwd: absProjectDir,
-            encoding: 'utf-8',
-            timeout: 60_000,
-          });
-          const passMatch = testOutput.match(/(\d+) passed/);
-          const failMatch = testOutput.match(/(\d+) failed/);
-          const passed = passMatch ? parseInt(passMatch[1]) : 0;
-          const failed = failMatch ? parseInt(failMatch[1]) : 0;
-          console.log(`  Journey tests: ${passed} passed, ${failed} failed out of ${passed + failed}`);
-          if (failed === 0 && passed > 0) {
-            console.log('  ALL JOURNEY TESTS PASS.');
+        const MAX_JOURNEY_FIX_ATTEMPTS = 3;
+        let journeyFixAttempt = 0;
+        let allJourneysPassed = false;
+
+        while (journeyFixAttempt < MAX_JOURNEY_FIX_ATTEMPTS && !allJourneysPassed) {
+          try {
+            const testOutput = execSyncLocal('npx vitest run --reporter=verbose 2>&1', {
+              cwd: absProjectDir,
+              encoding: 'utf-8',
+              timeout: 120_000,
+            });
+            const passMatch = testOutput.match(/(\d+) passed/);
+            const failMatch = testOutput.match(/(\d+) failed/);
+            const passed = passMatch ? parseInt(passMatch[1]) : 0;
+            const failed = failMatch ? parseInt(failMatch[1]) : 0;
+            console.log(`  Journey tests: ${passed} passed, ${failed} failed`);
+            if (failed === 0 && passed > 0) {
+              console.log('  ALL JOURNEY TESTS PASS.');
+              allJourneysPassed = true;
+            }
+          } catch (err: any) {
+            journeyFixAttempt++;
+            const output = (err.stdout || err.message || '').substring(0, 3000);
+            const failedTests = output.match(/FAIL.*\n.*\n.*\n/g)?.join('\n') || output.substring(0, 1500);
+            console.log(`  Journey tests FAILED (attempt ${journeyFixAttempt}/${MAX_JOURNEY_FIX_ATTEMPTS})`);
+
+            if (journeyFixAttempt < MAX_JOURNEY_FIX_ATTEMPTS) {
+              // Feed failures back to LLM for diagnosis and fix
+              console.log('  LLM diagnosing failures...');
+              try {
+                await worker.call(`Journey tests failed. Diagnose each failure and fix it.
+
+TEST FAILURES:
+${failedTests}
+
+For EACH failure, decide:
+1. CODE BUG — the source code doesn't implement this journey correctly → fix the source code using Edit
+2. TEST BUG — the test assertion is wrong (expects wrong output) → fix the test file using Edit
+3. GRAPH BUG — the journey describes something the spec doesn't require → update the YAML module using Edit
+
+Read the failing test file, the source code, and the journey definition. Then fix whichever is wrong.
+Do NOT rewrite entire files — use Edit for targeted fixes.`);
+              } catch {
+                console.log('  Journey fix timed out — continuing.');
+                break;
+              }
+            }
           }
-        } catch (err: any) {
-          const output = (err.stdout || err.message || '').substring(0, 1000);
-          console.log(`  Journey tests had failures: ${output.substring(0, 300)}`);
+        }
+
+        if (!allJourneysPassed && journeyFixAttempt >= MAX_JOURNEY_FIX_ATTEMPTS) {
+          console.log(`  WARNING: Journey tests still failing after ${MAX_JOURNEY_FIX_ATTEMPTS} fix attempts.`);
         }
       } catch {
         console.log('  Journey test fill timed out — skipping test execution.');
