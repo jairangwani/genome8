@@ -975,11 +975,49 @@ Update the appropriate YAML module file using the Write tool if needed.`);
 
   const stats = finalResult.index._stats;
 
-  // 6a: LLM writes REAL, RUNNABLE code from the graph
-  // Not skeletons. Not one file per node. A cohesive working implementation
-  // that respects the project structure described in the spec.
+  // 6a: Code generation — TWO MODES:
+  // MODE 1 (no code exists): Generate complete implementation from graph
+  // MODE 2 (code exists): Ask LLM to UPDATE existing code based on graph changes
+  //   - Read existing code + graph diff
+  //   - Add new functions/features for new journeys
+  //   - Don't rewrite what already works
+  //   - Then 6b journey tests validate everything
+  const srcDir6 = path.join(absProjectDir, 'src');
+  const existingCode = fs.existsSync(srcDir6) && fs.readdirSync(srcDir6).some(f => f.endsWith('.ts') || f.endsWith('.js'));
+
   console.log(`  Graph: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections`);
-  console.log('  LLM CALL: writing complete implementation from graph...');
+
+  if (existingCode) {
+    // MODE 2: Update existing code — targeted changes, not full rewrite
+    const srcFiles6 = fs.readdirSync(srcDir6).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+    console.log(`  Source code exists (${srcFiles6.length} files) — updating for new graph content...`);
+    const srcFileList = srcFiles6.map(f => `  - ${path.join(srcDir6, f)}`).join('\n');
+    try {
+      await worker.call(`The project has existing source code that may need updates based on the current graph.
+
+SPEC:
+${spec}
+
+EXISTING SOURCE FILES (Read each one):
+${srcFileList}
+
+MODULE FILES (Read to see current graph — nodes + journeys):
+${moduleFileList}
+
+INSTRUCTIONS:
+1. Read the spec and the source files
+2. Read the graph module files to see what journeys/features exist
+3. Compare: does the code implement ALL journeys in the graph?
+4. If features are MISSING from the code: add them using Edit (targeted additions)
+5. If existing code already handles a journey: DO NOT rewrite it
+6. Only ADD what's new. Do NOT delete or rewrite existing working code.
+7. Use Edit tool for all changes — never Write entire files.`);
+    } catch {
+      console.log('  Code update timed out — continuing to journey tests.');
+    }
+  } else {
+    // MODE 1: No code exists — generate from scratch
+    console.log('  No source code found — generating implementation from graph...');
 
   // Step 6 is the most demanding LLM call — full graph → complete code.
   // Worker may crash (rate limit, context issues). Retry up to 2 times with fresh workers.
@@ -1021,6 +1059,7 @@ The implementation must actually work when executed. Test it mentally — trace 
       }
     }
   }
+  } // end of: if (!existingCode) — skip codegen when code exists
 
   // Verify code was written
   const srcDir = path.join(absProjectDir, 'src');
