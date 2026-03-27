@@ -46,6 +46,9 @@ interface ConvergenceConfig {
   maxZeroDelta: number;
   minModulesForSplit: number;
   messageTimeoutMs: number;    // Per-LLM-call timeout. Large projects need more time.
+  maxHierarchyDepth: number;   // Maximum nesting depth for hierarchy splits.
+  maxAuditCycles: number;      // Maximum audit fix cycles before accepting current state.
+  eventDebounceMs: number;     // Debounce window for rapid successive dependency events.
 }
 
 const DEFAULT_CONFIG: ConvergenceConfig = {
@@ -57,6 +60,9 @@ const DEFAULT_CONFIG: ConvergenceConfig = {
   maxZeroDelta: 2,
   minModulesForSplit: 6,
   messageTimeoutMs: 10 * 60 * 1000,  // 10 min default. Override in config.json for large projects.
+  maxHierarchyDepth: 5,              // Prevent infinite recursive splitting.
+  maxAuditCycles: 5,                 // Prevent infinite audit fix loops.
+  eventDebounceMs: 2_000,            // Debounce rapid events within 2s window.
 };
 
 const LENSES = [
@@ -206,6 +212,12 @@ async function run() {
   if (fs.existsSync(convergeStatePath) && !process.argv.includes('--once')) {
     try {
       const state = JSON.parse(fs.readFileSync(convergeStatePath, 'utf-8'));
+      // Validate state file structure (required fields + valid status enum)
+      const VALID_STATUSES = ['sleeping', 'unstable', 'reconverging', 'running'];
+      if (!state.status || !VALID_STATUSES.includes(state.status)) {
+        console.log(`  State file has invalid status "${state.status}". Running full pipeline.`);
+        throw new Error('invalid state');
+      }
       if (state.status === 'sleeping' || state.status === 'unstable') {
         const currentResult = compile(modulesDir);
         const currentHash = publishInterface(publishedDir, currentResult.index, path.basename(absProjectDir)).interface_.version_hash;
@@ -260,15 +272,16 @@ async function run() {
               console.log(`    ${dep.name}: ${dep.eventsDir}`);
             }
 
-            // Set up fs.watch
+            // Set up fs.watch (track for clean teardown)
             for (const dep of depEventDirs) {
-              fs.watch(dep.eventsDir, (eventType, filename) => {
+              const watcher = fs.watch(dep.eventsDir, (eventType, filename) => {
                 if (filename && eventType === 'rename') {
                   console.log(`\n  EVENT DETECTED: ${dep.name} — ${filename}`);
                   console.log('  Targeted reconvergence would trigger here.');
                   // Full reconvergence handler is in the main Step 7 code
                 }
               });
+              activeWatchers.push(watcher);
             }
 
             console.log('  Sleeping. Will wake on dependency events only.');
@@ -362,6 +375,30 @@ ${spec}`);
       process.exit(1);
     }
     trackLLMCall();
+
+    // Validate ORGANIZATION.md: must contain backtick module names and key sections
+    const orgValidation = fs.readFileSync(orgPath, 'utf-8');
+    const foundModules = extractModuleNames(orgValidation).length;
+    const hasScope = /scope/i.test(orgValidation);
+    const hasDeps = /dependenc/i.test(orgValidation);
+    if (foundModules < 2 || !hasScope || !hasDeps) {
+      console.log(`  ⚠️ ORGANIZATION.md malformed (${foundModules} modules, scope: ${hasScope}, deps: ${hasDeps}). Retrying...`);
+      fs.unlinkSync(orgPath);
+      await worker.call(`The previous ORGANIZATION.md was malformed. Issues:
+${foundModules < 2 ? '- Too few modules (need at least 2 backtick-named modules)\n' : ''}${!hasScope ? '- Missing SCOPE section\n' : ''}${!hasDeps ? '- Missing DEPENDENCIES section\n' : ''}
+Rewrite ORGANIZATION.md to ${orgPath}. Each module name MUST be in \`backticks\`.
+Include: 1. SCOPE, 2. MODULES with \`backtick-names\`, 3. DEPENDENCIES, 4. INDEPENDENCE.
+
+SPEC:
+${spec}
+
+Use the Write tool NOW.`);
+      if (!fs.existsSync(orgPath)) {
+        console.error('  ERROR: Retry failed. LLM did not write ORGANIZATION.md. Stopping.');
+        process.exit(1);
+      }
+      trackLLMCall();
+    }
     console.log('  Written: ORGANIZATION.md');
   } else {
     console.log('  ORGANIZATION.md already exists, skipping.');
@@ -536,8 +573,13 @@ Use the Write tool to write the file NOW.`);
     }
   }
 
-  // No existing split — ask LLM if we should split.
-  const shouldSplit = await checkIfShouldSplit(orgContent, spec);
+  // No existing split — check depth limit, then ask LLM if we should split.
+  if (currentDepth >= config.maxHierarchyDepth) {
+    console.log(`  HIERARCHY: At max depth (${currentDepth}/${config.maxHierarchyDepth}). Forcing no-split.`);
+  }
+  const shouldSplit = currentDepth < config.maxHierarchyDepth
+    ? await checkIfShouldSplit(orgContent, spec)
+    : { split: false, engines: [] };
   if (shouldSplit.split) {
     console.log(`\n  HIERARCHY: Splitting into ${shouldSplit.engines.length} child engines (depth ${currentDepth})`);
     console.log('  Actors will be shared across all children (no duplicates)');
@@ -867,20 +909,28 @@ Read each affected file, fix the broken references using the Edit tool. Do NOT r
     }
   }
 
-  // ── 4c: Audit (targeted, stops at 0 gaps) ──
+  // ── 4c: Audit (targeted, stops at 0 gaps or maxAuditCycles) ──
   console.log('\n  ── Step 4c: Audit ──');
   let prevGapCount = Infinity;
+  let auditCycle = 0;
 
   while (true) {
+    auditCycle++;
     const auditResult = await depthCheck(doCompile(), spec);
 
     if (auditResult.converged) {
-      console.log('  AUDIT PASSED — 0 gaps found. CONVERGED.');
+      console.log(`  AUDIT PASSED — 0 gaps found in cycle ${auditCycle}. CONVERGED.`);
       break;
     }
 
     const gapCount = auditResult.gaps.length;
-    console.log(`  Audit found ${gapCount} gaps.`);
+    console.log(`  Audit cycle ${auditCycle}/${config.maxAuditCycles}: found ${gapCount} gaps.`);
+
+    // Safety: max audit cycles reached
+    if (auditCycle >= config.maxAuditCycles) {
+      console.log(`  Max audit cycles (${config.maxAuditCycles}) reached. Accepting current state with ${gapCount} remaining gaps.`);
+      break;
+    }
 
     // Safety: if gaps increasing, stop
     if (gapCount >= prevGapCount) {
@@ -1049,18 +1099,48 @@ Update the appropriate YAML module file using the Write tool if needed.`);
   const { interface_ } = publishInterface(publishedDir, finalResult.index, path.basename(absProjectDir));
   console.log(`  Published: ${Object.keys(interface_.provides).length} nodes | Hash: ${interface_.version_hash}`);
 
-  // Write event file so dependents can detect the change (event-driven, not polling)
+  // Check if hash changed since last publish — skip event write if unchanged
+  const prevPublishHash = (() => {
+    try {
+      const prevState = JSON.parse(fs.readFileSync(path.join(genomeDir, 'convergence-state.json'), 'utf-8'));
+      return prevState.interface_hash;
+    } catch { return null; }
+  })();
+
   const eventsDir = path.join(publishedDir, 'events');
   if (!fs.existsSync(eventsDir)) fs.mkdirSync(eventsDir, { recursive: true });
-  const eventFile = path.join(eventsDir, `${Date.now()}_${interface_.version_hash.substring(7, 19)}.event`);
-  fs.writeFileSync(eventFile, JSON.stringify({
-    engine: path.basename(absProjectDir),
-    hash: interface_.version_hash,
-    timestamp: new Date().toISOString(),
-    nodes: Object.keys(interface_.provides).length,
-    journeys: finalResult.index._stats.total_journeys,
-  }, null, 2));
-  console.log(`  Event written: ${path.basename(eventFile)}`);
+
+  // Leaf box detection: if no sibling/parent engines reference us, skip event write
+  const parentEnginesDir = path.join(absProjectDir, '..');
+  const isLeafBox = (() => {
+    try {
+      const siblings = fs.readdirSync(parentEnginesDir).filter(d => {
+        const depsFile = path.join(parentEnginesDir, d, 'genome', 'dependencies.yaml');
+        if (!fs.existsSync(depsFile)) return false;
+        const content = fs.readFileSync(depsFile, 'utf-8');
+        return content.includes(path.basename(absProjectDir));
+      });
+      return siblings.length === 0;
+    } catch { return false; } // If we can't check, assume not a leaf
+  })();
+
+  if (isLeafBox) {
+    console.log(`  Leaf box (no downstream dependents). Skipping event write.`);
+  } else if (prevPublishHash && interface_.version_hash === prevPublishHash) {
+    console.log(`  Hash unchanged from previous run. Skipping event write (no downstream wake).`);
+  } else {
+    // Write event file so dependents can detect the change (event-driven, not polling)
+    const eventFile = path.join(eventsDir, `${Date.now()}_${interface_.version_hash.substring(7, 19)}.event`);
+    fs.writeFileSync(eventFile, JSON.stringify({
+      engine: path.basename(absProjectDir),
+      hash: interface_.version_hash,
+      timestamp: new Date().toISOString(),
+      nodes: Object.keys(interface_.provides).length,
+      journeys: finalResult.index._stats.total_journeys,
+      origin_chain: [path.basename(absProjectDir)], // Track ripple origin for oscillation detection
+    }, null, 2));
+    console.log(`  Event written: ${path.basename(eventFile)}`);
+  }
   endStep('step5_publish');
 
   // Keep worker session for codegen — avoid spawn/init overhead.
@@ -1503,6 +1583,28 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
     console.log(`    ${dep.name}: ${dep.eventsDir}`);
   }
 
+  // Event debouncing — batch rapid successive events within a window
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  const pendingEvents: Array<{ depName: string; eventFile: string }> = [];
+  let eventProcessingLock = false; // Prevent concurrent event processing
+
+  const debouncedHandleEvent = (depName: string, eventFile: string) => {
+    pendingEvents.push({ depName, eventFile });
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      if (eventProcessingLock) return; // Already processing — next batch will pick these up
+      eventProcessingLock = true;
+      const batch = pendingEvents.splice(0, pendingEvents.length);
+      // Deduplicate by depName (only process latest event per dependency)
+      const latestByDep = new Map<string, string>();
+      for (const evt of batch) latestByDep.set(evt.depName, evt.eventFile);
+      for (const [dep, file] of latestByDep) {
+        await handleEvent(dep, file);
+      }
+      eventProcessingLock = false;
+    }, config.eventDebounceMs);
+  };
+
   // Set up fs.watch on each dependency's events directory
   const handleEvent = async (depName: string, eventFile: string) => {
     if (!eventFile.endsWith('.event')) return;
@@ -1515,13 +1617,20 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
       const hashKey = `${depName}:${event.hash}`;
       const now = Date.now();
 
-      // Oscillation protection
+      // Oscillation protection: cooldown-based
       const lastSeen = recentHashes.get(hashKey);
       if (lastSeen && (now - lastSeen) < OSCILLATION_COOLDOWN) {
         console.log(`  SKIP: ${depName} hash seen recently (oscillation cooldown)`);
         return;
       }
       recentHashes.set(hashKey, now);
+
+      // Oscillation protection: origin chain cycle detection
+      const selfName = path.basename(absProjectDir);
+      if (event.origin_chain && Array.isArray(event.origin_chain) && event.origin_chain.includes(selfName)) {
+        console.log(`  SKIP: ${depName} event origin chain contains self (${selfName}). Ripple cycle detected.`);
+        return;
+      }
 
       console.log(`\n  EVENT: ${depName} changed (hash: ${event.hash.substring(7, 19)})`);
 
@@ -1566,6 +1675,16 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
         }
       }
 
+      // Full graph check: recompile ALL modules (not just stale) to catch cross-module breakage
+      console.log('  Full graph validation after targeted reconvergence...');
+      const fullCheckResult = doCompile();
+      const fullCheckErrors = fullCheckResult.issues.filter(i => i.severity === 'error');
+      if (fullCheckErrors.length > 0) {
+        console.log(`  ⚠️ ${fullCheckErrors.length} cross-module errors after reconvergence. Fixing...`);
+        const errorList = fullCheckErrors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
+        await worker.call(`Reconvergence introduced cross-module errors. Fix them:\n${errorList}\nRead affected files, fix refs, write back.`);
+      }
+
       // Re-generate code + tests for affected modules (plan changed → code must follow)
       const reconvergedResult = doCompile();
       console.log('  Regenerating code + tests for changed modules...');
@@ -1588,17 +1707,30 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
         }
       }
 
-      // Re-publish + write event for downstream ripple
+      // Re-publish — but only write event if interface actually changed (suppress no-op ripple)
+      const prevHash = (() => {
+        try { return JSON.parse(fs.readFileSync(statePath, 'utf-8')).interface_hash; } catch { return null; }
+      })();
       const { interface_: newInterface } = publishInterface(publishedDir, reconvergedResult.index, path.basename(absProjectDir));
-      const newEventFile = path.join(eventsDir, `${Date.now()}_${newInterface.version_hash.substring(7, 19)}.event`);
-      fs.writeFileSync(newEventFile, JSON.stringify({
-        engine: path.basename(absProjectDir),
-        hash: newInterface.version_hash,
-        timestamp: new Date().toISOString(),
-        triggered_by: depName,
-      }, null, 2));
 
-      console.log(`  Reconverged. Hash: ${newInterface.version_hash.substring(7, 19)}. Event written.`);
+      if (prevHash && newInterface.version_hash === prevHash) {
+        console.log(`  Reconverged. Hash UNCHANGED (${newInterface.version_hash.substring(7, 19)}). No ripple event written.`);
+      } else {
+        const newEventFile = path.join(eventsDir, `${Date.now()}_${newInterface.version_hash.substring(7, 19)}.event`);
+        // Propagate origin chain from incoming event + append self
+        const incomingEvent = (() => {
+          try { return JSON.parse(fs.readFileSync(fullPath, 'utf-8')); } catch { return {}; }
+        })();
+        const originChain = [...(incomingEvent.origin_chain || [depName]), path.basename(absProjectDir)];
+        fs.writeFileSync(newEventFile, JSON.stringify({
+          engine: path.basename(absProjectDir),
+          hash: newInterface.version_hash,
+          timestamp: new Date().toISOString(),
+          triggered_by: depName,
+          origin_chain: originChain,
+        }, null, 2));
+        console.log(`  Reconverged. Hash: ${newInterface.version_hash.substring(7, 19)}. Event written.`);
+      }
       fs.writeFileSync(statePath, JSON.stringify({
         status: 'sleeping',
         converged_at: new Date().toISOString(),
@@ -1610,14 +1742,15 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
     }
   };
 
-  // Watch each dependency's events directory
+  // Watch each dependency's events directory (track for clean teardown)
   for (const dep of depEventDirs) {
-    fs.watch(dep.eventsDir, (eventType, filename) => {
+    const watcher = fs.watch(dep.eventsDir, (eventType, filename) => {
       if (filename && eventType === 'rename') {
-        // 'rename' fires when a new file is created
-        handleEvent(dep.name, filename);
+        // 'rename' fires when a new file is created — debounce rapid events
+        debouncedHandleEvent(dep.name, filename);
       }
     });
+    activeWatchers.push(watcher);
   }
 
   // Keep process alive — fs.watch callbacks handle everything
@@ -2198,6 +2331,7 @@ Write the file using the Write tool NOW.`);
 // PID file lets `genome stop` kill everything cleanly.
 
 const childProcesses: Array<{ name: string; pid: number; proc: any }> = [];
+const activeWatchers: fs.FSWatcher[] = []; // Track fs.watch instances for clean teardown
 const pidFilePath = path.join(genomeDir, 'pids.json');
 
 function writePidFile() {
@@ -2212,6 +2346,11 @@ function writePidFile() {
 
 function cleanupAll() {
   console.log('\nShutting down all processes...');
+  // Close all fs.watch instances (release kernel handles)
+  for (const watcher of activeWatchers) {
+    try { watcher.close(); } catch { /* already closed */ }
+  }
+  activeWatchers.length = 0;
   // Kill worker
   worker.kill();
   // Kill all child processes

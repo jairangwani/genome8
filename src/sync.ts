@@ -20,6 +20,8 @@ export interface SyncChange {
 
 export interface SyncState {
   known_hashes: Record<string, string>; // dependency → last known hash
+  sync_in_progress?: boolean;           // Guard against concurrent sync operations
+  sync_started_at?: string;             // Timestamp of last sync start (for stale lock detection)
 }
 
 /**
@@ -45,6 +47,22 @@ export function checkDependencies(
       syncState = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
     } catch { /* fresh start */ }
   }
+
+  // Guard against concurrent sync operations
+  if (syncState.sync_in_progress) {
+    // Check for stale lock (>5 min old)
+    const lockAge = syncState.sync_started_at
+      ? Date.now() - new Date(syncState.sync_started_at).getTime()
+      : Infinity;
+    if (lockAge < 5 * 60 * 1000) {
+      // Another sync is running and lock is fresh — skip
+      return [];
+    }
+    // Stale lock — proceed and take over
+  }
+  syncState.sync_in_progress = true;
+  syncState.sync_started_at = new Date().toISOString();
+  fs.writeFileSync(syncStatePath, JSON.stringify(syncState, null, 2));
 
   for (const [depName, config] of Object.entries(deps.dependencies)) {
     // Resolve dependency path
@@ -110,7 +128,8 @@ export function checkDependencies(
     syncState.known_hashes[depName] = currentHash;
   }
 
-  // Save sync state
+  // Release sync lock and save state
+  syncState.sync_in_progress = false;
   fs.writeFileSync(syncStatePath, JSON.stringify(syncState, null, 2));
 
   return changes;
