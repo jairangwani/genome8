@@ -1601,10 +1601,29 @@ One line per goal: GoalName: STATUS — evidence`);
     }
   }
 
+  // Always watch spec.md for changes — spec is the source of truth
+  console.log(`  Watching spec: ${specPath}`);
+  const specWatcher = fs.watch(path.dirname(specPath), (eventType, filename) => {
+    if (filename === 'spec.md') {
+      const currentSpec = fs.readFileSync(specPath, 'utf-8');
+      const crypto2 = require('node:crypto');
+      const currentHash = crypto2.createHash('sha256').update(currentSpec).digest('hex');
+      const stateFile = path.join(genomeDir, 'convergence-state.json');
+      const savedHash = (() => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash; } catch { return null; } })();
+      if (currentHash !== savedHash) {
+        console.log('\n  SPEC CHANGED — waking up for reconvergence...');
+        specWatcher.close();
+        // Re-run the full pipeline
+        run().catch(err => { console.error('Reconvergence failed:', err); process.exit(1); });
+      }
+    }
+  });
+  activeWatchers.push(specWatcher);
+
   if (depEventDirs.length === 0) {
-    console.log('  No dependencies to watch. Sleeping permanently.');
-    // Keep process alive but doing nothing
-    await new Promise(() => {}); // Block forever
+    console.log('  No dependencies to watch. Watching spec only.');
+    // Keep process alive — will wake on spec change
+    await new Promise(() => {}); // Block until spec changes
     return;
   }
 
