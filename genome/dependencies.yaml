@@ -1,0 +1,6 @@
+# Genome watches Pando — when Pando converges, genome's BuildPando goal updates
+dependencies:
+  pando20:
+    path: C:/Users/jaira/Desktop/pando20
+    pin: latest
+    alert_on_update: true
