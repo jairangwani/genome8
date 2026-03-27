@@ -1479,19 +1479,49 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
   console.log(`  Metrics written: ${metrics.llmCalls} LLM calls, ${Object.keys(metrics.stepTimings).length} steps tracked`);
 
   // ── Goal verification ──
-  // Before declaring convergence, check: are all goals proven?
-  // Goals are rule nodes in _goals.yaml. They're "proven" if:
-  //   - The audit found 0 gaps (including Auditor 4 goal coverage)
-  //   - Tests passed (or were accepted as unstable)
-  // This is the final check — the engine doesn't declare success until goals are met.
+  // Verify each goal is ACTUALLY achieved, not just described by journeys.
+  // "BuildPando" isn't proven because journeys mention it —
+  // it's proven when Pando actually works. Journey coverage ≠ achievement.
   const goalsCheckPath = path.join(modulesDir, '_goals.yaml');
   if (fs.existsSync(goalsCheckPath)) {
     const goalsContent = fs.readFileSync(goalsCheckPath, 'utf-8');
     const goalNodes = (goalsContent.match(/^\s{2}\w[\w]*:/gm) || [])
       .map(l => l.trim().replace(/:$/, ''))
       .filter(n => !['nodes', 'journeys', 'spec_sections'].includes(n));
-    console.log(`\n  Goals: ${goalNodes.length} (${goalNodes.join(', ')})`);
-    console.log(`  Status: ${testsPassed ? 'ALL PROVEN (tests pass)' : 'UNPROVEN (tests incomplete/failing)'}`);
+
+    console.log(`\n  ── Goal Verification ──`);
+    console.log(`  ${goalNodes.length} goals to verify against actual state.`);
+    try {
+      const srcFiles = fs.existsSync(path.join(absProjectDir, 'src'))
+        ? fs.readdirSync(path.join(absProjectDir, 'src')).filter(f => f.endsWith('.ts') || f.endsWith('.js')).length
+        : 0;
+      const goalVerification = await worker.call(`Verify each goal is ACTUALLY achieved — not just covered by journeys.
+
+GOALS:
+${goalsContent}
+
+ACTUAL STATE:
+- Graph: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, 0 compile errors
+- Code: ${srcFiles} source files
+- Tests: ${testsPassed ? 'smoke test passed' : 'tests failing'}
+- This is a ${currentDepth === 0 ? 'top-level' : 'child (depth ' + currentDepth + ')'} engine
+
+For EACH goal, answer HONESTLY:
+- PROVEN: actually achieved with evidence
+- UNPROVEN: described but NOT achieved yet
+- PARTIAL: some progress
+
+One line per goal: GoalName: STATUS — evidence`);
+
+      for (const line of goalVerification.split('\n').filter(l => /PROVEN|PARTIAL|UNPROVEN/.test(l))) {
+        console.log(`    ${line.trim()}`);
+      }
+      const unproven = goalVerification.split('\n').filter(l => /UNPROVEN/.test(l)).length;
+      console.log(`  Result: ${goalNodes.length - unproven}/${goalNodes.length} goals proven.${unproven > 0 ? ' ' + unproven + ' UNPROVEN.' : ''}`);
+    } catch {
+      console.log('  Goal verification timed out — reporting based on test status.');
+      console.log(`  Status: ${testsPassed ? 'PARTIAL (tests pass but goals unverified)' : 'UNPROVEN (tests failing)'}`);
+    }
   }
 
   console.log('\n═══ CONVERGED ═══');
