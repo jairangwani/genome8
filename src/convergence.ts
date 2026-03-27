@@ -930,10 +930,15 @@ Read the file, then use the Edit tool to add what's needed. Do NOT rewrite the e
       console.log(untrackedList);
 
       // Ask LLM to reconcile untracked files with the graph
-      const untrackedSummary = untrackedFiles.map(cf => {
-        const content = fs.readFileSync(cf.file, 'utf-8');
-        return `=== ${path.basename(cf.file)} ===\n${content.substring(0, 3000)}`;
-      }).join('\n\n');
+      const untrackedSummary = untrackedFiles
+        .filter(cf => fs.statSync(cf.file).isFile()) // Skip directories
+        .slice(0, 20) // Cap at 20 to avoid massive prompts
+        .map(cf => {
+          try {
+            const content = fs.readFileSync(cf.file, 'utf-8');
+            return `=== ${path.basename(cf.file)} ===\n${content.substring(0, 3000)}`;
+          } catch { return `=== ${path.basename(cf.file)} === (unreadable)`; }
+        }).join('\n\n');
 
       const allModuleFiles = fs.readdirSync(modulesDir).filter(f => f.endsWith('.yaml') && f !== '_actors.yaml');
 
