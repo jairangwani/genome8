@@ -202,6 +202,7 @@ function doCompile(): CompileResult {
 // ── Pipeline ──
 
 async function run() {
+  const cryptoModule = await import('node:crypto');
   const spec = fs.readFileSync(specPath, 'utf-8');
   console.log(`\n=== GENOME CONVERGENCE: ${absProjectDir} ===`);
   writePidFile(); // Track this process for clean shutdown
@@ -261,8 +262,24 @@ async function run() {
               }
             }
 
+            // Watch spec.md for changes (same as main Step 7)
+            console.log(`  Watching spec: ${specPath}`);
+            const specWatcherResumed = fs.watch(path.dirname(specPath), (eventType, filename) => {
+              if (filename === 'spec.md') {
+                const currentSpecContent = fs.readFileSync(specPath, 'utf-8');
+                const crypto3 = cryptoModule;
+                const newHash = crypto3.createHash('sha256').update(currentSpecContent).digest('hex');
+                const savedSpecHash = (() => { try { return JSON.parse(fs.readFileSync(path.join(genomeDir, 'convergence-state.json'), 'utf-8')).spec_hash; } catch { return null; } })();
+                if (newHash !== savedSpecHash) {
+                  console.log('\n  SPEC CHANGED — waking up for reconvergence...');
+                  specWatcherResumed.close();
+                  run().catch(err => { console.error('Reconvergence failed:', err); process.exit(1); });
+                }
+              }
+            });
+
             if (depEventDirs.length === 0) {
-              console.log('  No dependencies to watch. Sleeping permanently.');
+              console.log('  No dependencies to watch. Watching spec only.');
               await new Promise(() => {});
               return;
             }
@@ -1606,8 +1623,7 @@ One line per goal: GoalName: STATUS — evidence`);
   const specWatcher = fs.watch(path.dirname(specPath), (eventType, filename) => {
     if (filename === 'spec.md') {
       const currentSpec = fs.readFileSync(specPath, 'utf-8');
-      const crypto2 = require('node:crypto');
-      const currentHash = crypto2.createHash('sha256').update(currentSpec).digest('hex');
+      const currentHash = cryptoModule.createHash('sha256').update(currentSpec).digest('hex');
       const stateFile = path.join(genomeDir, 'convergence-state.json');
       const savedHash = (() => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash; } catch { return null; } })();
       if (currentHash !== savedHash) {
