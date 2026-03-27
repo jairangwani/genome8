@@ -370,8 +370,57 @@ ${spec}`);
 
   const orgContent = fs.readFileSync(orgPath, 'utf-8');
 
+  // ═══ STEP 1b — Goal Extraction ═══
+  // Goals come BEFORE actors. They define what success looks like.
+  // Goals are rule nodes in _goals.yaml. Journeys reference goals.
+  // Audit checks goal coverage. Tests prove goals are met.
+  // The spec is the only non-node input. Goals are the FIRST nodes derived from it.
+  const goalsPath = path.join(modulesDir, '_goals.yaml');
+  if (!fs.existsSync(goalsPath) || !fs.readFileSync(goalsPath, 'utf-8').includes('type: rule')) {
+    console.log('\n═══ STEP 1b: Goal Extraction ═══');
+    await worker.call(`Read the project spec and extract the GOALS of this project.
+
+Goals define what success looks like. They are NOT features — they are the WHY behind features.
+
+Example for a calculator:
+  - CorrectArithmetic: "all operations produce mathematically correct results"
+  - GracefulErrors: "bad input returns clear error message, never crashes"
+  - CleanCLI: "simple interface, one command one result"
+
+Example for a social network:
+  - UserSafety: "no harassment, clear reporting, fast response"
+  - DataPrivacy: "user controls their data, no unauthorized access"
+  - Engagement: "content discovery keeps users coming back"
+
+Read this spec and extract 3-7 goals:
+
+SPEC:
+${spec}
+
+Write a _goals.yaml file to ${goalsPath} with format:
+spec_sections: [all]
+
+nodes:
+  GoalName:
+    type: rule
+    description: what success looks like for this goal
+
+journeys: {}
+
+Write the file using the Write tool NOW.`);
+
+    if (fs.existsSync(goalsPath)) {
+      console.log('  Goals extracted: ' + goalsPath);
+    } else {
+      console.log('  WARNING: Goals not written. Continuing without explicit goals.');
+    }
+  } else {
+    console.log('\n═══ STEP 1b: Goal Extraction ═══');
+    console.log('  _goals.yaml already has goals, skipping.');
+  }
+
   // ═══ STEP 2 — Actor Discovery (3 sequential calls) ═══
-  // Actors are discovered BEFORE the hierarchy decision.
+  // Actors are discovered AFTER goals. Goals inform which actors matter.
   // If we split, ALL children get the SAME actors. No duplicates.
   startStep('step2_actors');
   console.log('\n═══ STEP 2: Actor Discovery ═══');
@@ -1668,6 +1717,29 @@ Report ONLY missing connections. If all well-connected, respond with exactly: AL
 
   if (!audit3.toLowerCase().includes('all covered')) {
     gaps.push('cross-module: ' + audit3.substring(0, 200));
+  }
+
+  // Auditor 4: Goal coverage (if _goals.yaml exists)
+  const goalsFilePath = path.join(modulesDir, '_goals.yaml');
+  if (fs.existsSync(goalsFilePath)) {
+    console.log('  Auditor 4: goal coverage...');
+    const goalsYaml = fs.readFileSync(goalsFilePath, 'utf-8');
+    const audit4 = await worker.call(`Check if every GOAL has journeys that prove it.
+
+GOALS:
+${goalsYaml}
+
+MODULE SUMMARY:
+${moduleSummaries}
+
+For EACH goal: how many journeys address it? Any goals with 0 journeys?
+A journey "addresses" a goal if it tests or demonstrates the capability the goal describes.
+
+Report ONLY goals with insufficient coverage. If all goals have journeys, respond with exactly: ALL COVERED`);
+
+    if (!audit4.toLowerCase().includes('all covered')) {
+      gaps.push('goal-coverage: ' + audit4.substring(0, 200));
+    }
   }
 
   return {
