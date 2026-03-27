@@ -919,7 +919,7 @@ Read the file, then use the Edit tool to add what's needed. Do NOT rewrite the e
     if (node.files && node.files.length > 0) {
       for (const file of node.files) {
         const fullPath = path.join(absProjectDir, file);
-        if (fs.existsSync(fullPath)) {
+        if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
           codeFiles.push({ node: nodeName, file: fullPath });
         }
       }
@@ -1013,7 +1013,10 @@ Update the appropriate YAML module files using the Write tool.`);
       console.log(`  ${trackedFiles.length} tracked code files — checking for drift...`);
 
       for (const cf of trackedFiles) { // Process all tracked files — no artificial limit
-        const code = fs.readFileSync(cf.file, 'utf-8');
+        // Skip directories and unreadable files
+        try { if (!fs.statSync(cf.file).isFile()) continue; } catch { continue; }
+        let code: string;
+        try { code = fs.readFileSync(cf.file, 'utf-8'); } catch { continue; }
         const node = preCodeResult.index.nodes[cf.node];
         if (!node) continue;
 
