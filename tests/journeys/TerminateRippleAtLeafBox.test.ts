@@ -1,0 +1,78 @@
+// Auto-generated from journey: TerminateRippleAtLeafBox
+// Module: events
+// Triggered by: _actors/Compiler
+// Modules touched: convergence, _actors, publish, sync, events
+
+import { describe, it, expect } from 'vitest';
+
+// Implementation: src/publish.ts
+// Implementation: src/sync.ts
+
+describe("TerminateRippleAtLeafBox", () => {
+  it("step 1: convergence/TargetedReconvergence completes reconvergence on stale modules", () => {
+    // Node: convergence/TargetedReconvergence (process)
+    // Action: completes reconvergence on stale modules
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: _actors/Compiler confirms zero errors in the reconverged modules", () => {
+    // Node: _actors/Compiler (actor)
+    // Action: confirms zero errors in the reconverged modules
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: publish/ComputeInterfaceHash computes the new interface hash after reconvergence", () => {
+    // Node: publish/ComputeInterfaceHash (process)
+    // Action: computes the new interface hash after reconvergence
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: publish/ComparePreviousHash confirms the interface changed after reconvergence", () => {
+    // Node: publish/ComparePreviousHash (process)
+    // Action: confirms the interface changed after reconvergence
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: publish/GenerateInterfaceYaml writes the updated interface.yaml to disk", () => {
+    // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
+    // Action: writes the updated interface.yaml to disk
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: sync/ReadDependencyList provides the dependency list which is checked for downstream dependents", () => {
+    // Node: sync/ReadDependencyList (process) — has code: src/sync.ts
+    // Action: provides the dependency list which is checked for downstream dependents
+    // TODO: agent fills assertion
+  });
+
+  it("step 7: events/RippleAbsorbedAtLeaf determines this box has no downstream dependents so no event file should be written", () => {
+    // Node: events/RippleAbsorbedAtLeaf (rule)
+    // Action: determines this box has no downstream dependents so no event file should be written
+    // TODO: agent fills assertion
+  });
+
+  it("step 8: events/LogEventReceived records that the ripple terminated at this leaf box with no outgoing event", () => {
+    // Node: events/LogEventReceived (process)
+    // Action: records that the ripple terminated at this leaf box with no outgoing event
+    // TODO: agent fills assertion
+  });
+
+  it("step 9: events/EventLog persists the leaf-termination log entry", () => {
+    // Node: events/EventLog (artifact)
+    // Action: persists the leaf-termination log entry
+    // TODO: agent fills assertion
+  });
+
+  it("step 10: sync/UpdateStoredHashes persists the new dependency hashes", () => {
+    // Node: sync/UpdateStoredHashes (process)
+    // Action: persists the new dependency hashes
+    // TODO: agent fills assertion
+  });
+
+  it("step 11: events/EnterSleep returns to zero-cost sleep with the ripple naturally terminated", () => {
+    // Node: events/EnterSleep (process)
+    // Action: returns to zero-cost sleep with the ripple naturally terminated
+    // TODO: agent fills assertion
+  });
+
+});

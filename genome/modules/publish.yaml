@@ -125,9 +125,22 @@ nodes:
   ValidateEventFileYamlParsability:
     type: process
     description: after writing the event file, parses it back with a standard YAML parser and verifies all expected fields are accessible including embedded changelog entries that may contain special YAML characters
+  CollectExternalRequires:
+    type: process
+    description: scans cross-module connections and journey steps for unresolved external references and builds the requires map of dependencies this engine needs from other boxes
+    files: ["src/publish.ts"]
+  EnsurePublishDirectory:
+    type: process
+    description: creates the published output directory with recursive mkdir if it does not exist before writing interface and changelog files
+    files: ["src/publish.ts"]
+  ReadPreviousInterface:
+    type: process
+    description: reads and parses the previous interface.yaml from disk to extract the prior PublishedInterface for changelog diffing and hash comparison
+    files: ["src/publish.ts"]
   InterfaceYamlFile:
     type: artifact
     description: the published interface.yaml file containing exported nodes, journeys, and SHA256 hash for this box
+    files: [test/publish.test.ts]
   ChangelogYamlFile:
     type: artifact
     description: the published changelog.yaml file describing what changed in the latest publish
@@ -988,3 +1001,46 @@ journeys:
         action: verifies the sequence number field is accessible and is a positive integer
       - node: ReportPublishFailure
         action: if any field fails to parse or has an unexpected type, reports the event file as unparsable requiring rewrite
+
+  CollectExternalDependenciesForInterface:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the full compiled graph with all nodes and cross-module connections
+      - node: CollectExportedNodes
+        action: iterates over all nodes in the compiled index
+      - node: CollectExternalRequires
+        action: scans each node's cross_module_connections for references that do not resolve to nodes in this engine
+      - node: CollectExternalRequires
+        action: scans all journey steps for node references that do not resolve to known nodes in the compiled index
+      - node: CollectExternalRequires
+        action: builds the requires map with each external reference and the journey context where it appears
+      - node: GenerateInterfaceYaml
+        action: includes the requires map alongside provides in the published interface
+      - node: InterfaceYamlFile
+        action: stores the interface with both provides and requires sections on disk
+
+  EnsurePublishDirectoryExists:
+    steps:
+      - node: convergence/TriggerPublish
+        action: invokes publish and the output directory may not exist yet
+      - node: EnsurePublishDirectory
+        action: checks whether the published output directory exists on disk
+      - node: EnsurePublishDirectory
+        action: creates the directory with recursive mkdir if it does not exist
+      - node: GenerateInterfaceYaml
+        action: proceeds to write interface.yaml into the now-guaranteed-to-exist directory
+
+  ReadPreviousInterfaceForDiff:
+    steps:
+      - node: convergence/TriggerPublish
+        action: invokes publish which needs to diff against the previous version
+      - node: ReadPreviousInterface
+        action: checks whether interface.yaml already exists on disk from a prior publish
+      - node: ReadPreviousInterface
+        action: parses the existing interface.yaml as YAML into a PublishedInterface object
+      - node: ReadPreviousInterface
+        action: extracts the previous version_hash and provides map for changelog diffing
+      - node: ComputeChangelogDiff
+        action: receives the previous PublishedInterface to diff against the newly generated one
+      - node: GenerateChangelogYaml
+        action: writes the changelog describing changes between previous and current interface

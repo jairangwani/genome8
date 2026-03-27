@@ -1,4 +1,4 @@
-spec_sections: [3, 5, 6]
+spec_sections: [1, 3, 5, 6]
 
 nodes:
   ReadSpec:
@@ -172,6 +172,18 @@ nodes:
   RecoverFromChildEngineCrash:
     type: process
     description: detects when a child engine process has crashed during a hierarchy split and restarts the child from its scoped spec and last known module state or escalates to the parent for manual review
+  RetryOrganization:
+    type: process
+    description: retries the organization step when the LLM produces an invalid or incomplete ORGANIZATION.md by passing the validation errors as context for a corrected attempt
+  RetryActorDiscovery:
+    type: process
+    description: retries actor discovery when the LLM produces an invalid or incomplete _actors.yaml by passing the validation errors as context for a corrected attempt
+  FullGraphCheckAfterReconvergence:
+    type: process
+    description: runs a full compilation across all modules after targeted reconvergence completes to catch cross-module breakage from changes to stale modules before publishing
+  SkipPublishOnUnchangedHash:
+    type: process
+    description: compares the post-reconvergence interface hash against the previously published hash and skips publish when they match, preventing unnecessary wake cascades to downstream boxes
   ConcurrentChildLimit:
     type: rule
     description: caps the number of child engine processes that can run simultaneously during hierarchy splits, queuing remaining children until a running child completes
@@ -187,7 +199,34 @@ nodes:
   ConvergenceCLI:
     type: interface
     description: command-line interface to trigger and monitor the convergence pipeline
-    files: ["src/cli.ts"]
+    files: [src/cli.ts, src/convergence.ts, test/integration.test.ts]
+  StopConvergenceProcesses:
+    type: process
+    description: reads pids.json to find running convergence process tree, kills children first then main process with cross-platform support, and deletes the pid file
+    files: [src/cli.ts]
+  ShowRunningProcesses:
+    type: process
+    description: reads pids.json and convergence-state.json to display running convergence processes with their PIDs, child engines, and current graph stats
+    files: [src/cli.ts]
+  CheckConvergenceStatus:
+    type: process
+    description: compiles the graph and evaluates whether zero errors, zero orphans, zero isolated modules, and zero duplicates are met, printing actionable fix guidance if not
+    files: [src/cli.ts]
+  LoadProjectConfig:
+    type: process
+    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, and sessionResetChars
+    files: [src/convergence.ts]
+  ProjectConfig:
+    type: artifact
+    description: the merged configuration controlling pipeline behavior including LLM model, retry limits, split thresholds, and watch intervals
+  WritePidFile:
+    type: process
+    description: writes genome/pids.json tracking the convergence process PID, worker status, child engine PIDs, and start timestamp for clean shutdown via the stop command
+    files: [src/convergence.ts]
+  SkipToWatchIfConverged:
+    type: process
+    description: on startup checks convergence-state.json and compares the current interface hash against the stored hash, skipping the full pipeline and entering watch mode directly if already converged
+    files: [src/convergence.ts]
   CodeOrchestratesLLMCreates:
     type: rule
     description: code decides WHEN to act, LLM only creates content when explicitly asked by code
@@ -1549,3 +1588,262 @@ journeys:
         action: records the child engine crash as an error with the child name, crash reason, and recovery outcome
       - node: ConvergenceState
         action: records the child engine recovery outcome and whether the hierarchy split can proceed
+
+  RecoverFromOrganizationFailure:
+    steps:
+      - node: WriteOrganization
+        action: delegates to LLM to analyze spec and write ORGANIZATION.md
+      - node: _actors/LLMWorker
+        action: produces an ORGANIZATION.md that is empty, malformed, or missing required sections
+      - node: organization/OrganizationFile
+        action: stores the invalid ORGANIZATION.md on disk
+      - node: organization/ValidateLLMOrganizationOutput
+        action: checks that the file has modules, dependencies, and independence sections and finds it invalid
+      - node: compilation/ErrorReport
+        action: records the specific validation failures with the missing or malformed sections
+      - node: BoundedRetryRule
+        action: checks that the retry count for organization has not exceeded the cap
+      - node: RetryOrganization
+        action: packages the validation errors as context for a corrected attempt
+      - node: _actors/LLMWorker
+        action: reads the validation errors and the original spec to produce a corrected ORGANIZATION.md
+      - node: organization/OrganizationFile
+        action: stores the corrected ORGANIZATION.md on disk
+      - node: organization/ValidateLLMOrganizationOutput
+        action: validates the corrected file and confirms all required sections are present
+      - node: ConvergenceState
+        action: records that organization is complete after retry
+
+  RecoverFromActorDiscoveryFailure:
+    steps:
+      - node: DiscoverActors
+        action: delegates to LLM to discover actors from 3 angles
+      - node: _actors/LLMWorker
+        action: produces an _actors.yaml that is malformed or missing one or more discovery angles
+      - node: actors/ActorsFile
+        action: stores the invalid _actors.yaml on disk
+      - node: ValidateActorCompleteness
+        action: checks for actors from all 3 angles and finds one or more angles missing
+      - node: compilation/ErrorReport
+        action: records which discovery angles produced no results or invalid output
+      - node: BoundedRetryRule
+        action: checks that the retry count for actor discovery has not exceeded the cap
+      - node: RetryActorDiscovery
+        action: packages the validation errors identifying which angles failed as context for retry
+      - node: _actors/LLMWorker
+        action: reads the error report and retries only the failed discovery angles
+      - node: _actors/LLMWorker
+        action: merges the retried results with any valid results from the original attempt
+      - node: actors/ActorsFile
+        action: stores the corrected _actors.yaml with all 3 angles covered
+      - node: ValidateActorCompleteness
+        action: confirms all 3 angles are now present in the corrected file
+      - node: actors/ThreeAngleDiscovery
+        action: enforces that exactly 3 angles were used
+      - node: ConvergenceState
+        action: records that actor discovery is complete after retry
+
+  ValidateFullGraphAfterReconvergence:
+    steps:
+      - node: TargetedReconvergence
+        action: completes reconvergence of stale modules after a wake event
+      - node: _actors/Compiler
+        action: validates only the stale modules during targeted reconvergence
+      - node: compilation/CompilationResult
+        action: provides the scoped result showing stale modules are clean
+      - node: FullGraphCheckAfterReconvergence
+        action: triggers a full compilation across ALL modules, not just the stale ones
+      - node: _actors/Compiler
+        action: runs full compilation checking all nodes, journeys, and cross-module references
+      - node: compilation/DanglingRefDetection
+        action: checks that no non-stale module now has dangling refs to nodes changed during reconvergence
+      - node: compilation/OrphanDetection
+        action: checks that no node became orphaned due to journey changes in stale modules
+      - node: compilation/CompilationResult
+        action: provides the full-graph compilation result
+      - node: compilation/ZeroErrorConvergence
+        action: confirms the full graph meets zero-error zero-orphan threshold before publishing
+      - node: TriggerPublish
+        action: publishes only after the full graph is confirmed clean
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep with confidence the published graph is consistent
+
+  SuppressNoChangePublish:
+    steps:
+      - node: TargetedReconvergence
+        action: completes reconvergence of stale modules after a wake event
+      - node: FullGraphCheckAfterReconvergence
+        action: confirms the full graph is clean after reconvergence
+      - node: publish/ComputeInterfaceHash
+        action: computes the SHA256 hash of the current graph's interface
+      - node: publish/GenerateInterfaceYaml
+        action: provides the previously published interface.yaml with its stored hash
+      - node: SkipPublishOnUnchangedHash
+        action: compares the new hash against the previously published hash
+      - node: SkipPublishOnUnchangedHash
+        action: detects that the hashes match, meaning reconvergence confirmed the graph but did not change it
+      - node: SkipPublishOnUnchangedHash
+        action: skips publish and event file write since no downstream box needs to reconverge
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep without writing an event file, breaking the ripple chain
+
+  SolveContextProblemWithScopedPieces:
+    steps:
+      - node: _actors/ProjectOwner
+        action: has a complex system too large for any single brain to hold all context
+      - node: SpecFile
+        action: captures the full system description as the sole human input
+      - node: ReadSpec
+        action: ingests the spec as genome8's starting point for solving the context problem
+      - node: WriteOrganization
+        action: identifies independent concerns in the system and scopes each into a box
+      - node: ModuleCreation
+        action: creates a YAML module for each scoped piece with typed nodes
+      - node: _actors/LLMWorker
+        action: fills each module with nodes and journeys that map the piece deeply
+      - node: CompileCheck
+        action: validates that all pieces connect into a single coherent graph with zero errors
+      - node: graph/CompiledIndex
+        action: merges all scoped pieces into the living context graph
+
+  KeepGraphInSyncAutomatically:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: changes the spec or a module, altering part of the system context
+      - node: TargetedReconvergence
+        action: detects what changed and reconverges only the affected scoped pieces
+      - node: CompileCheck
+        action: revalidates the graph to confirm zero errors after the change
+      - node: TriggerPublish
+        action: publishes the updated interface with a new content hash
+      - node: publish/WriteEventFile
+        action: writes an event file signaling the change to any dependent box
+      - node: _actors/DependentBox
+        action: detects the upstream change via fs.watch at zero cost
+      - node: WakeOnEvent
+        action: wakes and triggers its own targeted reconvergence from the ripple
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep after propagating the change through the graph
+
+  GraphReplacesAllDocumentation:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes only spec.md describing what they want from the system
+      - node: ReadSpec
+        action: reads the spec as the sole human-authored input
+      - node: WriteOrganization
+        action: auto-generates the system architecture as scoped modules
+      - node: DiscoverActors
+        action: auto-discovers all actors from three angles without human enumeration
+      - node: ModuleCreation
+        action: auto-creates modules with nodes typed as process, artifact, interface, rule, or actor
+      - node: _actors/LLMWorker
+        action: fills journeys that serve as use cases, test cases, and architecture documentation simultaneously
+      - node: CompileCheck
+        action: validates the graph is complete and connected, replacing manual documentation review
+      - node: TargetedAudit
+        action: checks coverage from three angles ensuring nothing is missed
+      - node: TriggerPublish
+        action: publishes the living graph that IS the documentation, auto-synced and never stale
+
+  StopConvergenceFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome stop to terminate all convergence processes
+      - node: ConvergenceCLI
+        action: parses the stop command and project directory from process.argv
+      - node: StopConvergenceProcesses
+        action: reads pids.json to find the convergence process tree
+      - node: StopConvergenceProcesses
+        action: kills each child engine process first using platform-specific signals
+      - node: StopConvergenceProcesses
+        action: kills the main convergence process
+      - node: StopConvergenceProcesses
+        action: deletes pids.json to clean up the process registry
+      - node: ConvergenceCLI
+        action: confirms all convergence processes have been stopped
+
+  ShowProcessStatusFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome ps to see running convergence processes
+      - node: ConvergenceCLI
+        action: parses the ps command and project directory from process.argv
+      - node: ShowRunningProcesses
+        action: reads pids.json to find main PID, worker, and child engine PIDs
+      - node: ShowRunningProcesses
+        action: reads convergence-state.json to get current status and graph stats
+      - node: ConvergenceCLI
+        action: displays process tree with PIDs and current convergence status
+
+  CheckConvergenceStatusFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome status to check if the graph is structurally converged
+      - node: ConvergenceCLI
+        action: parses the status command and modules directory from process.argv
+      - node: CompileCheck
+        action: compiles the full graph to get current stats and issues
+      - node: CheckConvergenceStatus
+        action: evaluates whether errors, orphans, isolated modules, and duplicates are all zero
+      - node: CheckConvergenceStatus
+        action: generates actionable fix guidance for each unmet convergence criterion
+      - node: ConvergenceCLI
+        action: displays convergence status and specific steps needed to reach convergence
+
+  InitializePipelineFromConfig:
+    steps:
+      - node: _actors/ProjectOwner
+        action: starts convergence on a project directory
+      - node: LoadProjectConfig
+        action: reads genome/config.json and merges overrides with default pipeline parameters
+      - node: ProjectConfig
+        action: stores the merged configuration used by every subsequent pipeline step
+      - node: WritePidFile
+        action: writes pids.json so the stop and ps commands can find and manage this process tree
+      - node: ReadSpec
+        action: reads spec.md from disk as the sole human input to the pipeline
+
+  ResumeAlreadyConvergedBox:
+    steps:
+      - node: _actors/ProjectOwner
+        action: starts convergence on a box that previously reached convergence
+      - node: LoadProjectConfig
+        action: reads config.json and initializes pipeline parameters
+      - node: WritePidFile
+        action: registers the process for stop and ps commands
+      - node: ReadSpec
+        action: reads spec.md from disk
+      - node: SkipToWatchIfConverged
+        action: reads convergence-state.json and finds status is sleeping or unstable
+      - node: SkipToWatchIfConverged
+        action: compiles the graph and computes the current interface hash
+      - node: publish/ComputeInterfaceHash
+        action: produces the hash for comparison against the stored hash
+      - node: SkipToWatchIfConverged
+        action: compares hashes and confirms they match so the full pipeline can be skipped
+      - node: EnterSleepMode
+        action: enters watch mode directly without running steps 1 through 6
+      - node: WakeOnEvent
+        action: sets up fs.watch on dependency event directories waiting for upstream changes
+
+  RetryLLMCallOnTimeout:
+    steps:
+      - node: _actors/LLMWorker
+        action: receives a task from the pipeline via worker.call
+      - node: llm/SendTask
+        action: sends the prompt to the LLM worker process
+      - node: RetryOnLLMTimeout
+        action: detects a timeout error in the worker response
+      - node: RetryOnLLMTimeout
+        action: waits 5 seconds before the first retry using exponential backoff
+      - node: llm/SendTask
+        action: re-sends the same prompt to the worker
+      - node: RetryOnLLMTimeout
+        action: detects a second timeout and waits 15 seconds before retrying
+      - node: llm/SendTask
+        action: re-sends the prompt a third time
+      - node: llm/ReceiveResult
+        action: receives the successful response after the retry succeeds
+      - node: BoundedRetryRule
+        action: enforces that retries stop after 3 attempts and the error propagates

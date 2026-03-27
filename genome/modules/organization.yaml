@@ -73,6 +73,9 @@ nodes:
   PreserveExistingModulesOnReorganize:
     type: process
     description: ensures existing module YAML files are not deleted when the module list changes during reconvergence, flagging removed modules for human review instead
+  DetectModuleRename:
+    type: process
+    description: compares descriptions of newly added modules against descriptions of modules flagged for removal to identify semantic renames, preventing false add/remove pairs caused by LLM non-determinism in naming
   OrganizationFile:
     type: artifact
     description: the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis
@@ -479,3 +482,22 @@ journeys:
         action: if retry succeeds the organization file is now on disk
       - node: convergence/ConvergenceState
         action: if retry also fails receives a fatal error halting the pipeline
+
+  HandleModuleRenameDuringReorganize:
+    steps:
+      - node: DiffModuleListAgainstExisting
+        action: has identified additions and removals in the module list during reconvergence
+      - node: DiffModuleListAgainstExisting
+        action: provides the list of new modules and removed modules with their descriptions
+      - node: DetectModuleRename
+        action: compares each removed module's description against each added module's description for semantic similarity
+      - node: DetectModuleRename
+        action: identifies pairs where the description is semantically equivalent but the name differs
+      - node: DetectModuleRename
+        action: reclassifies identified pairs as renames instead of separate add and remove operations
+      - node: PreserveExistingModulesOnReorganize
+        action: updates the existing module YAML file name to match the new name instead of flagging for removal
+      - node: ModuleList
+        action: records the rename mapping so downstream consumers reference the new module name
+      - node: convergence/ConvergenceState
+        action: records the rename instead of an add/remove preventing unnecessary module recreation

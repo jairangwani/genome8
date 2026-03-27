@@ -62,12 +62,22 @@ nodes:
   SkeletonFile:
     type: artifact
     description: a TypeScript file containing empty stubs for all nodes in a module, ready for LLM to fill
+    files: [test/codegen.test.ts]
   FilledSourceFile:
     type: artifact
     description: a TypeScript file with LLM-filled implementations for all node stubs in a module
   GeneratedCodeDirectory:
     type: artifact
     description: the output directory containing all generated TypeScript files organized by module
+  FilesFieldRequired:
+    type: rule
+    description: skeleton generation only targets nodes that declare a files field, skipping all nodes without explicit file path mappings
+  NeverOverwriteExisting:
+    type: rule
+    description: skeleton generation skips any file path where a file already exists on disk, preventing accidental overwrite of filled implementations
+  EnsureOutputDirectory:
+    type: process
+    description: creates the output directory tree for a skeleton file if it does not already exist on disk before writing
   CodeComesFromNodes:
     type: rule
     description: every generated function, class, or interface maps directly to a node in the graph — no code exists without a node
@@ -403,3 +413,22 @@ journeys:
         action: confirms the file was successfully written on retry
       - node: convergence/ConvergenceState
         action: records the write failure and recovery for diagnostic logging
+
+  FilterAndProtectDuringSkeletonWrite:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides all nodes in the converged graph
+      - node: ReadConvergedGraph
+        action: iterates every node in the compiled index
+      - node: FilesFieldRequired
+        action: skips any node that does not declare a files field
+      - node: GenerateProcessSkeletons
+        action: generates a TypeScript skeleton for each process node that passes the filter
+      - node: NeverOverwriteExisting
+        action: checks the target file path on disk and skips if a file already exists
+      - node: EnsureOutputDirectory
+        action: creates the parent directory tree if it does not yet exist
+      - node: WriteGeneratedFile
+        action: writes the skeleton to disk at the declared file path
+      - node: SkeletonFile
+        action: the generated skeleton is stored and ready for LLM filling

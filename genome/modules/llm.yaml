@@ -194,6 +194,34 @@ nodes:
   ParallelWorkerPoolLimit:
     type: rule
     description: caps the maximum number of concurrent worker processes during parallel creation or enrichment operations, preventing host machine resource exhaustion from too many simultaneous Claude Code subprocesses
+  DetectRateLimitResponse:
+    type: process
+    description: detects API rate limit (429) or quota exceeded responses in worker output and kills the process for delayed retry
+    files: ["src/llm.ts"]
+  HandleStdinBackpressure:
+    type: process
+    description: detects when stdin write buffer is full on large prompts and waits for drain event with 60-second timeout to prevent hangs
+    files: ["src/llm.ts"]
+  PlatformSpecificProcessKill:
+    type: process
+    description: kills the worker process tree using platform-appropriate method — taskkill /T /F on Windows, SIGTERM then SIGKILL after 5 seconds on Unix
+    files: ["src/llm.ts"]
+  ResolveClaudeBinary:
+    type: process
+    description: locates the Claude CLI binary path at module load time, using where on Windows and falling back to bare command name
+    files: ["src/llm.ts"]
+  BypassNestingDetection:
+    type: process
+    description: removes Claude Code nesting-detection environment variables before spawning the worker to prevent the subprocess from refusing to start
+    files: ["src/llm.ts"]
+  WaitForWorkerInit:
+    type: process
+    description: polls for the system init message from the spawned Claude Code process every 200ms with a 60-second safety timeout before sending the first task
+    files: ["src/llm.ts"]
+  DetectSessionError:
+    type: process
+    description: detects error_during_execution subtype in worker result messages and kills the process for a fresh start
+    files: ["src/llm.ts"]
 
 journeys:
   SpawnAndInitializeWorker:
@@ -1053,3 +1081,97 @@ journeys:
         action: sends the task to the verified-healthy worker
       - node: _actors/LLMWorker
         action: receives and begins processing the task on the confirmed-healthy worker
+
+  HandleRateLimitDuringTask:
+    steps:
+      - node: _actors/LLMWorker
+        action: completes a task but returns a rate limit or quota exceeded error instead of a result
+      - node: ReceiveResult
+        action: parses the result message and extracts the error text
+      - node: DetectRateLimitResponse
+        action: matches the error text against rate limit patterns including 429 and quota exceeded
+      - node: DetectRateLimitResponse
+        action: determines the response is a rate limit failure, not a normal result
+      - node: ShutdownWorker
+        action: kills the rate-limited worker process to force a fresh connection on retry
+      - node: CleanupFailedSession
+        action: tears down the session so the next spawn gets a clean state
+      - node: convergence/DetectWorkerFailure
+        action: receives the rate limit failure for orchestration-level retry with backoff
+
+  DrainLargePayloadBackpressure:
+    steps:
+      - node: BuildTaskContext
+        action: assembles a large task payload exceeding the stdin buffer capacity
+      - node: TaskPayload
+        action: packages the oversized context into a single JSON message
+      - node: SendTask
+        action: writes the JSON message to the worker stdin pipe and detects buffer is full
+      - node: HandleStdinBackpressure
+        action: detects that write returned false indicating the stdin buffer is full
+      - node: HandleStdinBackpressure
+        action: registers a drain event listener with a 60-second safety timeout
+      - node: HandleStdinBackpressure
+        action: also monitors for process death during the drain wait to avoid hanging on a dead worker
+      - node: StreamJsonProtocol
+        action: resumes normal data flow after the backpressure clears
+      - node: _actors/LLMWorker
+        action: receives the complete message after the buffer drains
+
+  KillWorkerProcessTree:
+    steps:
+      - node: ShutdownWorker
+        action: decides to terminate the worker process and delegates to platform-specific kill
+      - node: PlatformSpecificProcessKill
+        action: checks the operating system platform to select the kill strategy
+      - node: PlatformSpecificProcessKill
+        action: on Windows executes taskkill /T /F /PID to kill the entire process tree
+      - node: PlatformSpecificProcessKill
+        action: on Unix sends SIGTERM then waits 5 seconds before sending SIGKILL as fallback
+      - node: WorkerSession
+        action: is released after the process tree terminates
+
+  PrepareSpawnEnvironment:
+    steps:
+      - node: ResolveClaudeBinary
+        action: checks the operating system platform at module load time
+      - node: ResolveClaudeBinary
+        action: on Windows runs where claude to find the full binary path
+      - node: ResolveClaudeBinary
+        action: selects the first result or falls back to bare claude command name
+      - node: BypassNestingDetection
+        action: clones the process environment and removes CLAUDECODE and CLAUDE_CODE_ENTRYPOINT variables
+      - node: BypassNestingDetection
+        action: removes CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS to prevent team detection in the subprocess
+      - node: SpawnWorkerProcess
+        action: uses the resolved binary path and cleaned environment to launch the subprocess
+
+  WaitForInitBeforeFirstTask:
+    steps:
+      - node: SpawnWorkerProcess
+        action: launches the Claude Code subprocess which needs time to initialize
+      - node: StreamJsonProtocol
+        action: carries the system init message from the subprocess stdout
+      - node: WaitForWorkerInit
+        action: polls every 200ms checking for the system init message
+      - node: WaitForWorkerInit
+        action: enforces a 60-second safety timeout to prevent infinite waiting on broken spawns
+      - node: WaitForWorkerInit
+        action: also exits early if the process dies before init completes
+      - node: SendTask
+        action: proceeds to send the first task after init is confirmed or timeout expires
+
+  HandleSessionErrorDuringTask:
+    steps:
+      - node: _actors/LLMWorker
+        action: encounters an internal error during task execution
+      - node: ReceiveResult
+        action: receives a result message with error_during_execution subtype
+      - node: DetectSessionError
+        action: identifies the error_during_execution subtype indicating a corrupted session
+      - node: ShutdownWorker
+        action: kills the process after a short delay to allow cleanup
+      - node: CleanupFailedSession
+        action: tears down the corrupted session for a fresh start
+      - node: convergence/DetectWorkerFailure
+        action: receives the session error for respawn decision

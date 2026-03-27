@@ -59,6 +59,7 @@ nodes:
   CompilationResult:
     type: artifact
     description: the output of compile.ts containing error count, warning count, orphan list, duplicate list, and dangling ref list
+    files: [test/compile.test.ts]
   ErrorReport:
     type: artifact
     description: structured list of all validation errors with type, location, and message for each
@@ -89,6 +90,32 @@ nodes:
   ExternalRefsAreWarnings:
     type: rule
     description: unresolved refs to sibling engines are warnings in children, errors only at parent level
+  EmptyModuleDirectoryDetection:
+    type: process
+    description: detects when the modules directory is missing or contains zero YAML files and reports a clear error instead of producing an empty compiled index
+  FileReadFailureHandling:
+    type: process
+    description: catches file I/O errors (permission denied, file locked, disk error) when reading a module YAML file and records the failure without crashing the compilation run
+  UnlistedModuleDetection:
+    type: process
+    description: compares compiled module files on disk against the ORGANIZATION.md module list and flags modules that exist as YAML files but are not listed in the organization
+  ConcurrentWriteDetection:
+    type: process
+    description: detects when a module file was modified during compilation by comparing file modification timestamps before and after reading, catching half-written files from concurrent LLM edits
+  DuplicateJourneyDetection:
+    type: process
+    description: scans the journey registry for duplicate journey names across all modules, analogous to DuplicateDetection for nodes
+  PersistCompilationArtifacts:
+    type: process
+    description: writes the compiled index as index.yaml and the coverage report as coverage.yaml to the compiled/ directory after a successful compilation
+    files: [src/cli.ts]
+  CoverageComputation:
+    type: process
+    description: computes per-module coverage metrics including node count, journey count, connection count, cross-module connections, and spec section claims for every compiled module
+    files: [src/compile.ts]
+  ModuleCoverageReport:
+    type: artifact
+    description: the coverage section of the compile result containing per-module metrics, orphan list, and isolated module list returned alongside errors and warnings
 
 journeys:
   ParseAllModules:
@@ -401,8 +428,8 @@ journeys:
         action: provides the compiled index containing all journeys and their steps
       - node: ValidateActionQuality
         action: iterates every journey step and flags actions that are empty or shorter than 5 characters
-      - node: ErrorReport
-        action: records each low-quality action as a validation issue with journey name and step number
+      - node: WarningReport
+        action: records each low-quality action as a warning with journey name and step number
 
   VerifyCompilationIdempotency:
     steps:
@@ -578,3 +605,108 @@ journeys:
         action: filters to sequences appearing in two or more distinct journeys
       - node: WarningReport
         action: records each duplicate sequence with the shared node triple and the list of journeys that contain it
+
+  DetectUnlistedModules:
+    steps:
+      - node: _actors/Compiler
+        action: scans the modules directory for all .yaml files present on disk
+      - node: organization/ModuleList
+        action: provides the expected list of modules from ORGANIZATION.md
+      - node: UnlistedModuleDetection
+        action: compares disk files against the organization list and identifies files with no matching entry
+      - node: UnlistedModuleDetection
+        action: checks whether any other module's journeys reference nodes from the unlisted module
+      - node: WarningReport
+        action: records each unlisted module as a warning with the file name and any cross-module references depending on it
+
+  HandleEmptyModuleDirectory:
+    steps:
+      - node: _actors/Compiler
+        action: scans the modules directory for .yaml files
+      - node: EmptyModuleDirectoryDetection
+        action: detects that the directory is missing or contains zero YAML files
+      - node: ErrorReport
+        action: records an error indicating no modules found with the expected directory path
+      - node: CompilationResult
+        action: outputs a result with one error and zero nodes, journeys, and connections
+      - node: ZeroErrorConvergence
+        action: fails the zero-error check, blocking convergence until modules exist
+
+  HandleFileReadFailure:
+    steps:
+      - node: _actors/Compiler
+        action: attempts to read a module YAML file from disk
+      - node: FileReadFailureHandling
+        action: catches the I/O error (permission denied, file locked, or disk error) and records the file path and error message
+      - node: ErrorReport
+        action: records the unreadable file as a compilation error with the file path and OS error detail
+      - node: SkipMalformedModule
+        action: excludes the unreadable module from the compiled index, same as a parse failure
+      - node: ValidationAggregation
+        action: includes the file read error in the aggregated result alongside any other validation errors
+      - node: CompilationResult
+        action: outputs a result with non-zero error count due to the unreadable module
+
+  DetectConcurrentWrite:
+    steps:
+      - node: _actors/Compiler
+        action: records the modification timestamp of a module file before reading it
+      - node: YAMLParsing
+        action: reads and parses the module file contents
+      - node: ConcurrentWriteDetection
+        action: re-checks the file modification timestamp after reading and detects it changed during the read
+      - node: SkipMalformedModule
+        action: discards the potentially corrupt parse result for the concurrently modified file
+      - node: WarningReport
+        action: records a warning that the module was modified during compilation and its result was discarded
+      - node: _actors/Compiler
+        action: re-reads the module file after the concurrent write completes
+      - node: YAMLParsing
+        action: reparses the module from the now-stable file
+      - node: ConcurrentWriteDetection
+        action: confirms the file timestamp is stable between pre-read and post-read checks
+      - node: graph/IncrementalMerge
+        action: merges the cleanly read module into the compiled index
+
+  DetectDuplicateJourneyNames:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the full journey registry for inspection
+      - node: DuplicateJourneyDetection
+        action: scans all journey names and flags any name that appears in more than one module
+      - node: graph/UniqueJourneyNameRule
+        action: enforces that duplicate journey names are rejected as validation errors
+      - node: ErrorReport
+        action: records each duplicate journey name as a validation error with both module locations
+
+  ComputeModuleCoverage:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides all compiled nodes with their module assignments and connection data
+      - node: graph/ConnectionSet
+        action: provides all computed edges for counting per-module connections
+      - node: CoverageComputation
+        action: iterates each module counting nodes, journeys, connections, and cross-module connections
+      - node: CoverageComputation
+        action: collects orphan nodes and isolated modules into separate lists
+      - node: ModuleCoverageReport
+        action: stores the per-module coverage metrics alongside orphan and isolated module lists
+      - node: CompilationResult
+        action: includes the coverage report as part of the compile output
+
+  CompileAndPersistFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome compile from the command line with a modules directory argument
+      - node: CompileCLI
+        action: parses the compile command and the modules directory path from process.argv
+      - node: _actors/Compiler
+        action: executes the full compilation pipeline on all module YAML files
+      - node: CompilationResult
+        action: produces the compiled index with stats, errors, and warnings
+      - node: ModuleCoverageReport
+        action: produces per-module coverage metrics alongside orphan and isolated module lists
+      - node: PersistCompilationArtifacts
+        action: creates the compiled/ directory if needed and writes index.yaml and coverage.yaml to disk
+      - node: CompileCLI
+        action: prints stats as JSON and displays errors and up to 10 warnings to the developer

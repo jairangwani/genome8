@@ -11,6 +11,7 @@ nodes:
   CompareStoredHash:
     type: process
     description: compares each fetched dependency hash against the locally stored hash from the last sync
+    files: [test/staleness.test.ts]
   IdentifyStaleDependencies:
     type: process
     description: collects all dependencies whose hash has changed since the last sync
@@ -107,6 +108,26 @@ nodes:
   ReconcileSequenceNumbersOnRestart:
     type: process
     description: on restart after crash, compares each dependency's current event sequence number against the locally stored LastProcessedSequence and fast-forwards to the latest sequence when the stored value is behind
+  CheckVersionPin:
+    type: process
+    description: checks whether a dependency is pinned to a specific version hash and skips reconvergence when the current interface hash does not match the pinned version
+    files: ["src/sync.ts"]
+  AlertOnPinnedUpdate:
+    type: process
+    description: when a pinned dependency has a new version available and alert_on_update is configured, records the new hash in sync state without triggering reconvergence
+    files: ["src/sync.ts"]
+  FallbackToLastKnownGood:
+    type: process
+    description: continues with cached dependency state when the dependency interface.yaml is unavailable and the fallback configuration is set to last_known_good
+    files: ["src/sync.ts"]
+  ReadDependencyChangelog:
+    type: process
+    description: reads changelog.yaml from the dependency published directory and attaches the parsed changelog to the sync change entry
+    files: ["src/sync.ts"]
+  SkipAlreadyStaleModule:
+    type: process
+    description: checks whether a module file already contains a _stale marker and skips redundant stale marking to prevent duplicate markers
+    files: ["src/sync.ts"]
   DependencyHashStore:
     type: artifact
     description: local storage of the last-known SHA256 hash for each dependency interface
@@ -116,6 +137,7 @@ nodes:
   SyncResult:
     type: artifact
     description: the output of sync.ts containing changed dependencies, affected modules, and stale markers
+    files: [test/sync-loop.test.ts]
   LastProcessedSequence:
     type: artifact
     description: stores the last successfully processed event sequence number per dependency for detecting out-of-order or duplicate events
@@ -1018,3 +1040,65 @@ journeys:
         action: compares fetched hashes against stored to determine if reconvergence is needed for missed changes
       - node: SyncResult
         action: records the sequence reconciliation results and whether any missed changes require sync
+
+  SkipPinnedDependencyUpdate:
+    steps:
+      - node: ReadDependencyList
+        action: reads the dependency configuration including pin settings for each dependency
+      - node: FetchDependencyHash
+        action: fetches the current hash from the dependency interface.yaml
+      - node: CheckVersionPin
+        action: compares the dependency pin value against the fetched hash
+      - node: CheckVersionPin
+        action: determines the pin is set to a specific hash that differs from latest, blocking reconvergence
+      - node: AlertOnPinnedUpdate
+        action: if alert_on_update is configured, records the new hash in sync state for monitoring
+      - node: DependencyHashStore
+        action: updates the known hash for alerting purposes without triggering staleness
+      - node: SyncResult
+        action: records that the dependency was skipped due to version pinning
+
+  FallbackOnUnavailableDependency:
+    steps:
+      - node: ReadDependencyList
+        action: reads the dependency configuration including fallback settings
+      - node: FetchDependencyHash
+        action: attempts to read interface.yaml from the dependency published directory
+      - node: FetchDependencyHash
+        action: finds the interface.yaml file does not exist on disk
+      - node: FallbackToLastKnownGood
+        action: checks that the dependency fallback is configured as last_known_good
+      - node: FallbackToLastKnownGood
+        action: continues with the previously cached hash treating the dependency as unchanged
+      - node: DependencyHashStore
+        action: retains the existing stored hash since no new hash is available
+      - node: SyncResult
+        action: records that the dependency was skipped due to fallback with unavailable interface
+
+  ReadChangelogDuringSyncCheck:
+    steps:
+      - node: CompareStoredHash
+        action: detects a hash mismatch for a dependency indicating a change
+      - node: ReadDependencyChangelog
+        action: reads changelog.yaml from the dependency published directory
+      - node: ReadDependencyChangelog
+        action: parses the changelog YAML into a structured Changelog object
+      - node: SyncResult
+        action: attaches the parsed changelog to the sync change entry for downstream consumers
+      - node: FindAffectedModules
+        action: can use the changelog to narrow which modules are truly affected
+
+  SkipRedundantStaleMarking:
+    steps:
+      - node: FindAffectedModules
+        action: identifies local modules affected by a dependency change
+      - node: MarkModulesStale
+        action: iterates each affected module to write stale markers
+      - node: SkipAlreadyStaleModule
+        action: reads the module file and checks for existing _stale marker
+      - node: SkipAlreadyStaleModule
+        action: skips writing when the module is already marked stale from a previous sync
+      - node: MarkModulesStale
+        action: writes stale markers only on modules not already stale
+      - node: StaleModuleList
+        action: stores the final list including both newly and previously stale modules

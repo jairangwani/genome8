@@ -1,0 +1,105 @@
+/**
+ * codegen.ts — Generate code skeletons from the journey graph.
+ *
+ * For each process node that has a files: field, generate a skeleton
+ * implementation file. The agent fills in the actual implementation.
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+/**
+ * Generate code skeleton files for all process nodes that have files: field.
+ */
+export function generateCodeSkeletons(index, projectDir) {
+    const generated = [];
+    const skipped = [];
+    for (const [fullName, node] of Object.entries(index.nodes)) {
+        if (node.type !== 'process')
+            continue;
+        if (!node.files?.length) {
+            skipped.push(`${fullName}: no files: field`);
+            continue;
+        }
+        for (const filePath of node.files) {
+            const absPath = path.join(projectDir, filePath);
+            // Don't overwrite existing files
+            if (fs.existsSync(absPath)) {
+                skipped.push(`${filePath}: already exists`);
+                continue;
+            }
+            // Ensure directory exists
+            const dir = path.dirname(absPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            // Generate skeleton
+            const content = generateSkeleton(fullName, node, filePath);
+            fs.writeFileSync(absPath, content);
+            generated.push(filePath);
+        }
+    }
+    return { generated, skipped };
+}
+/**
+ * Generate a skeleton file for a process node.
+ */
+function generateSkeleton(fullName, node, filePath) {
+    const name = fullName.split('/')[1];
+    const ext = path.extname(filePath);
+    if (ext === '.ts' || ext === '.js') {
+        return generateTypeScriptSkeleton(name, node);
+    }
+    // Default: generic skeleton
+    return `// ${fullName}\n// ${node.description}\n// TODO: implement\n`;
+}
+function generateTypeScriptSkeleton(name, node) {
+    const lines = [];
+    lines.push(`/**`);
+    lines.push(` * ${name}`);
+    lines.push(` * ${node.description}`);
+    lines.push(` *`);
+    lines.push(` * Used in journeys:`);
+    for (const j of node.in_journeys) {
+        lines.push(` *   - ${j}`);
+    }
+    lines.push(` *`);
+    lines.push(` * Preceded by: ${node.preceded_by.join(', ') || 'none'}`);
+    lines.push(` * Followed by: ${node.followed_by.join(', ') || 'none'}`);
+    if (node.triggered_by_actors.length) {
+        lines.push(` * Triggered by: ${node.triggered_by_actors.join(', ')}`);
+    }
+    lines.push(` */`);
+    lines.push('');
+    // Properties as interface
+    if (node.properties && Object.keys(node.properties).length > 0) {
+        lines.push(`export interface ${name}Config {`);
+        for (const [key, value] of Object.entries(node.properties)) {
+            lines.push(`  ${key}: ${typeof value === 'string' ? 'string' : typeof value};`);
+        }
+        lines.push('}');
+        lines.push('');
+    }
+    // Main class/function
+    lines.push(`export class ${name} {`);
+    lines.push(`  // TODO: implement based on journey descriptions above`);
+    lines.push('');
+    // Generate method stubs from journey steps
+    const actions = new Set();
+    for (const j of node.in_journeys) {
+        // in_journeys format: "JourneyName (step N)"
+        actions.add(j.split(' (')[0]);
+    }
+    for (const action of actions) {
+        lines.push(`  /** Journey: ${action} */`);
+        lines.push(`  async ${toCamelCase(action)}(): Promise<void> {`);
+        lines.push(`    // TODO: implement`);
+        lines.push(`    throw new Error('Not implemented');`);
+        lines.push(`  }`);
+        lines.push('');
+    }
+    lines.push('}');
+    return lines.join('\n');
+}
+function toCamelCase(str) {
+    return str.charAt(0).toLowerCase() + str.slice(1).replace(/[^a-zA-Z0-9]/g, '');
+}
+//# sourceMappingURL=codegen.js.map

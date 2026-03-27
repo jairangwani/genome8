@@ -648,3 +648,37 @@ journeys:
         action: gathers findings to verify the self-fix resolved the gap without opening new ones
       - node: AuditFindingsList
         action: stores the post-self-fix findings for comparison against the pre-fix state
+
+  CheckActorCoverageAgainstActorList:
+    steps:
+      - node: actors/ActorsFile
+        action: provides the authoritative list of discovered actors from 3-angle discovery
+      - node: actors/MergedActorList
+        action: supplies all actors after merge and deduplication
+      - node: GenerateAuditPrompt
+        action: builds the actor coverage prompt including the full actor list as ground truth
+      - node: _actors/Auditor
+        action: compares each actor from the list against journey step references across all modules
+      - node: CheckActorCoverage
+        action: flags actors that appear in no journey and actors confined to a single module
+      - node: ActorCoverageReport
+        action: records which actors are covered, which are orphaned, and which are single-module
+      - node: CollectAuditFindings
+        action: adds actor coverage gaps to the findings list with the source actor module as context
+
+  CheckSpecCoverageAgainstOrganization:
+    steps:
+      - node: organization/SpecSectionIndex
+        action: provides the indexed list of spec sections parsed from spec.md
+      - node: organization/ModuleSpecSectionMap
+        action: provides the mapping of which modules claim which spec sections
+      - node: GenerateAuditPrompt
+        action: builds the spec coverage prompt including the section-to-module mapping as ground truth
+      - node: _actors/Auditor
+        action: compares each spec section against nodes and journeys in modules that claim it
+      - node: CheckSpecCoverage
+        action: flags spec sections with no claiming module and sections with claims but no journeys
+      - node: SpecCoverageReport
+        action: records which sections are covered, which are unclaimed, and which are thinly covered
+      - node: CollectAuditFindings
+        action: adds spec coverage gaps to the findings list with the organization mapping as context

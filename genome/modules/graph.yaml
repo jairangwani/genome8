@@ -16,9 +16,11 @@ nodes:
   CrossModuleRefResolution:
     type: process
     description: resolves node references that use module/NodeName syntax to link nodes across module boundaries
+    files: ["src/types.ts"]
   ActorRefResolution:
     type: process
     description: resolves actor references that use _actors/ActorName syntax to link shared actors into journeys
+    files: ["src/types.ts"]
   PublishedInterfaceDefinition:
     type: process
     description: defines what a box provides to other boxes as a versioned, hashable set of exported nodes and journeys
@@ -40,6 +42,9 @@ nodes:
   FieldPreservation:
     type: process
     description: preserves all YAML fields including unknown or extension fields when a module file is read, modified, and written back, preventing silent data loss on round-trip
+  CrossModuleImpactScan:
+    type: process
+    description: scans all modules' journey steps for cross-module references pointing to a changed module's nodes, identifying which other modules are affected by the change
   ModuleSchemaRule:
     type: rule
     description: enforces that every module file must have the required top-level structure (spec_sections as number array, nodes as a map of name to type+description, journeys as a map of name to steps array)
@@ -61,6 +66,9 @@ nodes:
   MinimumStepsRule:
     type: rule
     description: enforces that every journey must have at least 2 steps, since a single-step journey produces no connections and has no graph meaning
+  UniqueJourneyNameRule:
+    type: rule
+    description: enforces that every journey name must be unique across all modules — no two modules may define the same journey name
   ModuleFile:
     type: artifact
     description: a YAML file containing spec_sections, nodes, and journeys that defines one scoped piece of the graph
@@ -399,3 +407,63 @@ journeys:
         action: validates the rewritten file still conforms to the required module structure
       - node: ModuleFile
         action: stores the rewritten module only after preservation checks pass
+
+  DetectCrossModuleImpact:
+    steps:
+      - node: CompiledIndex
+        action: identifies which nodes were added, renamed, or removed in the changed module
+      - node: JourneyRegistry
+        action: provides all journeys across all modules for reference scanning
+      - node: CrossModuleImpactScan
+        action: scans every journey step for cross-module references targeting the changed module's nodes
+      - node: CrossModuleImpactScan
+        action: collects the set of other modules whose journeys reference affected nodes
+      - node: AllRefsResolveRule
+        action: flags cross-module references that now point to renamed or removed nodes as dangling
+      - node: compilation/CompilationResult
+        action: reports the list of affected modules and their dangling references for targeted revalidation
+
+  PropagateNodeRename:
+    steps:
+      - node: NodeRegistry
+        action: records the old-name-to-new-name mapping for the renamed node
+      - node: CrossModuleImpactScan
+        action: finds all cross-module references using the old node name across all modules
+      - node: JourneyRegistry
+        action: identifies specific journeys and steps containing the old reference
+      - node: CrossModuleRefResolution
+        action: rewrites each old-name reference to the new-name reference in affected journey steps
+      - node: ConnectionComputation
+        action: recomputes connections for journeys whose steps were updated
+      - node: ConnectionSet
+        action: replaces edges referencing the old node name with edges using the new name
+      - node: CompiledIndex
+        action: updated with all references consistently pointing to the renamed node
+
+  RejectDuplicateJourneyName:
+    steps:
+      - node: _actors/Compiler
+        action: reads all module YAML files and collects every journey name with its source module
+      - node: JourneyRegistry
+        action: detects that two or more modules define a journey with the same name
+      - node: UniqueJourneyNameRule
+        action: rejects the duplicate because journey names must be unique across all modules
+      - node: _actors/Compiler
+        action: reports a validation error identifying the duplicate journey name and the conflicting modules
+
+  PropagateNodeRemoval:
+    steps:
+      - node: NodeRegistry
+        action: removes the deleted node from the deduplicated map of all nodes
+      - node: JourneyRegistry
+        action: identifies all journeys containing steps that reference the removed node
+      - node: CrossModuleImpactScan
+        action: finds cross-module references from other modules pointing to the removed node
+      - node: AllRefsResolveRule
+        action: flags every remaining reference to the removed node as dangling
+      - node: ConnectionSet
+        action: purges all directed edges where the removed node is the source or target
+      - node: ConnectionDeduplication
+        action: re-deduplicates the connection set after edge removal to maintain provenance accuracy
+      - node: CompiledIndex
+        action: updated with the node, its edges, and its registry entry fully removed

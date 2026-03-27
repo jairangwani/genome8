@@ -20,7 +20,7 @@ import { generateTests } from './testgen.js';
 
 const [,, command, modulesDir, ...rest] = process.argv;
 
-if (!command || !modulesDir) {
+function showHelp() {
   console.log('Genome8 — Context engine for AI agents\n');
   console.log('Usage:');
   console.log('  genome compile <modules-dir>');
@@ -30,6 +30,15 @@ if (!command || !modulesDir) {
   console.log('  genome test-gen <modules-dir> <test-dir>');
   console.log('  genome stop <project-dir>             — kill all convergence processes');
   console.log('  genome ps <project-dir>               — show running convergence processes');
+}
+
+if (command === '--help' || command === '-h') {
+  showHelp();
+  process.exit(0);
+}
+
+if (!command || !modulesDir) {
+  showHelp();
   process.exit(1);
 }
 

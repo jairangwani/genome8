@@ -1,0 +1,51 @@
+// Auto-generated from journey: ChildSkipsOrganizationGeneration
+// Module: hierarchy
+// Triggered by: _actors/ChildEngine
+// Modules touched: _actors, hierarchy, convergence
+
+import { describe, it, expect } from 'vitest';
+
+describe("ChildSkipsOrganizationGeneration", () => {
+  it("step 1: _actors/ChildEngine begins convergence in its scoped directory after being spawned by the parent", () => {
+    // Node: _actors/ChildEngine (actor)
+    // Action: begins convergence in its scoped directory after being spawned by the parent
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: hierarchy/DetectInheritedOrganization checks the engine's directory and finds ORGANIZATION.md placed there by the parent", () => {
+    // Node: hierarchy/DetectInheritedOrganization (process)
+    // Action: checks the engine's directory and finds ORGANIZATION.md placed there by the parent
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: hierarchy/ChildOrganizationFile provides the parent-assigned module list ensuring the child works on exactly the intended modules", () => {
+    // Node: hierarchy/ChildOrganizationFile (artifact)
+    // Action: provides the parent-assigned module list ensuring the child works on exactly the intended modules
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: convergence/ConvergenceState records that organization generation is skipped and the inherited module list is loaded", () => {
+    // Node: convergence/ConvergenceState (artifact)
+    // Action: records that organization generation is skipped and the inherited module list is loaded
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: hierarchy/DetectInheritedActors also detects inherited _actors.yaml in the same directory", () => {
+    // Node: hierarchy/DetectInheritedActors (process)
+    // Action: also detects inherited _actors.yaml in the same directory
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: hierarchy/SharedActorsNoduplicates confirms inherited actors are used without re-discovery", () => {
+    // Node: hierarchy/SharedActorsNoduplicates (rule)
+    // Action: confirms inherited actors are used without re-discovery
+    // TODO: agent fills assertion
+  });
+
+  it("step 7: convergence/HierarchyDecision proceeds to the hierarchy decision step bypassing both organization generation and actor discovery", () => {
+    // Node: convergence/HierarchyDecision (process)
+    // Action: proceeds to the hierarchy decision step bypassing both organization generation and actor discovery
+    // TODO: agent fills assertion
+  });
+
+});

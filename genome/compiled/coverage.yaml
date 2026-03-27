@@ -1,107 +1,116 @@
-_generated: '2026-03-25T09:16:13.131Z'
+_generated: '2026-03-27T06:31:11.831Z'
 modules:
   actors:
     nodes: 24
     journeys: 26
-    connections: 125
-    cross_module_connections: 43
+    connections: 129
+    cross_module_connections: 45
     spec_sections:
       - 3
       - 4
       - 5
   audit:
     nodes: 33
-    journeys: 19
-    connections: 179
-    cross_module_connections: 49
+    journeys: 21
+    connections: 185
+    cross_module_connections: 53
     spec_sections:
       - 3
       - 5
   codegen:
-    nodes: 24
-    journeys: 12
-    connections: 141
+    nodes: 27
+    journeys: 13
+    connections: 153
     cross_module_connections: 45
     spec_sections:
       - 3
       - 5
   compilation:
-    nodes: 28
-    journeys: 23
-    connections: 218
-    cross_module_connections: 101
+    nodes: 36
+    journeys: 31
+    connections: 287
+    cross_module_connections: 133
     spec_sections:
       - 3
   convergence:
-    nodes: 54
-    journeys: 28
-    connections: 364
-    cross_module_connections: 209
+    nodes: 81
+    journeys: 56
+    connections: 593
+    cross_module_connections: 289
     spec_sections:
+      - 1
       - 3
       - 5
       - 6
   events:
-    nodes: 39
-    journeys: 25
-    connections: 223
-    cross_module_connections: 47
+    nodes: 50
+    journeys: 35
+    connections: 315
+    cross_module_connections: 53
     spec_sections:
       - 3
       - 5
       - 6
   excerpt:
-    nodes: 21
-    journeys: 12
-    connections: 127
-    cross_module_connections: 39
+    nodes: 41
+    journeys: 32
+    connections: 269
+    cross_module_connections: 51
     spec_sections:
       - 3
   graph:
-    nodes: 25
-    journeys: 19
-    connections: 240
-    cross_module_connections: 96
+    nodes: 27
+    journeys: 23
+    connections: 297
+    cross_module_connections: 127
     spec_sections:
       - 2
   hierarchy:
-    nodes: 40
-    journeys: 20
-    connections: 244
-    cross_module_connections: 53
+    nodes: 46
+    journeys: 27
+    connections: 284
+    cross_module_connections: 71
     spec_sections:
       - 2
       - 3
       - 5
       - 6
   llm:
-    nodes: 48
-    journeys: 25
-    connections: 239
-    cross_module_connections: 63
+    nodes: 71
+    journeys: 46
+    connections: 437
+    cross_module_connections: 79
     spec_sections:
       - 3
+  metrics:
+    nodes: 10
+    journeys: 4
+    connections: 25
+    cross_module_connections: 5
+    spec_sections:
+      - 3
+      - 5
   organization:
-    nodes: 30
-    journeys: 19
-    connections: 174
-    cross_module_connections: 48
+    nodes: 31
+    journeys: 20
+    connections: 200
+    cross_module_connections: 60
     spec_sections:
       - 3
       - 5
   publish:
-    nodes: 33
-    journeys: 16
-    connections: 196
-    cross_module_connections: 35
+    nodes: 56
+    journeys: 39
+    connections: 378
+    cross_module_connections: 52
     spec_sections:
       - 2
       - 3
   sync:
-    nodes: 27
-    journeys: 14
-    connections: 162
-    cross_module_connections: 50
+    nodes: 52
+    journeys: 38
+    connections: 346
+    cross_module_connections: 63
     spec_sections:
       - 3
       - 5
@@ -117,12 +126,9 @@ modules:
   _actors:
     nodes: 22
     journeys: 3
-    connections: 220
-    cross_module_connections: 190
+    connections: 260
+    cross_module_connections: 228
     spec_sections:
       - 1
-orphans:
-  - compilation/BiometricAuthValidator
-  - excerpt/CompressModuleSummaries
-  - llm/ProactiveWorkerReplacement
+orphans: []
 isolated_modules: []
