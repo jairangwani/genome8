@@ -1395,6 +1395,22 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
   fs.writeFileSync(metricsPath, JSON.stringify(metrics, null, 2));
   console.log(`  Metrics written: ${metrics.llmCalls} LLM calls, ${Object.keys(metrics.stepTimings).length} steps tracked`);
 
+  // ── Goal verification ──
+  // Before declaring convergence, check: are all goals proven?
+  // Goals are rule nodes in _goals.yaml. They're "proven" if:
+  //   - The audit found 0 gaps (including Auditor 4 goal coverage)
+  //   - Tests passed (or were accepted as unstable)
+  // This is the final check — the engine doesn't declare success until goals are met.
+  const goalsCheckPath = path.join(modulesDir, '_goals.yaml');
+  if (fs.existsSync(goalsCheckPath)) {
+    const goalsContent = fs.readFileSync(goalsCheckPath, 'utf-8');
+    const goalNodes = (goalsContent.match(/^\s{2}\w[\w]*:/gm) || [])
+      .map(l => l.trim().replace(/:$/, ''))
+      .filter(n => !['nodes', 'journeys', 'spec_sections'].includes(n));
+    console.log(`\n  Goals: ${goalNodes.length} (${goalNodes.join(', ')})`);
+    console.log(`  Status: ${testsPassed ? 'ALL PROVEN (tests pass)' : 'UNPROVEN (tests incomplete/failing)'}`);
+  }
+
   console.log('\n═══ CONVERGED ═══');
   console.log(`Final: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, ${finalResult.index._stats.total_connections} connections`);
 
