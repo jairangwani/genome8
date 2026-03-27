@@ -242,6 +242,47 @@ async function run() {
         }
         catch { /* state file corrupt, run normally */ }
     }
+    // ═══ STEP 0 — Project Scaffolding ═══
+    // Detect project type from spec. Create package.json, tsconfig.json, etc. if missing.
+    // This removes the requirement for users to `npm init` before running convergence.
+    const isSoftwareSpec = /\.(ts|js|py|go|rs|java|tsx|jsx)\b/.test(spec) ||
+        /TypeScript|JavaScript|Node\.js|Python|npm|npx|CLI/.test(spec);
+    if (isSoftwareSpec) {
+        const pkgPath = path.join(absProjectDir, 'package.json');
+        if (!fs.existsSync(pkgPath)) {
+            console.log('═══ STEP 0: Project Scaffolding ═══');
+            const isTS = /\.ts|TypeScript|tsx/.test(spec);
+            const pkg = {
+                name: path.basename(absProjectDir),
+                version: '1.0.0',
+                type: 'module',
+                scripts: {
+                    test: 'vitest run',
+                },
+            };
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+            console.log('  Created package.json');
+            if (isTS) {
+                const tsconfigPath = path.join(absProjectDir, 'tsconfig.json');
+                if (!fs.existsSync(tsconfigPath)) {
+                    const tsconfig = {
+                        compilerOptions: {
+                            target: 'ES2022',
+                            module: 'Node16',
+                            moduleResolution: 'Node16',
+                            strict: true,
+                            esModuleInterop: true,
+                            outDir: 'dist',
+                            rootDir: 'src',
+                        },
+                        include: ['src'],
+                    };
+                    fs.writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2));
+                    console.log('  Created tsconfig.json');
+                }
+            }
+        }
+    }
     // ═══ STEP 1 — Organization ═══
     startStep('step1_organization');
     console.log('═══ STEP 1: Organization ═══');
@@ -650,14 +691,10 @@ RULES:
     // Creation passes accumulate 15+ calls → context bloat. But spec-unchanged runs
     // skip creation entirely, so the worker is still fresh from Step 2.
     // Killing a fresh worker and spawning a new one causes init/warmup issues.
-    const creationRan = !(affectedModules && affectedModules.length === 0);
-    if (creationRan) {
-        console.log('  Resetting LLM worker session (creation passes ran)...');
-        worker.kill();
-    }
-    else {
-        console.log('  Keeping worker session (no creation passes ran).');
-    }
+    // NEVER kill the worker between phases. Claude Code handles its own context compaction.
+    // Killing and respawning creates unreliable fresh workers that fail ~50% of the time.
+    // The warm worker from Steps 1-4a carries into 4b, 4c, 5, 6 — much more reliable.
+    console.log('  Keeping worker session (warm worker is more reliable than fresh spawn).');
     // ── 4b: Compile convergence (code, instant) ──
     console.log('\n  ── Step 4b: Compile Convergence ──');
     let prevErrorCount = Infinity;
@@ -726,8 +763,12 @@ Read the file, then use the Edit tool to add what's needed. Do NOT rewrite the e
         doCompile();
     }
     // ═══ STEP 4d — Code-to-Graph Sync (bottom-up) ═══
-    // If actual code files exist, read them and reconcile with the graph.
-    // This is how CODE drives PLAN changes — the real bottom-up flow.
+    // Source of truth hierarchy: spec → graph → code → tests
+    // This step handles BOTTOM-UP: code changes that need to flow back to the graph.
+    // If code does something the graph doesn't describe → add nodes/journeys.
+    // If code contradicts the graph → journey tests (6b) will catch it.
+    // The graph is the single source of truth for what the system IS.
+    // The spec is the single source of truth for what the system SHOULD BE.
     console.log('\n═══ STEP 4d: Code-to-Graph Sync ═══');
     const codeFiles = [];
     const preCodeResult = doCompile();
@@ -1002,10 +1043,16 @@ The implementation must actually work when executed. Test it mentally — trace 
         const testFiles = generateTests(finalResult.index, testDir);
         console.log(`  Generated ${testFiles.length} journey test files.`);
         if (testFiles.length > 0) {
-            // Step 2: LLM fills assertions (reads generated skeletons, fills TODOs)
-            const testFileList = testFiles.map(f => `  - ${f}`).join('\n');
-            try {
-                await worker.call(`Journey test skeletons have been generated. Each file has TODO assertions that need filling.
+            // Step 2: LLM fills assertions in BATCHES (10 files at a time to avoid timeouts)
+            const BATCH_SIZE = 10;
+            const totalBatches = Math.ceil(testFiles.length / BATCH_SIZE);
+            console.log(`  Filling assertions in ${totalBatches} batches of ${BATCH_SIZE}...`);
+            for (let b = 0; b < Math.min(totalBatches, 5); b++) { // Cap at 5 batches (50 tests) to avoid excessive time
+                const batch = testFiles.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+                const testFileList = batch.map(f => `  - ${f}`).join('\n');
+                console.log(`  Batch ${b + 1}/${Math.min(totalBatches, 5)}: ${batch.length} test files`);
+                try {
+                    await worker.call(`Fill assertions in these journey test files.
 
 TEST FILES:
 ${testFileList}
@@ -1019,38 +1066,46 @@ INSTRUCTIONS:
 4. For CLI journeys: use execSync to run the CLI command and assert output contains expected text
 5. Write each updated test file using the Write tool
 6. Make tests RUNNABLE with vitest — proper imports, setup/teardown for file state`);
-                // Step 3: Run tests with feedback loop — failures get diagnosed and fixed
-                console.log('  Running journey tests...');
-                const MAX_JOURNEY_FIX_ATTEMPTS = 3;
-                let journeyFixAttempt = 0;
-                let allJourneysPassed = false;
-                while (journeyFixAttempt < MAX_JOURNEY_FIX_ATTEMPTS && !allJourneysPassed) {
-                    try {
-                        const testOutput = execSyncLocal('npx vitest run --reporter=verbose 2>&1', {
-                            cwd: absProjectDir,
-                            encoding: 'utf-8',
-                            timeout: 120_000,
-                        });
-                        const passMatch = testOutput.match(/(\d+) passed/);
-                        const failMatch = testOutput.match(/(\d+) failed/);
-                        const passed = passMatch ? parseInt(passMatch[1]) : 0;
-                        const failed = failMatch ? parseInt(failMatch[1]) : 0;
-                        console.log(`  Journey tests: ${passed} passed, ${failed} failed`);
-                        if (failed === 0 && passed > 0) {
-                            console.log('  ALL JOURNEY TESTS PASS.');
-                            allJourneysPassed = true;
-                        }
+                }
+                catch {
+                    console.log(`    Batch ${b + 1} timed out — continuing with next batch.`);
+                }
+            }
+            if (testFiles.length > 50) {
+                console.log(`  Note: ${testFiles.length - 50} test files skipped (capped at 50 for time).`);
+            }
+            // Step 3: Run tests with feedback loop — failures get diagnosed and fixed
+            console.log('  Running journey tests...');
+            const MAX_JOURNEY_FIX_ATTEMPTS = 3;
+            let journeyFixAttempt = 0;
+            let allJourneysPassed = false;
+            while (journeyFixAttempt < MAX_JOURNEY_FIX_ATTEMPTS && !allJourneysPassed) {
+                try {
+                    const testOutput = execSyncLocal('npx vitest run --reporter=verbose 2>&1', {
+                        cwd: absProjectDir,
+                        encoding: 'utf-8',
+                        timeout: 120_000,
+                    });
+                    const passMatch = testOutput.match(/(\d+) passed/);
+                    const failMatch = testOutput.match(/(\d+) failed/);
+                    const passed = passMatch ? parseInt(passMatch[1]) : 0;
+                    const failed = failMatch ? parseInt(failMatch[1]) : 0;
+                    console.log(`  Journey tests: ${passed} passed, ${failed} failed`);
+                    if (failed === 0 && passed > 0) {
+                        console.log('  ALL JOURNEY TESTS PASS.');
+                        allJourneysPassed = true;
                     }
-                    catch (err) {
-                        journeyFixAttempt++;
-                        const output = (err.stdout || err.message || '').substring(0, 3000);
-                        const failedTests = output.match(/FAIL.*\n.*\n.*\n/g)?.join('\n') || output.substring(0, 1500);
-                        console.log(`  Journey tests FAILED (attempt ${journeyFixAttempt}/${MAX_JOURNEY_FIX_ATTEMPTS})`);
-                        if (journeyFixAttempt < MAX_JOURNEY_FIX_ATTEMPTS) {
-                            // Feed failures back to LLM for diagnosis and fix
-                            console.log('  LLM diagnosing failures...');
-                            try {
-                                await worker.call(`Journey tests failed. Diagnose each failure and fix it.
+                }
+                catch (err) {
+                    journeyFixAttempt++;
+                    const output = (err.stdout || err.message || '').substring(0, 3000);
+                    const failedTests = output.match(/FAIL.*\n.*\n.*\n/g)?.join('\n') || output.substring(0, 1500);
+                    console.log(`  Journey tests FAILED (attempt ${journeyFixAttempt}/${MAX_JOURNEY_FIX_ATTEMPTS})`);
+                    if (journeyFixAttempt < MAX_JOURNEY_FIX_ATTEMPTS) {
+                        // Feed failures back to LLM for diagnosis and fix
+                        console.log('  LLM diagnosing failures...');
+                        try {
+                            await worker.call(`Journey tests failed. Diagnose each failure and fix it.
 
 TEST FAILURES:
 ${failedTests}
@@ -1062,20 +1117,16 @@ For EACH failure, decide:
 
 Read the failing test file, the source code, and the journey definition. Then fix whichever is wrong.
 Do NOT rewrite entire files — use Edit for targeted fixes.`);
-                            }
-                            catch {
-                                console.log('  Journey fix timed out — continuing.');
-                                break;
-                            }
+                        }
+                        catch {
+                            console.log('  Journey fix timed out — continuing.');
+                            break;
                         }
                     }
                 }
-                if (!allJourneysPassed && journeyFixAttempt >= MAX_JOURNEY_FIX_ATTEMPTS) {
-                    console.log(`  WARNING: Journey tests still failing after ${MAX_JOURNEY_FIX_ATTEMPTS} fix attempts.`);
-                }
             }
-            catch {
-                console.log('  Journey test fill timed out — skipping test execution.');
+            if (!allJourneysPassed && journeyFixAttempt >= MAX_JOURNEY_FIX_ATTEMPTS) {
+                console.log(`  WARNING: Journey tests still failing after ${MAX_JOURNEY_FIX_ATTEMPTS} fix attempts.`);
             }
         }
     }

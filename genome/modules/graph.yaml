@@ -85,6 +85,15 @@ nodes:
   JourneyRegistry:
     type: artifact
     description: the collection of all journeys with their steps, used for connection computation and test generation
+  CompiledIndexSnapshot:
+    type: artifact
+    description: a point-in-time copy of the CompiledIndex taken before a merge operation, used to restore graph state if the merge fails or is destructive
+  DestructiveEditDetection:
+    type: process
+    description: compares node and journey counts before and after a module rewrite to detect content loss caused by LLM overwrites
+  DestructiveEditProtectionRule:
+    type: rule
+    description: a module rewrite must not decrease the node count without explicit intent — blocks merge and triggers revert if node count drops
 
 journeys:
   DefineNode:
@@ -467,3 +476,41 @@ journeys:
         action: re-deduplicates the connection set after edge removal to maintain provenance accuracy
       - node: CompiledIndex
         action: updated with the node, its edges, and its registry entry fully removed
+
+  DetectDestructiveEdit:
+    steps:
+      - node: ModuleFile
+        action: provides the original module content before the LLM rewrite
+      - node: NodeRegistry
+        action: counts the nodes defined in the original module version
+      - node: _actors/LLMWorker
+        action: rewrites the module file with new or updated content
+      - node: ModuleFile
+        action: provides the rewritten module content for comparison
+      - node: DestructiveEditDetection
+        action: compares node counts between original and rewritten versions
+      - node: DestructiveEditProtectionRule
+        action: detects that the rewrite decreased the node count, flagging it as destructive
+      - node: _actors/Compiler
+        action: reports the destructive edit with before and after node counts
+
+  RollbackFailedMerge:
+    steps:
+      - node: CompiledIndex
+        action: provides the current compiled graph before the merge attempt
+      - node: CompiledIndexSnapshot
+        action: stores a point-in-time copy of the compiled index as a rollback target
+      - node: IncrementalMerge
+        action: attempts to merge the new module into the compiled index
+      - node: _actors/Compiler
+        action: runs validation on the post-merge graph and detects errors
+      - node: CompiledIndexSnapshot
+        action: provides the pre-merge snapshot for restoration
+      - node: CompiledIndex
+        action: restored to the pre-merge state from the snapshot
+      - node: NodeRegistry
+        action: reverted to the pre-merge node map
+      - node: ConnectionSet
+        action: reverted to the pre-merge edge set
+      - node: _actors/Compiler
+        action: confirms the compiled index is back to a consistent pre-merge state

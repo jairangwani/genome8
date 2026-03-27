@@ -241,22 +241,12 @@ export class LLMWorker {
     async call(prompt) {
         this.ensureProcess();
         const w = this.worker;
-        // Wait for Claude Code to finish initializing before sending
+        // Brief delay for fresh process to start accepting stdin.
+        // Claude Code doesn't send an init message we can detect.
+        // 2 seconds is enough for process spawn + stdin ready.
         if (!w.initialized) {
-            console.log('  [llm] Waiting for Claude Code init...');
-            await new Promise((resolve) => {
-                if (w.initialized)
-                    return resolve();
-                const checkInit = setInterval(() => {
-                    if (w.initialized || w.process.exitCode !== null) {
-                        clearInterval(checkInit);
-                        resolve();
-                    }
-                }, 200);
-                // Safety: don't wait more than 60s for init
-                setTimeout(() => { clearInterval(checkInit); resolve(); }, 60000);
-            });
-            console.log(`  [llm] Init complete (initialized: ${w.initialized})`);
+            await new Promise(r => setTimeout(r, 2000));
+            w.initialized = true;
         }
         if (w.responseResolve) {
             throw new Error('A message is already in flight');

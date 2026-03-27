@@ -853,8 +853,12 @@ Read the file, then use the Edit tool to add what's needed. Do NOT rewrite the e
   }
 
   // ═══ STEP 4d — Code-to-Graph Sync (bottom-up) ═══
-  // If actual code files exist, read them and reconcile with the graph.
-  // This is how CODE drives PLAN changes — the real bottom-up flow.
+  // Source of truth hierarchy: spec → graph → code → tests
+  // This step handles BOTTOM-UP: code changes that need to flow back to the graph.
+  // If code does something the graph doesn't describe → add nodes/journeys.
+  // If code contradicts the graph → journey tests (6b) will catch it.
+  // The graph is the single source of truth for what the system IS.
+  // The spec is the single source of truth for what the system SHOULD BE.
   console.log('\n═══ STEP 4d: Code-to-Graph Sync ═══');
 
   const codeFiles: Array<{ node: string; file: string }> = [];

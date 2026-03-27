@@ -1,5 +1,9 @@
 # Genome8 — What We're Building
 
+> **DEPRECATED:** This file is replaced by genome/spec.md §7-8 and the genome context graph.
+> Goals are rule nodes in the graph. Vision is in the spec. This file exists for reference only.
+> See genome/spec.md for the authoritative source of truth.
+
 > The goal. The vision. What success looks like.
 
 ---

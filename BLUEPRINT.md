@@ -1,8 +1,9 @@
 # Genome8 — Blueprint
 
-> **This document will be replaced by genome's own context graph (Phase 7).**
-> When genome manages itself, the graph IS the documentation.
-> Until then, this is the complete HOW. Read GOALPOST.md for WHY.
+> **DEPRECATED:** Genome now manages itself (Option B converged: 635 nodes).
+> The graph IS the documentation. Goals are in genome/spec.md §8.
+> Architecture is in the graph as process nodes. This file exists for reference only.
+> Source of truth hierarchy: spec.md → graph → code → tests (see spec.md §10).
 
 ---
 

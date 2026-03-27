@@ -127,3 +127,66 @@ After genome: ONE graph. Goals are rule nodes connected to the journeys they gov
 The only thing a human writes is spec.md — "here's what I want." Genome does the rest.
 
 This applies to genome itself. Genome's own goals, architecture, and roadmap are nodes in genome's own context graph. Genome manages genome. The protocol is self-sustaining.
+
+## 8. Goals (these should become rule nodes)
+
+- **Goal 1: Solve the context problem** — for anything, at any scale, forever
+- **Goal 2: Build Pando** — decentralized AI platform, first real test case
+- **Goal 3: Genome IS the product** — a protocol, not just a tool
+- **Goal 4: Production-ready** — no hacks, no shortcuts
+- **Goal 5: Self-sustaining** — the system should run without humans
+
+## 9. Architectural Decisions (learned through testing)
+
+- **Never rewrite existing code** — Step 6 Mode 2: update via Edit, don't regenerate. Full rewrites mask bugs.
+- **Never kill workers between phases** — warm workers are more reliable than fresh spawns. Claude Code handles its own compaction.
+- **Journey tests ARE the validation** — don't rely on LLM-judged validation. Run real tests from real journeys.
+- **Feedback loop on test failure** — when journey tests fail, diagnose: code bug, test bug, or graph bug. Fix the right thing.
+- **Compact prompts** — never embed full YAML in prompts. Send file paths, let LLM read. Backpressure on large prompts.
+- **Early termination** — 2 consecutive zero-delta passes = module saturated. Don't waste LLM calls.
+- **Batch heavy operations** — error fixes in batches of 5, test fills in batches of 10. Single massive calls timeout.
+- **Project scaffolding** — auto-create package.json + tsconfig.json. User writes ONLY spec.md.
+- **Targeted reconvergence** — store spec hash. On change, ask LLM which modules affected. Only update those.
+- **Destructive edit protection** — if a pass decreases node count, auto-revert. LLM sometimes destroys content.
+
+## 10. Source of Truth Hierarchy
+
+This is the most important rule in the protocol. When things conflict, this decides who wins:
+
+```
+spec.md (AUTHORITY — human intent, always right)
+  ↓ derives
+graph (nodes + journeys — the system's understanding)
+  ↓ derives
+code (implementation — what actually runs)
+  ↓ derives
+tests (journey tests — proof that code matches graph)
+```
+
+### Conflict Resolution Rules
+
+| Conflict | Resolution | Mechanism |
+|----------|-----------|-----------|
+| Graph contradicts spec | Re-converge. Graph updates to match spec. | Steps 1-4a |
+| Code contradicts graph | Journey tests catch it. Feedback loop fixes code. | Step 6b |
+| Code contradicts spec | Graph should have caught this → audit finds gap → fix graph → fix code | Step 4c |
+| Tests fail | Diagnose: code bug, test bug, or graph bug. Fix the right one. | Step 6b feedback loop |
+| Someone edits code directly | Step 4d (code-to-graph sync) detects drift, updates graph | Step 4d |
+| Someone edits graph directly | Next convergence re-validates against spec | Steps 4b-4c |
+
+### The Discipline
+
+- **Every change starts in spec.md.** Update the spec first, then converge. The graph and code follow.
+- **Never edit code to add features.** Edit the spec → converge → code updates automatically.
+- **Code-only fixes are OK** for bugs that journey tests validate. Step 4d syncs them back to graph.
+- **The graph is the single source of truth** for what the system IS. The spec is the single source of truth for what the system SHOULD BE.
+- **GOALPOST.md and BLUEPRINT.md are deprecated.** Their content is in this spec (§7-10) and in the graph. They will be deleted when the graph fully represents them.
+
+## 11. What Genome Must NOT Do
+
+- Do not maintain separate documentation files. The graph IS the documentation.
+- Do not hardcode limits. Data decides when to stop. (maxZeroDelta, minModulesForSplit are configurable)
+- Do not ask LLM open-ended questions in a loop. Bounded creation + targeted fixes.
+- Do not rewrite files that already work. Update what's needed, leave the rest.
+- Do not ignore test failures. Diagnose and fix, or mark unstable.
+- Do not let code, graph, and spec drift apart. The hierarchy resolves all conflicts.
