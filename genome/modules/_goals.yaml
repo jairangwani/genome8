@@ -1,0 +1,112 @@
+spec_sections: [all]
+
+nodes:
+  SolveContextProblem:
+    type: rule
+    description: any system at any scale gets scoped, connected, synced context — no single brain required
+  BuildPando:
+    type: rule
+    description: decentralized AI platform ships as the first real proof that genome works at scale
+  GenomeIsTheProduct:
+    type: rule
+    description: genome is a protocol others adopt, not just an internal tool
+  ProductionReady:
+    type: rule
+    description: no hacks, no shortcuts — every component reliable enough for real workloads
+  SelfSustaining:
+    type: rule
+    description: the system runs, converges, and heals without human intervention
+
+journeys:
+  ProveSolveContextProblem:
+    steps:
+      - node: SolveContextProblem
+        action: governs that any system gets scoped, connected, synced context
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing a complex system
+      - node: organization/IdentifyModules
+        action: breaks the system into scoped independent modules
+      - node: graph/ConnectionComputation
+        action: computes connections between nodes from journey steps
+      - node: graph/CompiledIndex
+        action: assembles all scoped pieces into a single connected graph
+      - node: sync/CompareStoredHash
+        action: detects when upstream dependencies change
+      - node: events/PropagateRipple
+        action: propagates changes across dependent boxes automatically
+      - node: hierarchy/SpawnChildEngine
+        action: scales to any depth by spawning child engines for independent subsystems
+
+  ProveGenomeIsTheProduct:
+    steps:
+      - node: GenomeIsTheProduct
+        action: governs that genome8 is a protocol others adopt, not just an internal tool
+      - node: _actors/NewProjectAdopter
+        action: encounters genome8 and writes a spec.md for their own system
+      - node: convergence/ReadSpec
+        action: reads any project spec as input — not hardcoded to genome8
+      - node: convergence/ProjectConvergence
+        action: runs the full pipeline on an external project spec
+      - node: hierarchy/SameCodeEveryLevel
+        action: the same convergence.ts works at any hierarchy level for any project
+      - node: publish/GenerateInterfaceYaml
+        action: publishes a standard interface that any dependent box can consume
+      - node: convergence/ValidateSelfConsistency
+        action: genome8 manages itself using its own protocol proving it is the product
+
+  ProveBuildPando:
+    steps:
+      - node: BuildPando
+        action: governs that Pando ships as the first real proof genome8 works at scale
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing Pando a decentralized AI platform
+      - node: convergence/HierarchyDecision
+        action: determines Pando subsystems warrant splitting into child engines
+      - node: hierarchy/SpawnChildEngine
+        action: launches child engines for each Pando subsystem
+      - node: hierarchy/CollectChildInterfaces
+        action: collects published interfaces from all Pando child engines
+      - node: hierarchy/CreateCrossEngineJourneys
+        action: connects Pando subsystem interfaces through cross-engine journeys
+      - node: events/PropagateRipple
+        action: ripples changes across Pando subsystems when one publishes an update
+      - node: convergence/ExecuteTests
+        action: validates Pando subsystem interactions through journey tests
+
+  ProveProductionReady:
+    steps:
+      - node: ProductionReady
+        action: governs that every component is reliable enough for real workloads
+      - node: compilation/FullCompilation
+        action: validates every change with zero-error compilation
+      - node: audit/DepthAudit
+        action: checks coverage from three angles after zero errors
+      - node: graph/DestructiveEditDetection
+        action: detects any change that decreases node count
+      - node: convergence/PipelineInvariantCheck
+        action: verifies all phases completed in correct order
+      - node: convergence/ExecuteTests
+        action: runs journey tests as the validation not LLM-judged checks
+      - node: convergence/RollbackFailedFix
+        action: auto-reverts fixes that introduce regressions
+      - node: llm/ValidateWorkerOutput
+        action: validates every LLM output before accepting it into the graph
+
+  ProveSelfSustaining:
+    steps:
+      - node: SelfSustaining
+        action: governs that the system runs converges and heals without human intervention
+      - node: convergence/OnlyHumanInputIsSpec
+        action: confirms spec.md is the only human-authored artifact
+      - node: convergence/EnterSleepMode
+        action: enters zero-cost sleep after convergence completes
+      - node: events/DetectEventFileChange
+        action: wakes autonomously when an upstream dependency changes
+      - node: sync/FindAffectedModules
+        action: traces which modules are affected without human guidance
+      - node: convergence/TargetedReconvergence
+        action: reconverges only affected modules automatically
+      - node: convergence/RecoverFromWorkerCrash
+        action: respawns crashed workers and resumes without human intervention
+      - node: convergence/EnterSleepMode
+        action: returns to sleep after autonomous reconvergence completing the self-sustaining cycle
