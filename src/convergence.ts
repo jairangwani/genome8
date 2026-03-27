@@ -38,23 +38,25 @@ import { trackLLMCall, startStep, endStep, trackModules, trackGraph, getMetrics 
 // All values can be overridden via genome/config.json in the project directory.
 
 interface ConvergenceConfig {
-  maxRounds: number;         // Max convergence rounds before stopping (default: Infinity)
-  watchIntervalMs: number;   // How often to check for changes when sleeping (default: 60000)
-  sessionResetChars: number; // Reset LLM session after this many chars (default: Infinity)
-  model: string;             // LLM model to use (default: 'claude-opus-4-6')
-  maxFixAttempts: number;    // Max test fix attempts in Step 6 (default: 3)
-  maxZeroDelta: number;      // Consecutive zero-delta passes before skipping module (default: 2)
-  minModulesForSplit: number; // Minimum modules before considering hierarchy split (default: 6)
+  maxRounds: number;
+  watchIntervalMs: number;
+  sessionResetChars: number;
+  model: string;
+  maxFixAttempts: number;
+  maxZeroDelta: number;
+  minModulesForSplit: number;
+  messageTimeoutMs: number;    // Per-LLM-call timeout. Large projects need more time.
 }
 
 const DEFAULT_CONFIG: ConvergenceConfig = {
-  maxRounds: Infinity,         // No artificial limit. Convergence check decides when to stop.
+  maxRounds: Infinity,
   watchIntervalMs: 60_000,
-  sessionResetChars: Infinity, // DO NOT manage context. Claude Code handles its own compaction.
-  model: 'claude-opus-4-6',   // ALWAYS use Opus 4.6 (1M context). Never downgrade.
+  sessionResetChars: Infinity,
+  model: 'claude-opus-4-6',
   maxFixAttempts: 3,
-  maxZeroDelta: 2,             // Configurable — not a hardcoded magic number.
-  minModulesForSplit: 6,       // Configurable — projects can override in config.json.
+  maxZeroDelta: 2,
+  minModulesForSplit: 6,
+  messageTimeoutMs: 10 * 60 * 1000,  // 10 min default. Override in config.json for large projects.
 };
 
 const LENSES = [
@@ -152,6 +154,7 @@ JOURNEY STEP FORMAT IS MANDATORY:
 - "action:" is what happens at that step
 - Do NOT write steps as flat strings. Always use node: + action: structure.`,
   model: config.model,
+  messageTimeoutMs: config.messageTimeoutMs,
   sessionResetChars: config.sessionResetChars,
 });
 

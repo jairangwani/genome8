@@ -20,7 +20,8 @@ import { platform } from 'node:os';
 
 // ── Configuration ──
 
-const MESSAGE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes per call. Audit/codegen are the heaviest — 5-8min typical.
+// Default 10 min. Projects can override via genome/config.json: { "messageTimeoutMs": 1200000 }
+const DEFAULT_MESSAGE_TIMEOUT_MS = 10 * 60 * 1000;
 // DO NOT manage context manually. Claude Code handles its own context compaction.
 // Session reset disabled (Infinity). The persistent process lives until killed.
 const SESSION_RESET_CHARS = Infinity;
@@ -75,17 +76,20 @@ export class LLMWorker {
   private systemPrompt: string;
   private model: string;
   private sessionResetChars: number;
+  private messageTimeoutMs: number;
 
   constructor(options: {
     cwd: string;
     systemPrompt?: string;
     model?: string;
     sessionResetChars?: number;
+    messageTimeoutMs?: number;
   }) {
     this.cwd = options.cwd;
     this.systemPrompt = options.systemPrompt || '';
-    this.model = options.model || 'claude-opus-4-6'; // ALWAYS Opus 4.6 (1M context)
+    this.model = options.model || 'claude-opus-4-6';
     this.sessionResetChars = options.sessionResetChars || SESSION_RESET_CHARS;
+    this.messageTimeoutMs = options.messageTimeoutMs || DEFAULT_MESSAGE_TIMEOUT_MS;
   }
 
   /**
@@ -319,13 +323,13 @@ export class LLMWorker {
 
       // Timeout
       w.responseTimeout = setTimeout(() => {
-        console.error(`  [llm] Message timed out after ${MESSAGE_TIMEOUT_MS / 1000}s`);
+        console.error(`  [llm] Message timed out after ${this.messageTimeoutMs / 1000}s`);
         w.responseResolve = null;
         w.responseReject = null;
         w.responseTimeout = null;
         this.kill();
         reject(new Error('LLM call timeout'));
-      }, MESSAGE_TIMEOUT_MS);
+      }, this.messageTimeoutMs);
     });
   }
 
