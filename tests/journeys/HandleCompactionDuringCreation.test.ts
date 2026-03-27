@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/excerpt.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HandleCompactionDuringCreation", () => {
   it("step 1: convergence/BoundedCreationLoop is mid-way through creating modules in a large project", () => {

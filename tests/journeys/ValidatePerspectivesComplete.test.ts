@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ValidatePerspectivesComplete", () => {
   it("step 1: convergence/BoundedCreationLoop signals that the perspective enrichment loop has finished all pairs", () => {

@@ -71,7 +71,7 @@ nodes:
   TestSkeletonFile:
     type: artifact
     description: a TypeScript test file with empty assertion bodies for all steps in a journey
-    files: [test/testgen.test.ts]
+    files: ["test/testgen.test.ts", "tests/journeys/"]
   FilledTestFile:
     type: artifact
     description: a TypeScript test file with LLM-filled assertions ready to execute
@@ -88,9 +88,26 @@ nodes:
   StepsAreTestCases:
     type: rule
     description: each journey step with its node and action becomes exactly one test case, ensuring 1-to-1 coverage
+  DiagnoseFailureRoot:
+    type: process
+    description: after fix retries are exhausted for a test failure, analyzes the failure pattern to determine whether the root cause is a code bug, test bug, or graph bug per spec section 9
+  DetectMissingImplementation:
+    type: process
+    description: checks whether the implementation file for a module exists on disk before generating or filling its test skeleton, preventing wasted effort on modules codegen could not fill
+  DetectTrivialAssertions:
+    type: process
+    description: scans filled test assertions for trivial patterns like expect(true).toBe(true), toBeDefined-only checks, and empty test bodies that pass without verifying actual journey step behavior
+  ValidateTestCaseStructure:
+    type: process
+    description: compares the describe and it blocks in a filled test file against the journey's step list to detect added, removed, or merged test cases that violate StepsAreTestCases
+  TestGenCLI:
+    type: interface
+    description: command-line interface to run test skeleton generation from journeys and display the generated file list
+    files: ["src/cli.ts"]
 
 journeys:
   GenerateTestSkeletons:
+    files: [test/journeys/GenerateTestSkeletons.test.ts]
     steps:
       - node: convergence/TriggerTestgen
         action: invokes testgen.ts after codegen has generated and filled implementation files
@@ -116,6 +133,7 @@ journeys:
         action: stores the assembled test skeleton for each journey
 
   FillTestAssertionsWithLLM:
+    files: [test/journeys/FillTestAssertionsWithLLM.test.ts]
     steps:
       - node: TestSkeletonFile
         action: provides the empty test skeleton for a journey
@@ -143,6 +161,7 @@ journeys:
         action: writes the validated test file to the test output directory
 
   RunTestsAndCollectResults:
+    files: [test/journeys/RunTestsAndCollectResults.test.ts]
     steps:
       - node: convergence/ExecuteTests
         action: triggers test execution after all test files are filled and written
@@ -160,6 +179,7 @@ journeys:
         action: stores the failure list for the fix cycle
 
   FixFailingTests:
+    files: [test/journeys/FixFailingTests.test.ts]
     steps:
       - node: FailureFixList
         action: provides the list of failures to fix
@@ -189,6 +209,7 @@ journeys:
         action: records test results — either more fixes needed or all tests passing
 
   FillAllTestsInOrder:
+    files: [test/journeys/FillAllTestsInOrder.test.ts]
     steps:
       - node: TestSkeletonFile
         action: provides the list of all unfilled test skeletons
@@ -226,6 +247,7 @@ journeys:
         action: signals that all tests are ready for execution
 
   ProvideTestgenExcerptContext:
+    files: [test/journeys/ProvideTestgenExcerptContext.test.ts]
     steps:
       - node: SelectNextTestToFill
         action: identifies which module's test needs an excerpt for its fill pass
@@ -253,6 +275,7 @@ journeys:
         action: wraps the excerpt with testgen-specific instructions for the LLM worker
 
   EndToEndTestgenPipeline:
+    files: [test/journeys/EndToEndTestgenPipeline.test.ts]
     steps:
       - node: codegen/ConfirmAllModulesFilled
         action: confirms all implementation files are ready from codegen
@@ -300,6 +323,7 @@ journeys:
         action: records that all tests pass and testgen is complete
 
   ConfirmTestSuiteComplete:
+    files: [test/journeys/ConfirmTestSuiteComplete.test.ts]
     steps:
       - node: RerunAfterFix
         action: has re-executed previously failing tests after the last fix round
@@ -317,6 +341,7 @@ journeys:
         action: confirms that fix attempts did not exceed the retry limit
 
   HandoffFromCodegen:
+    files: [test/journeys/HandoffFromCodegen.test.ts]
     steps:
       - node: codegen/ConfirmAllModulesFilled
         action: signals that all implementation files have been generated and validated
@@ -332,6 +357,7 @@ journeys:
         action: begins extracting journeys from the compiled index as the test source
 
   RecoverFromFillAssertionError:
+    files: [test/journeys/RecoverFromFillAssertionError.test.ts]
     steps:
       - node: FillTestAssertions
         action: has produced a filled test file from the LLM worker
@@ -361,6 +387,7 @@ journeys:
         action: re-checks the corrected fill for compilation errors
 
   RecoverFromTestExecutionCrash:
+    files: [test/journeys/RecoverFromTestExecutionCrash.test.ts]
     steps:
       - node: convergence/ExecuteTests
         action: triggers test execution
@@ -384,6 +411,7 @@ journeys:
         action: merges results from the successful run with the crash entry
 
   HandleFixInducedRegression:
+    files: [test/journeys/HandleFixInducedRegression.test.ts]
     steps:
       - node: ApplyTestFix
         action: has edited a test or implementation file to fix a failure
@@ -411,6 +439,7 @@ journeys:
         action: re-queues the failure for a different fix approach
 
   ResumePartialTestFill:
+    files: [test/journeys/ResumePartialTestFill.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: indicates testgen was in progress when the process was interrupted
@@ -434,6 +463,7 @@ journeys:
         action: continues checking until all remaining tests are filled
 
   HandleFixRetryExhaustion:
+    files: [test/journeys/HandleFixRetryExhaustion.test.ts]
     steps:
       - node: FailureFixList
         action: provides the list of remaining failures after multiple fix rounds
@@ -449,3 +479,133 @@ journeys:
         action: detects that not all tests are passing due to unresolvable failures
       - node: convergence/ConvergenceState
         action: records that testgen completed with unresolvable failures and the specific test names
+
+  EscalateGraphBugToConvergence:
+    steps:
+      - node: FailureFixList
+        action: provides a failure that has exhausted all fix retries
+      - node: convergence/BoundedRetryRule
+        action: confirms the retry limit was reached without resolution
+      - node: DiagnoseFailureRoot
+        action: examines the failure history including all attempted fixes and their outcomes
+      - node: DiagnoseFailureRoot
+        action: checks whether every code fix was syntactically valid but semantically wrong, indicating the journey step itself may be incorrect
+      - node: DiagnoseFailureRoot
+        action: determines the root cause is a graph bug — the journey step contradicts the spec intent
+      - node: TestResultReport
+        action: annotates the failure as graph-originated rather than unresolvable
+      - node: convergence/ConvergenceState
+        action: records the graph bug with the specific journey, step, and diagnosis for convergence to re-audit
+      - node: convergence/TargetedReconvergence
+        action: signals convergence to re-examine the flagged journey for graph correction
+
+  SkipTestsForUnfilledModule:
+    steps:
+      - node: SelectNextTestToFill
+        action: picks the next module's test skeleton for filling
+      - node: DetectMissingImplementation
+        action: checks the codegen output directory for the module's filled source file
+      - node: codegen/GeneratedCodeDirectory
+        action: provides the output directory to verify file existence
+      - node: DetectMissingImplementation
+        action: determines the implementation file does not exist because codegen skipped this module
+      - node: DetectMissingImplementation
+        action: marks the module's tests as skipped due to missing implementation
+      - node: TestResultReport
+        action: records the skip with the reason — no implementation available from codegen
+      - node: SelectNextTestToFill
+        action: advances to the next module that does have a filled implementation
+
+  RejectTrivialAssertionFill:
+    steps:
+      - node: FillTestAssertions
+        action: LLM has produced a filled test file that passes syntax validation
+      - node: FilledTestFile
+        action: provides the filled test content for assertion quality check
+      - node: DetectTrivialAssertions
+        action: scans each test case body for trivial patterns like expect(true).toBe(true) and toBeDefined-only checks
+      - node: DetectTrivialAssertions
+        action: flags specific test cases that contain only placeholder assertions without testing real behavior
+      - node: RetryFillWithAssertionErrors
+        action: packages the trivial assertion detection results as feedback listing which test cases need substantive assertions
+      - node: TestSkeletonFile
+        action: provides the original skeleton as context for what each test case should verify
+      - node: ProvideTestgenExcerpt
+        action: re-assembles the context so the LLM understands what behavior each step should assert
+      - node: codegen/FilledSourceFile
+        action: provides the implementation code showing the actual functions and return values to assert against
+      - node: llm/SendTask
+        action: sends the retry task with trivial assertion feedback and implementation context to the worker
+      - node: _actors/LLMWorker
+        action: re-fills the flagged test cases with meaningful assertions that exercise the implementation
+      - node: FillTestAssertions
+        action: LLM produces assertions that verify concrete inputs, outputs, and state changes
+      - node: llm/ReceiveResult
+        action: receives the assertion-complete fill
+      - node: DetectTrivialAssertions
+        action: re-checks to confirm all test cases now contain substantive assertions
+
+  RecoverFromTestCaseStructureMismatch:
+    steps:
+      - node: FillTestAssertions
+        action: LLM has produced a filled test file
+      - node: FilledTestFile
+        action: provides the filled test content for structural validation
+      - node: graph/CompiledIndex
+        action: provides the journey's step list as the authoritative test case source
+      - node: ValidateTestCaseStructure
+        action: extracts the describe and it blocks from the filled test file
+      - node: ValidateTestCaseStructure
+        action: compares extracted test cases against the journey steps to find mismatches
+      - node: StepsAreTestCases
+        action: flags that the filled file violates 1-to-1 step-to-test mapping — extra, missing, or merged cases detected
+      - node: ValidateTestCaseStructure
+        action: produces a list of expected test cases from journey steps and the actual test cases found
+      - node: RetryFillWithAssertionErrors
+        action: packages the structural mismatch as feedback specifying exactly which test cases must exist
+      - node: TestSkeletonFile
+        action: provides the original skeleton as the structural reference for the retry
+      - node: llm/SendTask
+        action: sends the retry task with structural feedback to the worker
+      - node: _actors/LLMWorker
+        action: re-fills the skeleton maintaining exactly one it block per journey step
+      - node: FillTestAssertions
+        action: LLM produces a corrected fill matching the step list
+      - node: llm/ReceiveResult
+        action: receives the structurally corrected fill
+      - node: ValidateTestCaseStructure
+        action: re-checks to confirm the test cases match the journey steps 1-to-1
+
+  GenerateTestsFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome test-gen from the command line with a modules directory and test output directory
+      - node: TestGenCLI
+        action: accepts the command and parses the test directory argument
+      - node: compilation/CompilationResult
+        action: provides the compiled index from the modules directory
+      - node: ReadJourneySteps
+        action: extracts all journeys and their steps from the compiled index
+      - node: GenerateTestFilePerJourney
+        action: creates test skeleton files for each journey
+      - node: TestSkeletonFile
+        action: stores the generated test skeletons in the test output directory
+      - node: TestGenCLI
+        action: prints the count and names of generated test files
+
+  EscalateGraphBugToAudit:
+    steps:
+      - node: RunTests
+        action: executes journey tests and detects a failure
+      - node: DiagnoseFailureRoot
+        action: classifies the failure as a code bug, test bug, or graph bug
+      - node: DiagnoseFailureRoot
+        action: determines the failure is a graph bug requiring audit re-examination
+      - node: audit/CheckSpecCoverage
+        action: re-checks whether the failing journey's spec section is properly covered
+      - node: audit/CheckCrossModuleCoverage
+        action: re-checks cross-module connections involved in the failing journey
+      - node: audit/CollectAuditFindings
+        action: collects findings from the re-audit triggered by the test failure
+      - node: audit/BuildGapFixPrompt
+        action: generates a targeted fix for the graph gap that caused the test failure

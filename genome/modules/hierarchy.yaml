@@ -142,9 +142,13 @@ nodes:
   DetectInheritedOrganization:
     type: process
     description: checks whether a scoped ORGANIZATION.md was placed in the engine's directory by a parent, indicating the module list was pre-assigned and organization generation should be skipped
+  ValidateSplitDecision:
+    type: process
+    description: validates the LLM-produced split decision for semantic correctness including that every module from ORGANIZATION.md is assigned to exactly one child, no module is duplicated across children, and no child group is empty
 
 journeys:
   DecideHierarchySplit:
+    files: [test/journeys/DecideHierarchySplit.test.ts]
     steps:
       - node: convergence/HierarchyDecision
         action: invokes the hierarchy decision step after organization and actor discovery
@@ -166,6 +170,7 @@ journeys:
         action: records the hierarchy decision — split with groupings or no-split
 
   PrepareChildEngines:
+    files: [test/journeys/PrepareChildEngines.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: provides the split decision with module-to-child assignments
@@ -197,6 +202,7 @@ journeys:
         action: repeats actor distribution for each additional child
 
   SpawnAndWaitForChildren:
+    files: [test/journeys/SpawnAndWaitForChildren.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: has all child directories prepared and ready to spawn
@@ -226,6 +232,7 @@ journeys:
         action: each child's published interface is now on disk
 
   ValidateAndConnectChildren:
+    files: [test/journeys/ValidateAndConnectChildren.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: all children have converged and published their interfaces
@@ -255,6 +262,7 @@ journeys:
         action: the parent compiled index now contains both parent-level and child-level nodes
 
   PublishParentAfterHierarchy:
+    files: [test/journeys/PublishParentAfterHierarchy.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: cross-engine validation passed with 0 errors
@@ -278,6 +286,7 @@ journeys:
         action: the parent event file is visible to upstream dependents
 
   ContinueWithoutSplit:
+    files: [test/journeys/ContinueWithoutSplit.test.ts]
     steps:
       - node: convergence/HierarchyDecision
         action: invokes the hierarchy decision step in the convergence pipeline
@@ -297,6 +306,7 @@ journeys:
         action: begins creating modules directly in the current engine without hierarchy
 
   MonitorChildConvergenceProgress:
+    files: [test/journeys/MonitorChildConvergenceProgress.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: has spawned all child engines and needs to track their progress
@@ -318,6 +328,7 @@ journeys:
         action: proceeds to collect child interfaces now that all children are done
 
   MergeChildGraphs:
+    files: [test/journeys/MergeChildGraphs.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: cross-engine validation has passed and cross-engine journeys are created
@@ -339,6 +350,7 @@ journeys:
         action: confirms the merged graph has zero errors and zero orphans
 
   EndToEndHierarchySplit:
+    files: [test/journeys/EndToEndHierarchySplit.test.ts]
     steps:
       - node: convergence/HierarchyDecision
         action: triggers the hierarchy decision step in the convergence pipeline
@@ -382,6 +394,7 @@ journeys:
         action: writes event file signaling the parent has published
 
   PrepareChildOrganization:
+    files: [test/journeys/PrepareChildOrganization.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: provides the split decision with module-to-child assignments
@@ -401,6 +414,7 @@ journeys:
         action: confirms children will use their scoped organization the same way the parent uses its full one
 
   RecursiveChildSplit:
+    files: [test/journeys/RecursiveChildSplit.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: reaches its own hierarchy decision step during convergence
@@ -432,6 +446,7 @@ journeys:
         action: child blocks until all grandchildren have converged and published
 
   EnforceDepthLimitAtMaxLevel:
+    files: [test/journeys/EnforceDepthLimitAtMaxLevel.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: reaches its hierarchy decision step during convergence
@@ -453,6 +468,7 @@ journeys:
         action: begins creating modules in the current engine without further splitting
 
   FlattenGrandchildInterfacesIntoChild:
+    files: [test/journeys/FlattenGrandchildInterfacesIntoChild.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: has split into grandchildren and all grandchildren have converged
@@ -480,6 +496,7 @@ journeys:
         action: the child's published interface is visible to its parent
 
   PropagateUnresolvedRefsAcrossLevels:
+    files: [test/journeys/PropagateUnresolvedRefsAcrossLevels.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: has grandchildren with external refs that could not be resolved against grandchild siblings
@@ -503,6 +520,7 @@ journeys:
         action: converts any still-unresolved propagated refs to errors at the parent level
 
   EndToEndDeepHierarchy:
+    files: [test/journeys/EndToEndDeepHierarchy.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: begins convergence at depth 0 with a large module set
@@ -544,6 +562,7 @@ journeys:
         action: root publishes its interface containing the full flattened hierarchy
 
   SpawnChildrenWithConcurrencyLimit:
+    files: [test/journeys/SpawnChildrenWithConcurrencyLimit.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: has many child directories prepared and needs to spawn them within resource constraints
@@ -571,6 +590,7 @@ journeys:
         action: blocks until the final batch of children has completed
 
   HandleChildTimeout:
+    files: [test/journeys/HandleChildTimeout.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: is waiting for children to converge and one is taking too long
@@ -592,6 +612,7 @@ journeys:
         action: outputs a non-zero error result due to the child timeout
 
   MergeChildInterfacesIncrementally:
+    files: [test/journeys/MergeChildInterfacesIncrementally.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: has many child interfaces to merge and wants to avoid loading all simultaneously
@@ -617,6 +638,7 @@ journeys:
         action: confirms the incrementally merged graph is valid
 
   CompactContextForLargeSplitDecision:
+    files: [test/journeys/CompactContextForLargeSplitDecision.test.ts]
     steps:
       - node: convergence/HierarchyDecision
         action: triggers the hierarchy decision for an engine with a very large module set
@@ -636,6 +658,7 @@ journeys:
         action: produces a split decision based on the summarized analysis
 
   HandleHighChildCountHierarchy:
+    files: [test/journeys/HandleHighChildCountHierarchy.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: decides to split into a large number of children
@@ -784,3 +807,137 @@ journeys:
         action: confirms inherited actors are used without re-discovery
       - node: convergence/HierarchyDecision
         action: proceeds to the hierarchy decision step bypassing both organization generation and actor discovery
+
+  RejectInvalidModuleAssignment:
+    steps:
+      - node: _actors/LLMWorker
+        action: produces a split decision with child groupings that parse correctly
+      - node: DecideSplit
+        action: parses the LLM output into a structured split decision with module-to-child mappings
+      - node: organization/ModuleList
+        action: provides the complete list of modules from ORGANIZATION.md as the expected set
+      - node: ValidateSplitDecision
+        action: collects all module names assigned across every child group into a combined set
+      - node: ValidateSplitDecision
+        action: compares the combined set against the complete module list and detects orphaned modules missing from all assignments
+      - node: ValidateSplitDecision
+        action: checks for duplicate modules appearing in more than one child group
+      - node: ValidateSplitDecision
+        action: checks for empty child groups that contain zero assigned modules
+      - node: compilation/ErrorReport
+        action: records the specific assignment errors listing orphaned module names, duplicate assignments, or empty child groups
+      - node: FallbackToNoSplitOnFailure
+        action: defaults to no-split since the split decision is semantically invalid and cannot be safely executed
+      - node: ContinueWithoutSplit
+        action: bypasses child engine preparation and proceeds to bounded module creation
+      - node: convergence/ConvergenceState
+        action: records the fallback no-split decision with the assignment validation failure reason
+
+  DistributeActorsToChildren:
+    steps:
+      - node: actors/ActorsFile
+        action: provides the parent's discovered _actors.yaml as the source for child inheritance
+      - node: actors/MergedActorList
+        action: supplies the deduplicated actor set that was written to _actors.yaml
+      - node: DistributeSharedActors
+        action: copies the actors file from the parent directory into each child directory
+      - node: ChildDirectory
+        action: receives the inherited _actors.yaml alongside its scoped spec and organization
+      - node: SharedActorsNoduplicates
+        action: ensures children use the inherited actors without re-discovering them
+      - node: DetectInheritedActors
+        action: child detects the parent-placed _actors.yaml and skips actor discovery
+
+  SetupChildEventWatching:
+    steps:
+      - node: SpawnChildEngine
+        action: launches child engine processes in their scoped directories
+      - node: ChildDirectory
+        action: provides the output path where each child will write event files
+      - node: events/RegisterEventWatchers
+        action: creates fs.watch instances on each child's event directory
+      - node: events/EventWatcherSet
+        action: stores the child watchers in the active set for the parent engine
+      - node: WaitForAllChildren
+        action: parent enters wait mode, relying on event watchers to detect child completion
+      - node: events/DetectEventFileChange
+        action: receives notification when a child writes its published interface event
+      - node: CollectChildInterfaces
+        action: reads the child's published interface triggered by the event notification
+
+  ValidateCrossEngineRefsAfterMerge:
+    steps:
+      - node: CollectChildInterfaces
+        action: gathers all published interfaces from converged child engines
+      - node: CreateCrossEngineJourneys
+        action: creates journeys connecting nodes across child engine boundaries
+      - node: ValidateCrossEngineRefs
+        action: checks that every cross-engine ref resolves to a published interface node
+      - node: PromoteExternalRefsToErrors
+        action: any external ref that was a warning in a child becomes an error at the parent level
+      - node: audit/CheckCrossModuleCoverage
+        action: audits that cross-engine journeys cover all interface touchpoints between children
+      - node: audit/CollectAuditFindings
+        action: collects any gaps in cross-engine coverage for targeted fixing
+      - node: convergence/ConvergenceState
+        action: records the cross-engine validation result before proceeding to parent publish
+
+  SyncParentAfterChildPublish:
+    steps:
+      - node: _actors/ChildEngine
+        action: completes convergence and publishes a new interface with an updated hash
+      - node: CollectChildInterfaces
+        action: reads the child's newly published interface into the parent
+      - node: sync/CompareStoredHash
+        action: compares the child's new interface hash against the parent's stored dependency hash
+      - node: sync/IdentifyStaleDependencies
+        action: detects a hash mismatch indicating the child's interface changed
+      - node: sync/FindAffectedModules
+        action: traces which parent modules reference nodes from the changed child
+      - node: sync/MarkModulesStale
+        action: marks the affected parent modules for targeted reconvergence
+      - node: convergence/TargetedReconvergence
+        action: reconverges only the parent modules affected by the child's interface change
+
+  ProvideExcerptForChildModuleCreation:
+    steps:
+      - node: GenerateScopedSpec
+        action: creates the scoped spec for a child engine from the parent's organization
+      - node: AssignModulesToChildren
+        action: determines which modules belong to this child
+      - node: excerpt/SelectTargetModule
+        action: selects the first child module that needs context for creation
+      - node: excerpt/CollectCrossModuleConnections
+        action: gathers cross-module connections relevant to the child's scoped modules
+      - node: excerpt/AssembleExcerpt
+        action: assembles focused context for the child module using scoped spec and parent graph
+      - node: ChildDirectory
+        action: receives the assembled excerpt for use during child convergence
+
+  GenerateCrossEngineTests:
+    steps:
+      - node: CreateCrossEngineJourneys
+        action: defines journeys that span multiple child engine boundaries
+      - node: CrossEngineJourneySet
+        action: provides the set of cross-engine journeys for test generation
+      - node: testgen/ReadJourneySteps
+        action: reads the steps of each cross-engine journey
+      - node: testgen/GenerateTestFilePerJourney
+        action: creates a test file for each cross-engine journey
+      - node: testgen/GenerateStepTestCase
+        action: generates a test case for each step verifying interface contract at the boundary
+      - node: _actors/LLMWorker
+        action: fills test assertions with checks that child interfaces satisfy parent expectations
+
+  GenerateCrossEngineCode:
+    steps:
+      - node: CollectChildInterfaces
+        action: provides the published interfaces from all child engines
+      - node: CreateCrossEngineJourneys
+        action: defines the journeys that bridge child engine boundaries
+      - node: codegen/ReadConvergedGraph
+        action: reads the parent graph containing cross-engine nodes and connections
+      - node: codegen/GenerateProcessSkeletons
+        action: generates TypeScript skeletons for cross-engine bridge nodes
+      - node: codegen/WriteGeneratedFile
+        action: writes the cross-engine skeleton files to disk

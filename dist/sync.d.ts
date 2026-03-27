@@ -14,6 +14,8 @@ export interface SyncChange {
 }
 export interface SyncState {
     known_hashes: Record<string, string>;
+    sync_in_progress?: boolean;
+    sync_started_at?: string;
 }
 /**
  * Check all dependencies for interface changes.

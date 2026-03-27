@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/types.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("MergeChildInterfacesIncrementally", () => {
   it("step 1: _actors/ParentEngine has many child interfaces to merge and wants to avoid loading all simultaneously", () => {

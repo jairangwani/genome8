@@ -3,12 +3,12 @@ spec_sections: [3, 5]
 nodes:
   ConvergenceMetricsRecord:
     type: artifact
-    description: in-memory accumulator that holds LLM call count, total tokens, per-step wall-clock timings, modules processed, nodes created, and journeys created
+    description: in-memory accumulator that holds LLM call count, total tokens, per-step wall-clock timings, start and completion timestamps, modules processed, nodes created, and journeys created
     files: ["src/metrics.ts"]
   MetricsJsonFile:
     type: artifact
     description: genome/metrics.json written to disk after each convergence with the finalized metrics snapshot
-    files: ["src/metrics.ts"]
+    files: ["src/convergence.ts"]
   TrackLLMCall:
     type: process
     description: increments the LLM call counter and adds the token count from a single call to the running total
@@ -36,7 +36,7 @@ nodes:
   WriteMetricsToDisk:
     type: process
     description: serializes the finalized metrics snapshot to JSON and writes it to genome/metrics.json
-    files: ["src/metrics.ts"]
+    files: ["src/convergence.ts"]
   StepTimingInvariant:
     type: rule
     description: endStep silently skips if startStep was never called for that step name, preventing negative or nonsensical elapsed times
@@ -63,6 +63,8 @@ journeys:
     steps:
       - node: _actors/LLMWorker
         action: completes an LLM call and reports the token count
+      - node: llm/TaskResult
+        action: provides the completed task result including token usage count
       - node: TrackLLMCall
         action: increments the call counter and adds tokens to the running total
       - node: ConvergenceMetricsRecord
@@ -73,6 +75,10 @@ journeys:
     steps:
       - node: convergence/CompileCheck
         action: finishes compilation and reports module, node, and journey counts
+      - node: compilation/CompilationResult
+        action: provides the compilation output with error and warning counts
+      - node: graph/CompiledIndex
+        action: provides the compiled graph with total node and journey counts
       - node: TrackModuleCount
         action: records the number of modules processed
       - node: TrackGraphCounts
@@ -95,3 +101,118 @@ journeys:
         action: receives the written metrics at genome/metrics.json
       - node: _actors/HumanDeveloper
         action: reads genome/metrics.json to review pipeline performance
+
+  TrackAuditPerformance:
+    steps:
+      - node: convergence/TargetedAudit
+        action: begins the audit phase of the pipeline
+      - node: StartStepTimer
+        action: records the wall-clock start time for the audit step
+      - node: audit/CheckSpecCoverage
+        action: runs all three auditors against the compiled graph
+      - node: audit/TrackAuditRound
+        action: completes an audit round with findings and fix attempts
+      - node: EndStepTimer
+        action: computes elapsed ms for the audit phase
+      - node: ConvergenceMetricsRecord
+        action: stores the audit duration and round count
+
+  TrackCodegenAndTestgenPerformance:
+    steps:
+      - node: convergence/TriggerCodegen
+        action: begins the code generation phase
+      - node: StartStepTimer
+        action: records the start time for the codegen step
+      - node: codegen/ReadConvergedGraph
+        action: generates skeletons and fills implementations
+      - node: EndStepTimer
+        action: computes elapsed ms for codegen
+      - node: StartStepTimer
+        action: records the start time for the testgen step
+      - node: testgen/ReadJourneySteps
+        action: generates test skeletons and fills assertions
+      - node: EndStepTimer
+        action: computes elapsed ms for testgen
+      - node: ConvergenceMetricsRecord
+        action: stores codegen and testgen durations
+
+  TrackOrganizationAndActorPerformance:
+    steps:
+      - node: convergence/WriteOrganization
+        action: begins the organization phase
+      - node: StartStepTimer
+        action: records the start time for organization analysis
+      - node: organization/WriteOrganizationFile
+        action: reads spec and writes ORGANIZATION.md
+      - node: EndStepTimer
+        action: computes elapsed ms for organization
+      - node: StartStepTimer
+        action: records the start time for actor discovery
+      - node: actors/WriteActorsFile
+        action: discovers actors from three angles and writes actors file
+      - node: EndStepTimer
+        action: computes elapsed ms for actor discovery
+      - node: ConvergenceMetricsRecord
+        action: stores organization and actor discovery durations
+
+  TrackPublishAndEventPerformance:
+    steps:
+      - node: convergence/TriggerPublish
+        action: begins the publish phase
+      - node: StartStepTimer
+        action: records the start time for publishing
+      - node: publish/GenerateInterfaceYaml
+        action: generates interface.yaml and writes event file
+      - node: EndStepTimer
+        action: computes elapsed ms for publish
+      - node: events/PropagateRipple
+        action: processes the event through watchers and ripple propagation
+      - node: ConvergenceMetricsRecord
+        action: stores publish and event processing durations
+
+  TrackHierarchySplitPerformance:
+    steps:
+      - node: convergence/HierarchyDecision
+        action: begins the hierarchy decision phase
+      - node: StartStepTimer
+        action: records the start time for hierarchy split
+      - node: hierarchy/CollectChildInterfaces
+        action: splits into children, waits for convergence, merges interfaces
+      - node: EndStepTimer
+        action: computes elapsed ms for the full hierarchy split
+      - node: ConvergenceMetricsRecord
+        action: stores hierarchy split duration and child engine count
+
+  TrackSyncPerformance:
+    steps:
+      - node: convergence/WakeOnEvent
+        action: wakes from sleep after an event triggers reconvergence
+      - node: StartStepTimer
+        action: records the start time for the sync operation
+      - node: sync/CompareStoredHash
+        action: compares dependency hashes to detect changes
+      - node: sync/FindAffectedModules
+        action: traces which modules are affected by the dependency change
+      - node: sync/MarkModulesStale
+        action: marks affected modules for targeted reconvergence
+      - node: EndStepTimer
+        action: computes elapsed ms for the sync operation
+      - node: ConvergenceMetricsRecord
+        action: stores sync duration and stale module count
+
+  TrackExcerptGenerationPerformance:
+    steps:
+      - node: convergence/ModuleCreation
+        action: begins module creation which requires excerpt generation for each module
+      - node: StartStepTimer
+        action: records the start time for excerpt generation
+      - node: excerpt/SelectTargetModule
+        action: selects the module to generate an excerpt for
+      - node: excerpt/AssembleExcerpt
+        action: assembles the focused context from nodes, journeys, and cross-module connections
+      - node: excerpt/TruncateToLimit
+        action: trims the excerpt to the configured line budget
+      - node: EndStepTimer
+        action: computes elapsed ms for this excerpt generation
+      - node: ConvergenceMetricsRecord
+        action: stores excerpt generation duration and module name

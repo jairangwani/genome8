@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/llm.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ParallelModuleCreationPipeline", () => {
   it("step 1: convergence/ConvergenceState provides the full module list with dependency graph from ORGANIZATION.md", () => {

@@ -32,37 +32,43 @@ describe("ResumeAlreadyConvergedBox", () => {
     // TODO: agent fills assertion
   });
 
-  it("step 5: convergence/SkipToWatchIfConverged reads convergence-state.json and finds status is sleeping or unstable", () => {
+  it("step 5: convergence/SinglePassMode checks whether --once flag is set and allows the skip optimization to proceed", () => {
+    // Node: convergence/SinglePassMode (rule) — has code: src/convergence.ts
+    // Action: checks whether --once flag is set and allows the skip optimization to proceed
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: convergence/SkipToWatchIfConverged reads convergence-state.json and finds status is sleeping or unstable", () => {
     // Node: convergence/SkipToWatchIfConverged (process) — has code: src/convergence.ts
     // Action: reads convergence-state.json and finds status is sleeping or unstable
     // TODO: agent fills assertion
   });
 
-  it("step 6: convergence/SkipToWatchIfConverged compiles the graph and computes the current interface hash", () => {
+  it("step 7: convergence/SkipToWatchIfConverged compiles the graph and computes the current interface hash", () => {
     // Node: convergence/SkipToWatchIfConverged (process) — has code: src/convergence.ts
     // Action: compiles the graph and computes the current interface hash
     // TODO: agent fills assertion
   });
 
-  it("step 7: publish/ComputeInterfaceHash produces the hash for comparison against the stored hash", () => {
+  it("step 8: publish/ComputeInterfaceHash produces the hash for comparison against the stored hash", () => {
     // Node: publish/ComputeInterfaceHash (process)
     // Action: produces the hash for comparison against the stored hash
     // TODO: agent fills assertion
   });
 
-  it("step 8: convergence/SkipToWatchIfConverged compares hashes and confirms they match so the full pipeline can be skipped", () => {
+  it("step 9: convergence/SkipToWatchIfConverged compares hashes and confirms they match so the full pipeline can be skipped", () => {
     // Node: convergence/SkipToWatchIfConverged (process) — has code: src/convergence.ts
     // Action: compares hashes and confirms they match so the full pipeline can be skipped
     // TODO: agent fills assertion
   });
 
-  it("step 9: convergence/EnterSleepMode enters watch mode directly without running steps 1 through 6", () => {
+  it("step 10: convergence/EnterSleepMode enters watch mode directly without running steps 1 through 6", () => {
     // Node: convergence/EnterSleepMode (process)
     // Action: enters watch mode directly without running steps 1 through 6
     // TODO: agent fills assertion
   });
 
-  it("step 10: convergence/WakeOnEvent sets up fs.watch on dependency event directories waiting for upstream changes", () => {
+  it("step 11: convergence/WakeOnEvent sets up fs.watch on dependency event directories waiting for upstream changes", () => {
     // Node: convergence/WakeOnEvent (process)
     // Action: sets up fs.watch on dependency event directories waiting for upstream changes
     // TODO: agent fills assertion

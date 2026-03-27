@@ -73,9 +73,13 @@ nodes:
   EnforceActorCountLimit:
     type: process
     description: caps the maximum number of actors that can be stored in _actors.yaml to prevent graph bloat and context window exhaustion from adversarial specs
+  ValidateActorNameFormat:
+    type: process
+    description: checks that each discovered actor name uses valid PascalCase identifier format without spaces or special characters that would break _actors/ reference resolution in journey steps
 
 journeys:
   DiscoverActorsFromSpec:
+    files: [test/journeys/DiscoverActorsFromSpec.test.ts]
     steps:
       - node: convergence/DiscoverActors
         action: triggers actor discovery after organization step is complete
@@ -105,6 +109,7 @@ journeys:
         action: stores the lifecycle-perspective actors
 
   MergeAndWriteActors:
+    files: [test/journeys/MergeAndWriteActors.test.ts]
     steps:
       - node: ActivitiesActorList
         action: provides the activities-perspective actors for merging
@@ -124,6 +129,7 @@ journeys:
         action: records that actor discovery is complete
 
   InheritActorsToChildren:
+    files: [test/journeys/InheritActorsToChildren.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: has completed actor discovery and is preparing child engines
@@ -139,6 +145,7 @@ journeys:
         action: receives the inherited actors and uses them during its own convergence
 
   ValidateActorsBeforeProceeding:
+    files: [test/journeys/ValidateActorsBeforeProceeding.test.ts]
     steps:
       - node: ActivitiesActorList
         action: provides the activities-angle results for completeness checking
@@ -164,6 +171,7 @@ journeys:
         action: receives the validation result and proceeds if all checks pass
 
   ProvideActorsToCompilation:
+    files: [test/journeys/ProvideActorsToCompilation.test.ts]
     steps:
       - node: ActorsFile
         action: provides the validated _actors.yaml file on disk
@@ -179,6 +187,7 @@ journeys:
         action: the compiled index now contains all actor nodes alongside module nodes
 
   ProvideActorsForExcerptContext:
+    files: [test/journeys/ProvideActorsForExcerptContext.test.ts]
     steps:
       - node: convergence/ModuleCreation
         action: begins creating a module and requests an excerpt for context
@@ -194,6 +203,7 @@ journeys:
         action: packages the excerpt including actor context into the creation task
 
   RediscoverActorsAfterSpecChange:
+    files: [test/journeys/RediscoverActorsAfterSpecChange.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: signals that the spec has changed and actors may need updating
@@ -225,6 +235,7 @@ journeys:
         action: the updated actor file is ready for recompilation
 
   EndToEndActorDiscoveryToModuleCreation:
+    files: [test/journeys/EndToEndActorDiscoveryToModuleCreation.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: has written spec.md describing their system
@@ -258,6 +269,7 @@ journeys:
         action: includes relevant actors in the module creation excerpt
 
   SpecInjectionDefense:
+    files: [test/journeys/SpecInjectionDefense.test.ts]
     steps:
       - node: _actors/MaliciousSpecAuthor
         action: submits a spec.md containing prompt injection or adversarial content
@@ -277,6 +289,7 @@ journeys:
         action: catches any phantom references injected through the adversarial spec
 
   YAMLTamperingDefense:
+    files: [test/journeys/YAMLTamperingDefense.test.ts]
     steps:
       - node: _actors/YAMLTamperer
         action: directly edits _actors.yaml to inject invalid actor definitions or corrupt entries
@@ -292,6 +305,7 @@ journeys:
         action: reports validation errors from the tampered content
 
   RogueWorkerDefense:
+    files: [test/journeys/RogueWorkerDefense.test.ts]
     steps:
       - node: _actors/RogueWorker
         action: produces subtly wrong actor content with hallucinated or phantom actors
@@ -307,6 +321,7 @@ journeys:
         action: targeted fix removes orphan actors that cannot be connected to any journey
 
   EventSpoofingDefense:
+    files: [test/journeys/EventSpoofingDefense.test.ts]
     steps:
       - node: _actors/EventSpoofer
         action: writes a fake event file to trigger unnecessary reconvergence
@@ -322,6 +337,7 @@ journeys:
         action: aborts sync because no real change occurred, neutralizing the spoof
 
   InfiniteRippleDefense:
+    files: [test/journeys/InfiniteRippleDefense.test.ts]
     steps:
       - node: _actors/InfiniteLoopTrigger
         action: crafts circular dependencies or oscillating changes to cause unbounded ripple
@@ -337,6 +353,7 @@ journeys:
         action: aborts because the effective state has not changed
 
   HashCollisionDefense:
+    files: [test/journeys/HashCollisionDefense.test.ts]
     steps:
       - node: _actors/HashCollisionExploiter
         action: manipulates content to produce identical SHA256 hashes
@@ -352,6 +369,7 @@ journeys:
         action: targeted fix forces a re-publish of the affected interface
 
   PrivilegeEscalationDefense:
+    files: [test/journeys/PrivilegeEscalationDefense.test.ts]
     steps:
       - node: _actors/PrivilegeEscalator
         action: attempts to use LLMWorker's native tools to access files outside box scope
@@ -367,6 +385,7 @@ journeys:
         action: reports the out-of-scope access as validation errors
 
   ResourceExhaustionDefense:
+    files: [test/journeys/ResourceExhaustionDefense.test.ts]
     steps:
       - node: _actors/ResourceExhauster
         action: submits a spec designed to spawn unbounded child engines
@@ -382,6 +401,7 @@ journeys:
         action: allows convergence to complete even with many modules since creation is bounded
 
   StaleBoxRecovery:
+    files: [test/journeys/StaleBoxRecovery.test.ts]
     steps:
       - node: _actors/StaleBox
         action: has stopped watching events and drifted out of sync
@@ -399,6 +419,7 @@ journeys:
         action: reconverges all stale modules to bring the box back in sync
 
   DeprecatedModuleCleanup:
+    files: [test/journeys/DeprecatedModuleCleanup.test.ts]
     steps:
       - node: _actors/DeprecatedModule
         action: exists on disk but is no longer relevant to the current spec
@@ -414,6 +435,7 @@ journeys:
         action: targeted fix removes or archives the deprecated module
 
   NewProjectAdoption:
+    files: [test/journeys/NewProjectAdoption.test.ts]
     steps:
       - node: _actors/NewProjectAdopter
         action: encounters genome8 and wants to try it on their project
@@ -435,6 +457,7 @@ journeys:
         action: tracks the first-time convergence through all pipeline steps
 
   MigratingProjectBootstrap:
+    files: [test/journeys/MigratingProjectBootstrap.test.ts]
     steps:
       - node: _actors/MigratingProject
         action: has existing documentation and code that needs to be captured in the graph
@@ -454,6 +477,7 @@ journeys:
         action: reports any gaps between the spec and the bootstrapped modules
 
   ReturningOwnerReconvergence:
+    files: [test/journeys/ReturningOwnerReconvergence.test.ts]
     steps:
       - node: _actors/ReturningOwner
         action: re-triggers convergence after a long period of inactivity
@@ -475,6 +499,7 @@ journeys:
         action: records the system is back in sync after the returning owner's trigger
 
   ActorImpersonationDefense:
+    files: [test/journeys/ActorImpersonationDefense.test.ts]
     steps:
       - node: _actors/RogueWorker
         action: creates a module with journey steps referencing _actors/FakeAdmin that does not exist in the registry
@@ -494,6 +519,7 @@ journeys:
         action: targeted fix removes or replaces the fake actor reference with a valid one
 
   ActorDescriptionPoisoningDefense:
+    files: [test/journeys/ActorDescriptionPoisoningDefense.test.ts]
     steps:
       - node: _actors/MaliciousSpecAuthor
         action: crafts a spec where actor descriptions contain hidden instructions or prompt injection fragments
@@ -515,6 +541,7 @@ journeys:
         action: targeted fix sanitizes or removes the poisoned actor descriptions
 
   ChildActorTamperingDefense:
+    files: [test/journeys/ChildActorTamperingDefense.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: receives inherited _actors.yaml from the parent engine
@@ -536,6 +563,7 @@ journeys:
         action: blocks the child's compilation result from merging into the parent until the tampering is resolved
 
   DiscoveryAngleBiasDefense:
+    files: [test/journeys/DiscoveryAngleBiasDefense.test.ts]
     steps:
       - node: _actors/MaliciousSpecAuthor
         action: writes a spec heavily weighted toward one domain to suppress other discovery angles
@@ -561,6 +589,7 @@ journeys:
         action: records the angle bias with the specific ratios and which angles were suppressed
 
   ActorCountInflationDefense:
+    files: [test/journeys/ActorCountInflationDefense.test.ts]
     steps:
       - node: _actors/ResourceExhauster
         action: submits a spec designed to produce hundreds of distinct actors
@@ -580,3 +609,22 @@ journeys:
         action: records the inflation attempt with the actual count and the maximum allowed
       - node: convergence/AuditGapFix
         action: targeted fix triggers rediscovery with a stricter prompt to consolidate actors
+
+  RejectInvalidActorName:
+    steps:
+      - node: _actors/LLMWorker
+        action: produces actor entries from the 3-angle discovery
+      - node: MergedActorList
+        action: provides the merged actor list with names for format validation
+      - node: ValidateActorNameFormat
+        action: checks each actor name against valid PascalCase identifier rules
+      - node: ValidateActorNameFormat
+        action: detects an actor name containing spaces, hyphens, special characters, or lowercase-start
+      - node: llm/SendTask
+        action: sends the invalid name with the PascalCase naming convention as a correction task
+      - node: _actors/LLMWorker
+        action: re-formats the actor name to valid PascalCase matching the convention
+      - node: MergeAndDeduplicate
+        action: re-merges with the corrected name to check for new duplicates against existing actors
+      - node: ValidateActorNameFormat
+        action: re-validates and confirms all actor names are now valid identifiers

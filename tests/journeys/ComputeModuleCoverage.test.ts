@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/types.ts
 // Implementation: src/compile.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ComputeModuleCoverage", () => {
   it("step 1: graph/CompiledIndex provides all compiled nodes with their module assignments and connection data", () => {

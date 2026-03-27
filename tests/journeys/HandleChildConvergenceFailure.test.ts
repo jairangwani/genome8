@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HandleChildConvergenceFailure", () => {
   it("step 1: _actors/ParentEngine is waiting for children and one exits with a non-zero status", () => {

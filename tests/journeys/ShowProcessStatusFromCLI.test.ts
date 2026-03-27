@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
 // Implementation: test/integration.test.ts
+// Implementation: test-project/
 
 describe("ShowProcessStatusFromCLI", () => {
   it("step 1: _actors/HumanDeveloper runs genome ps to see running convergence processes", () => {

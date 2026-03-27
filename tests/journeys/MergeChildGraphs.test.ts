@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/types.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("MergeChildGraphs", () => {
   it("step 1: _actors/ParentEngine cross-engine validation has passed and cross-engine journeys are created", () => {

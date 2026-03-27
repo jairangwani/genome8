@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("ReconcileHashStateAfterCrash", () => {
   it("step 1: _actors/Compiler starts up after a crash or unexpected shutdown and needs to verify hash consistency", () => {

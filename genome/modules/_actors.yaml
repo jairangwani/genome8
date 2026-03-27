@@ -70,6 +70,7 @@ nodes:
 
 journeys:
   BreakSystemIntoScopedPieces:
+    files: [test/journeys/BreakSystemIntoScopedPieces.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: writes spec.md describing a complex system that no single brain can hold
@@ -87,6 +88,7 @@ journeys:
         action: merges all scoped pieces into a single connected graph
 
   MapPiecesWithJourneys:
+    files: [test/journeys/MapPiecesWithJourneys.test.ts]
     steps:
       - node: _actors/LLMWorker
         action: writes journey steps that trace use cases across nodes in a module
@@ -104,6 +106,7 @@ journeys:
         action: assembles nodes and connections into the living graph
 
   SyncWhenThingsChange:
+    files: [test/journeys/SyncWhenThingsChange.test.ts]
     steps:
       - node: _actors/HumanDeveloper
         action: modifies a module or spec in a box

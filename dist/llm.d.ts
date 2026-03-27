@@ -20,11 +20,13 @@ export declare class LLMWorker {
     private systemPrompt;
     private model;
     private sessionResetChars;
+    private messageTimeoutMs;
     constructor(options: {
         cwd: string;
         systemPrompt?: string;
         model?: string;
         sessionResetChars?: number;
+        messageTimeoutMs?: number;
     });
     /**
      * Spawn or reuse the persistent Claude Code process.

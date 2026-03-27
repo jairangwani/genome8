@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("DetectEventInterfaceHashDivergence", () => {
   it("step 1: publish/WriteEventFile writes the event file containing the interface hash in its payload", () => {

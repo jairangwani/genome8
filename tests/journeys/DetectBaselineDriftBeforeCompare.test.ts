@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("DetectBaselineDriftBeforeCompare", () => {
   it("step 1: _actors/Compiler initiates publish and needs to establish a trustworthy comparison baseline", () => {

@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/llm.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ParallelPerspectiveEnrichmentPipeline", () => {
   it("step 1: convergence/ConvergenceState indicates all modules have been created and provides the perspective mapping", () => {

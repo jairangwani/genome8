@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("RollbackAfterPartialPublish", () => {
   it("step 1: publish/DetectWriteFailure reports that a write failed mid-pipeline leaving some files written and others not", () => {

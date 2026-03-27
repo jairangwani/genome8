@@ -3,26 +3,11 @@ spec_sections: [3, 5]
 nodes:
   ReadConvergedGraph:
     type: process
-    description: reads the compiled index after convergence to extract all nodes with their types and descriptions for skeleton generation
+    description: reads the compiled index after convergence to extract all nodes with their types, descriptions, file paths, connection context (preceded_by, followed_by, triggered_by_actors), journey participation, and properties for skeleton generation
     files: ["src/codegen.ts"]
   GenerateProcessSkeletons:
     type: process
-    description: creates TypeScript function stubs for each process node with name, parameters inferred from connections, and return type
-  GenerateArtifactSkeletons:
-    type: process
-    description: creates TypeScript interface and class stubs for each artifact node with fields inferred from journey usage
-  GenerateInterfaceSkeletons:
-    type: process
-    description: creates TypeScript API endpoint or handler stubs for each interface node
-  GenerateRuleSkeletons:
-    type: process
-    description: creates TypeScript validation function stubs for each rule node with the constraint logic left empty
-  MapConnectionsToImports:
-    type: process
-    description: reads cross-module connections to generate import statements linking skeleton files across modules
-  AssembleModuleFile:
-    type: process
-    description: combines all skeletons for a single module into one TypeScript file with imports, types, and function stubs
+    description: creates a TypeScript class skeleton for each process node with a JSDoc header, optional config interface, and journey-derived method stubs
   FillImplementation:
     type: process
     description: delegates to LLM to fill the empty function bodies and class methods in a skeleton file with working code
@@ -61,7 +46,7 @@ nodes:
     description: reverts a filled file back to its skeleton state when the fill passes syntax check but causes type errors in dependent modules downstream
   SkeletonFile:
     type: artifact
-    description: a TypeScript file containing empty stubs for all nodes in a module, ready for LLM to fill
+    description: a per-node TypeScript class file for a process node containing JSDoc context, optional config interface, and journey-derived method stubs ready for LLM to fill
     files: [test/codegen.test.ts]
   FilledSourceFile:
     type: artifact
@@ -69,6 +54,9 @@ nodes:
   GeneratedCodeDirectory:
     type: artifact
     description: the output directory containing all generated TypeScript files organized by module
+  ProcessNodesOnly:
+    type: rule
+    description: skeleton generation only targets process-type nodes, excluding artifact, interface, and rule nodes entirely regardless of whether they declare a files field
   FilesFieldRequired:
     type: rule
     description: skeleton generation only targets nodes that declare a files field, skipping all nodes without explicit file path mappings
@@ -84,38 +72,75 @@ nodes:
   SkeletonBeforeFill:
     type: rule
     description: code generation always produces empty skeletons first, then LLM fills — never asks LLM to generate from scratch
+  EnforceFillRetryLimit:
+    type: process
+    description: tracks fill retry count per module and triggers skip-and-defer when the configured maximum is exceeded, preventing infinite retry loops on persistently failing modules
+  DetectNodeStubMismatch:
+    type: process
+    description: compares function and class exports in a filled file against the module's node list to detect added or removed stubs that violate CodeComesFromNodes
+  DetectPlaceholderFill:
+    type: process
+    description: scans filled function bodies for placeholder patterns like throw-not-implemented, TODO comments, empty bodies, and return-undefined stubs that indicate the LLM did not produce real implementations
+  DispatchByFileExtension:
+    type: process
+    description: selects the language-specific skeleton generator based on file extension, routing .ts and .js files to the TypeScript generator and all others to a generic comment skeleton
+    files: ["src/codegen.ts"]
+  EnrichSkeletonWithConnectionContext:
+    type: process
+    description: embeds node name, description, in_journeys, preceded_by, followed_by, and triggered_by_actors metadata as JSDoc comments in the skeleton header so the LLM understands the node's identity and graph context during fill
+    files: ["src/codegen.ts"]
+  GenerateConfigInterface:
+    type: process
+    description: generates a named Config interface from the node's properties map when properties exist, inferring TypeScript types from runtime value types via typeof, providing typed configuration for the implementation class
+    files: ["src/codegen.ts"]
+  GenerateJourneyMethodStubs:
+    type: process
+    description: creates one deduplicated async method stub per journey the node participates in, stripping step numbers and non-alphanumeric characters to produce camelCase method names, each annotated with a JSDoc journey reference and throwing NotImplemented
+    files: ["src/codegen.ts"]
+  CodegenResultSummary:
+    type: artifact
+    description: the exported CodegenResult interface returned by generateCodeSkeletons containing a generated list of bare file paths and a skipped list of reason-annotated diagnostic strings explaining why each node or file was excluded
+    files: ["src/codegen.ts"]
 
 journeys:
   GenerateSkeletonsFromGraph:
+    files: [test/journeys/GenerateSkeletonsFromGraph.test.ts]
     steps:
       - node: convergence/TriggerCodegen
         action: invokes codegen.ts after convergence and publish are complete
       - node: graph/CompiledIndex
         action: provides the full converged graph with all nodes and connections
       - node: ReadConvergedGraph
-        action: extracts all process, artifact, interface, and rule nodes organized by module
+        action: extracts all nodes from the compiled index organized by module
+      - node: ProcessNodesOnly
+        action: filters to process-type nodes only, excluding artifact, interface, and rule nodes
       - node: CodeComesFromNodes
         action: ensures every skeleton maps to exactly one graph node
       - node: GenerateProcessSkeletons
-        action: creates function stubs for all process nodes
-      - node: GenerateArtifactSkeletons
-        action: creates interface and class stubs for all artifact nodes
-      - node: GenerateInterfaceSkeletons
-        action: creates handler stubs for all interface nodes
-      - node: GenerateRuleSkeletons
-        action: creates validation function stubs for all rule nodes
-      - node: graph/ConnectionSet
-        action: provides cross-module edges for import generation
-      - node: MapConnectionsToImports
-        action: generates import statements from connection edges
-      - node: AssembleModuleFile
-        action: combines stubs and imports into a single TypeScript skeleton per module
+        action: creates TypeScript class skeletons for all process nodes that have a files field
+      - node: DispatchByFileExtension
+        action: routes .ts and .js files to the TypeScript generator, others to generic comment skeleton
+      - node: EnrichSkeletonWithConnectionContext
+        action: writes JSDoc header with description, in_journeys, preceded_by, followed_by, and triggered_by_actors
+      - node: GenerateConfigInterface
+        action: generates a TypeScript interface from the node's properties map if properties exist
+      - node: GenerateJourneyMethodStubs
+        action: adds one async method stub per journey with camelCase name and throw NotImplemented body
+      - node: NeverOverwriteExisting
+        action: skips any file path where a file already exists on disk
+      - node: EnsureOutputDirectory
+        action: creates the parent directory tree if it does not yet exist
+      - node: WriteGeneratedFile
+        action: writes each skeleton to disk at the declared file path
       - node: SkeletonFile
-        action: stores the assembled skeleton file for each module
+        action: stores the generated skeleton file for each process node
+      - node: CodegenResultSummary
+        action: records generated file paths and skip reasons in the result
       - node: SkeletonBeforeFill
         action: confirms skeletons are complete before any LLM filling begins
 
   FillSkeletonsWithLLM:
+    files: [test/journeys/FillSkeletonsWithLLM.test.ts]
     steps:
       - node: SkeletonFile
         action: provides the empty skeleton for a module
@@ -143,6 +168,7 @@ journeys:
         action: the file is now on disk in the output directory
 
   FillAllModulesInOrder:
+    files: [test/journeys/FillAllModulesInOrder.test.ts]
     steps:
       - node: organization/DependencyGraph
         action: provides the build order so dependencies are filled before dependents
@@ -178,6 +204,7 @@ journeys:
         action: records that code generation is complete for all modules
 
   ProvideCodegenExcerptContext:
+    files: [test/journeys/ProvideCodegenExcerptContext.test.ts]
     steps:
       - node: SelectNextModuleToFill
         action: identifies which module needs an excerpt for its fill pass
@@ -203,6 +230,7 @@ journeys:
         action: wraps the excerpt with codegen-specific instructions for the LLM worker
 
   ValidateAndStageFilledModule:
+    files: [test/journeys/ValidateAndStageFilledModule.test.ts]
     steps:
       - node: FillImplementation
         action: has produced a filled source file from the LLM worker
@@ -224,6 +252,7 @@ journeys:
         action: the validated and staged file is now in the final output location
 
   EndToEndCodegenPipeline:
+    files: [test/journeys/EndToEndCodegenPipeline.test.ts]
     steps:
       - node: convergence/TriggerCodegen
         action: invokes codegen after convergence declares the graph CONVERGED
@@ -233,18 +262,18 @@ journeys:
         action: extracts all nodes organized by module for skeleton generation
       - node: organization/DependencyGraph
         action: provides the module build order
+      - node: ProcessNodesOnly
+        action: filters to process-type nodes only
+      - node: FilesFieldRequired
+        action: skips nodes without a files field
       - node: GenerateProcessSkeletons
-        action: creates function stubs for process nodes
-      - node: GenerateArtifactSkeletons
-        action: creates class stubs for artifact nodes
-      - node: GenerateInterfaceSkeletons
-        action: creates handler stubs for interface nodes
-      - node: GenerateRuleSkeletons
-        action: creates validation stubs for rule nodes
-      - node: MapConnectionsToImports
-        action: generates cross-module import statements
-      - node: AssembleModuleFile
-        action: assembles each module's skeleton file
+        action: creates TypeScript class skeletons for each process node
+      - node: NeverOverwriteExisting
+        action: skips skeleton write for files that already exist on disk
+      - node: EnsureOutputDirectory
+        action: creates parent directories as needed
+      - node: WriteGeneratedFile
+        action: writes each skeleton file to disk
       - node: SkeletonFile
         action: stores all skeletons ready for filling
       - node: SelectNextModuleToFill
@@ -269,6 +298,7 @@ journeys:
         action: signals testgen to begin generating test skeletons from the filled code
 
   HandoffToTestgen:
+    files: [test/journeys/HandoffToTestgen.test.ts]
     steps:
       - node: ConfirmAllModulesFilled
         action: confirms every module has a validated filled source file
@@ -284,6 +314,7 @@ journeys:
         action: reads the generated code files to produce test import statements
 
   RecoverFromFillSyntaxError:
+    files: [test/journeys/RecoverFromFillSyntaxError.test.ts]
     steps:
       - node: FillImplementation
         action: has produced a filled file from the LLM worker
@@ -313,6 +344,7 @@ journeys:
         action: re-checks the corrected fill for syntax and type errors
 
   RecoverFromWorkerCrashDuringFill:
+    files: [test/journeys/RecoverFromWorkerCrashDuringFill.test.ts]
     steps:
       - node: llm/SendTask
         action: has sent a fill task to the LLM worker
@@ -344,6 +376,7 @@ journeys:
         action: receives the complete filled source from the replacement worker
 
   ResumePartialCodegen:
+    files: [test/journeys/ResumePartialCodegen.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: indicates codegen was in progress when the process was interrupted
@@ -371,6 +404,7 @@ journeys:
         action: continues checking until all remaining modules are filled
 
   HandleCascadeFillFailure:
+    files: [test/journeys/HandleCascadeFillFailure.test.ts]
     steps:
       - node: SelectNextModuleToFill
         action: picks a module whose dependency failed to fill
@@ -398,6 +432,7 @@ journeys:
         action: returns to the deferred modules now that their dependency is available
 
   HandleWriteFailure:
+    files: [test/journeys/HandleWriteFailure.test.ts]
     steps:
       - node: FilledSourceFile
         action: provides the validated filled content ready to write
@@ -420,10 +455,14 @@ journeys:
         action: provides all nodes in the converged graph
       - node: ReadConvergedGraph
         action: iterates every node in the compiled index
+      - node: ProcessNodesOnly
+        action: filters to process-type nodes only, skipping artifact, interface, and rule nodes
       - node: FilesFieldRequired
         action: skips any node that does not declare a files field
       - node: GenerateProcessSkeletons
-        action: generates a TypeScript skeleton for each process node that passes the filter
+        action: generates a TypeScript skeleton for each process node that passes both filters
+      - node: DispatchByFileExtension
+        action: routes .ts and .js files to the TypeScript generator, others to generic comment skeleton
       - node: NeverOverwriteExisting
         action: checks the target file path on disk and skips if a file already exists
       - node: EnsureOutputDirectory
@@ -432,3 +471,141 @@ journeys:
         action: writes the skeleton to disk at the declared file path
       - node: SkeletonFile
         action: the generated skeleton is stored and ready for LLM filling
+      - node: CodegenResultSummary
+        action: records the generated file path or skip reason in the result tracking
+
+  ExhaustFillRetriesAndSkip:
+    steps:
+      - node: FillImplementation
+        action: LLM produces a filled file that fails validation
+      - node: ValidateFilledSyntax
+        action: detects syntax or type errors in the filled output
+      - node: RetryFillWithErrorFeedback
+        action: sends errors back to LLM and re-requests the fill
+      - node: FillImplementation
+        action: LLM produces another fill attempt
+      - node: ValidateFilledSyntax
+        action: re-checks the retry output and finds it still fails
+      - node: EnforceFillRetryLimit
+        action: increments the retry counter and checks against the configured maximum
+      - node: EnforceFillRetryLimit
+        action: determines the maximum retry count has been exceeded for this module
+      - node: SkipAndDeferFailedModule
+        action: marks the module as permanently failed and skips to the next independent module
+      - node: convergence/ConvergenceState
+        action: records the module as unfillable after retry exhaustion for diagnostic reporting
+
+  RecoverFromNodeStubMismatch:
+    steps:
+      - node: FillImplementation
+        action: LLM has produced a filled file
+      - node: FilledSourceFile
+        action: provides the filled TypeScript content for structural validation
+      - node: DetectNodeStubMismatch
+        action: compares exported functions and classes against the module's node list from the graph
+      - node: CodeComesFromNodes
+        action: flags that the filled file has extra functions not in the graph or is missing stubs for declared nodes
+      - node: DetectNodeStubMismatch
+        action: produces a list of added and removed stubs with their names
+      - node: RetryFillWithErrorFeedback
+        action: packages the structural mismatch as feedback specifying which stubs must exist and which must be removed
+      - node: SkeletonFile
+        action: provides the original skeleton as the structural reference for the retry
+      - node: llm/SendTask
+        action: sends the retry task with structural feedback to the worker
+      - node: _actors/LLMWorker
+        action: re-fills the skeleton maintaining exactly one function or class per graph node
+      - node: FillImplementation
+        action: LLM produces a corrected fill matching the node list
+      - node: llm/ReceiveResult
+        action: receives the structurally corrected fill
+      - node: DetectNodeStubMismatch
+        action: re-checks the corrected fill to confirm all stubs match the node list
+
+  RejectPlaceholderFill:
+    steps:
+      - node: FillImplementation
+        action: LLM has produced a filled file that passes syntax and structural checks
+      - node: FilledSourceFile
+        action: provides the filled TypeScript content for implementation quality check
+      - node: DetectPlaceholderFill
+        action: scans each function body for throw-not-implemented, TODO comments, empty bodies, and return-undefined patterns
+      - node: DetectPlaceholderFill
+        action: flags specific functions that contain only placeholder code without real logic
+      - node: RetryFillWithErrorFeedback
+        action: packages the placeholder detection results as feedback listing which functions need real implementations
+      - node: SkeletonFile
+        action: provides the original skeleton as context for what each stub should implement
+      - node: ProvideCodegenExcerpt
+        action: re-assembles the implementation guidance so the LLM understands what each function should do
+      - node: llm/SendTask
+        action: sends the retry task with placeholder feedback and implementation context to the worker
+      - node: _actors/LLMWorker
+        action: re-fills the flagged functions with actual implementation logic guided by node descriptions
+      - node: FillImplementation
+        action: LLM produces a fill with real implementations replacing the placeholders
+      - node: llm/ReceiveResult
+        action: receives the implementation-complete fill
+      - node: DetectPlaceholderFill
+        action: re-checks to confirm all function bodies now contain substantive code
+
+  SkipCodegenWhenFullyConverged:
+    steps:
+      - node: convergence/TriggerCodegen
+        action: invokes codegen on a system that has already completed code generation
+      - node: graph/CompiledIndex
+        action: provides the converged graph for skeleton generation
+      - node: ReadConvergedGraph
+        action: extracts all nodes organized by module
+      - node: DispatchByFileExtension
+        action: checks the file extension to select the TypeScript or generic skeleton generator
+      - node: NeverOverwriteExisting
+        action: checks each skeleton target path and finds every file already exists on disk
+      - node: NeverOverwriteExisting
+        action: skips all skeleton writes because no target path is missing a file
+      - node: organization/DependencyGraph
+        action: provides the full build order for the fill phase
+      - node: ConfirmAllModulesFilled
+        action: checks every module in the build list and finds all already have filled source files
+      - node: ConfirmAllModulesFilled
+        action: determines zero modules need filling and signals codegen is already complete
+      - node: convergence/ConvergenceState
+        action: records that codegen exited with no changes because all outputs already exist
+
+  GenerateTypeScriptSkeleton:
+    steps:
+      - node: ReadConvergedGraph
+        action: provides a process node with its compiled metadata including connections and journey participation
+      - node: DispatchByFileExtension
+        action: detects .ts or .js extension and routes to the TypeScript skeleton generator
+      - node: EnrichSkeletonWithConnectionContext
+        action: writes JSDoc header with description, in_journeys, preceded_by, followed_by, and triggered_by_actors
+      - node: GenerateConfigInterface
+        action: generates a TypeScript interface from the node's properties map if properties exist
+      - node: GenerateProcessSkeletons
+        action: creates the class declaration for the process node
+      - node: GenerateJourneyMethodStubs
+        action: adds one async method stub per journey with camelCase name and throw NotImplemented body
+      - node: SkeletonFile
+        action: returns the assembled TypeScript skeleton content
+      - node: CodegenResultSummary
+        action: records the generated file in the result tracking
+
+  ValidateGeneratedCodeCompiles:
+    steps:
+      - node: WriteGeneratedFile
+        action: writes the filled source file to disk
+      - node: _actors/Compiler
+        action: runs compilation on the generated code directory
+      - node: compilation/YAMLParsing
+        action: parses any generated YAML artifacts for structural validity
+      - node: compilation/DanglingRefDetection
+        action: checks that generated code references only nodes that exist in the graph
+      - node: compilation/ValidationAggregation
+        action: collects all validation errors from the generated output
+      - node: compilation/CompilationResult
+        action: reports whether the generated code introduced any compilation errors
+      - node: ValidateFilledSyntax
+        action: confirms the filled module has valid syntax and no compilation errors
+      - node: RetryFillWithErrorFeedback
+        action: if errors found, feeds the compilation errors back to the LLM for correction

@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/publish.ts
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("VerifyPublishedHashAfterWrite", () => {
   it("step 1: publish/GenerateInterfaceYaml writes interface.yaml to disk with embedded SHA256 hash", () => {

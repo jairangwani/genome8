@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HandleMalformedChildInterface", () => {
   it("step 1: _actors/ParentEngine all children have exited and the parent begins collecting interfaces", () => {

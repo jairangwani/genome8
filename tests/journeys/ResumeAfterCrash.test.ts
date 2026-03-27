@@ -8,8 +8,11 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
 // Implementation: test/integration.test.ts
+// Implementation: test-project/
 // Implementation: src/llm.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ResumeAfterCrash", () => {
   it("step 1: _actors/ProjectOwner restarts the convergence pipeline after a crash or interruption", () => {

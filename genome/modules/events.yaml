@@ -151,9 +151,16 @@ nodes:
   EventBackpressureThreshold:
     type: rule
     description: enforces a maximum number of pending events in the processing queue and triggers load shedding when exceeded to prevent memory exhaustion and pipeline stalls during cascading ripples
+  DeferWatcherForMissingPath:
+    type: process
+    description: records a dependency whose event file path does not exist when watcher registration is attempted, and retries registration during the next watcher update cycle when the dependency may have published
+  WatcherCrashRetryLimit:
+    type: rule
+    description: enforces a maximum number of consecutive re-registration attempts for the same dependency's watcher before removing it from the active set, preventing infinite crash-reregister oscillation loops
 
 journeys:
   SetupEventWatching:
+    files: [test/journeys/SetupEventWatching.test.ts]
     steps:
       - node: convergence/EnterSleepMode
         action: signals that the convergence pipeline is complete and the engine should begin watching
@@ -173,6 +180,7 @@ journeys:
         action: suspends the engine process until an event callback fires
 
   HandleIncomingEvent:
+    files: [test/journeys/HandleIncomingEvent.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback when a dependency's event file changes
@@ -208,6 +216,7 @@ journeys:
         action: passes the event payload with origin chain and sequence to sync.ts for hash comparison and stale detection
 
   EventTriggeredReconvergence:
+    files: [test/journeys/EventTriggeredReconvergence.test.ts]
     steps:
       - node: DelegateToSync
         action: invokes sync.ts with the event payload
@@ -231,6 +240,7 @@ journeys:
         action: records targeted reconvergence complete
 
   RipplePropagation:
+    files: [test/journeys/RipplePropagation.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: confirms targeted reconvergence succeeded
@@ -252,6 +262,7 @@ journeys:
         action: returns to zero-cost sleep waiting for the next event
 
   TeardownEventWatching:
+    files: [test/journeys/TeardownEventWatching.test.ts]
     steps:
       - node: _actors/HumanDeveloper
         action: shuts down the engine or removes the box
@@ -263,6 +274,7 @@ journeys:
         action: deregisters the watch callbacks at the kernel level
 
   FullEventLifecycle:
+    files: [test/journeys/FullEventLifecycle.test.ts]
     steps:
       - node: convergence/EnterSleepMode
         action: signals convergence is complete and the engine should watch for events
@@ -336,6 +348,7 @@ journeys:
         action: returns to zero-cost sleep awaiting the next event
 
   HandleMultipleEventsInBatch:
+    files: [test/journeys/HandleMultipleEventsInBatch.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires multiple fs.watch callbacks in rapid succession from different dependencies
@@ -369,6 +382,7 @@ journeys:
         action: passes the combined batch payload to sync.ts for a single hash comparison pass across all changed dependencies
 
   UpdateWatchersAfterReconvergence:
+    files: [test/journeys/UpdateWatchersAfterReconvergence.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes reconvergence which may have changed the dependency list
@@ -392,6 +406,7 @@ journeys:
         action: updated with the new set of active watchers matching the current dependency list
 
   VerifyWatcherHealth:
+    files: [test/journeys/VerifyWatcherHealth.test.ts]
     steps:
       - node: WakeFromSleep
         action: resumes the engine, triggering a health check before processing
@@ -413,6 +428,7 @@ journeys:
         action: updated with the restored watcher set
 
   ResumeAfterOwnerReturn:
+    files: [test/journeys/ResumeAfterOwnerReturn.test.ts]
     steps:
       - node: _actors/ReturningOwner
         action: restarts the engine after a period of downtime
@@ -440,6 +456,7 @@ journeys:
         action: passes the detected changes to sync.ts for stale module identification and reconvergence
 
   RecoverFromWatcherCrash:
+    files: [test/journeys/RecoverFromWatcherCrash.test.ts]
     steps:
       - node: _actors/FileSystem
         action: emits an error event on an fs.watch instance instead of a normal change notification
@@ -465,6 +482,7 @@ journeys:
         action: verifies the replacement watcher is active and responsive
 
   HandleUnreadableEventFile:
+    files: [test/journeys/HandleUnreadableEventFile.test.ts]
     steps:
       - node: DetectEventFileChange
         action: receives a filesystem notification for an event file change
@@ -492,6 +510,7 @@ journeys:
         action: receives the escalated failure for operator review since the event could not be read
 
   HandleMalformedEventFile:
+    files: [test/journeys/HandleMalformedEventFile.test.ts]
     steps:
       - node: DetectEventFileChange
         action: receives a filesystem notification for an event file change
@@ -513,6 +532,7 @@ journeys:
         action: returns to sleep since the malformed event cannot be processed and no sync is triggered
 
   HandleSyncDelegationError:
+    files: [test/journeys/HandleSyncDelegationError.test.ts]
     steps:
       - node: ReadEventFile
         action: successfully reads and validates the event file
@@ -544,6 +564,7 @@ journeys:
         action: receives the escalated sync failure for operator review or automated recovery
 
   RecoverFromPartialBatchFailure:
+    files: [test/journeys/RecoverFromPartialBatchFailure.test.ts]
     steps:
       - node: DebounceEvents
         action: produces a batch of multiple events from different dependencies
@@ -567,6 +588,7 @@ journeys:
         action: passes only the valid event payloads to sync.ts, skipping the failed ones
 
   ForwardOriginChainToSync:
+    files: [test/journeys/ForwardOriginChainToSync.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback for a dependency event file change
@@ -596,6 +618,7 @@ journeys:
         action: compares the sequence number against the last processed sequence for this dependency
 
   SuppressRippleOnUnchangedInterface:
+    files: [test/journeys/SuppressRippleOnUnchangedInterface.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes reconvergence on stale modules after a dependency event
@@ -619,6 +642,7 @@ journeys:
         action: returns to zero-cost sleep with the ripple terminated at this box
 
   AdaptCooldownDuringRapidRipple:
+    files: [test/journeys/AdaptCooldownDuringRapidRipple.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires multiple fs.watch callbacks in rapid succession from the same or different dependencies
@@ -640,6 +664,7 @@ journeys:
         action: schedules the cooldown window to narrow back to the default after a stable period with no events
 
   TerminateRippleAtLeafBox:
+    files: [test/journeys/TerminateRippleAtLeafBox.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes reconvergence on stale modules
@@ -665,6 +690,7 @@ journeys:
         action: returns to zero-cost sleep with the ripple naturally terminated
 
   PropagateNarrowedRippleDownstream:
+    files: [test/journeys/PropagateNarrowedRippleDownstream.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes reconvergence on stale modules
@@ -696,6 +722,7 @@ journeys:
         action: returns to zero-cost sleep after propagating the narrowed ripple
 
   RegisterWatchersInBatches:
+    files: [test/journeys/RegisterWatchersInBatches.test.ts]
     steps:
       - node: sync/ReadDependencyList
         action: provides the full dependency list which exceeds the normal watcher registration threshold
@@ -723,6 +750,7 @@ journeys:
         action: persists the batched registration log entry
 
   TruncateOversizedEventLog:
+    files: [test/journeys/TruncateOversizedEventLog.test.ts]
     steps:
       - node: LogEventReceived
         action: persists a new event log entry
@@ -738,6 +766,7 @@ journeys:
         action: updated with only the most recent entries within the size limit
 
   PrioritizeHighImpactEventsInBatch:
+    files: [test/journeys/PrioritizeHighImpactEventsInBatch.test.ts]
     steps:
       - node: DebounceEvents
         action: produces a large batch of events from many dependencies
@@ -763,6 +792,7 @@ journeys:
         action: passes the prioritized events to sync.ts, highest-impact dependencies first
 
   HandleOversizedEventFile:
+    files: [test/journeys/HandleOversizedEventFile.test.ts]
     steps:
       - node: DetectEventFileChange
         action: receives a filesystem notification for an event file change
@@ -788,6 +818,7 @@ journeys:
         action: passes the lightweight payload to sync.ts for processing
 
   HandleHighDependencyCountSync:
+    files: [test/journeys/HandleHighDependencyCountSync.test.ts]
     steps:
       - node: sync/ReadDependencyList
         action: provides the dependency list which exceeds the watcher count limit
@@ -811,6 +842,7 @@ journeys:
         action: enters sleep with only the prioritized watchers active
 
   CrossCheckEventHashWithInterface:
+    files: [test/journeys/CrossCheckEventHashWithInterface.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback for a dependency event file change
@@ -836,6 +868,7 @@ journeys:
         action: passes the verified event payload to sync.ts only if the cross-check passed
 
   DeduplicateEventBySequenceNumber:
+    files: [test/journeys/DeduplicateEventBySequenceNumber.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback, possibly a duplicate notification for the same file write
@@ -859,6 +892,7 @@ journeys:
         action: returns to sleep without triggering sync since the event was already processed
 
   DetectAndRecoverMissedEventSequence:
+    files: [test/journeys/DetectAndRecoverMissedEventSequence.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback for a dependency event file change
@@ -886,6 +920,7 @@ journeys:
         action: passes the current event plus the full hash comparison result to sync.ts for complete stale detection
 
   RejectPartiallyWrittenEventFile:
+    files: [test/journeys/RejectPartiallyWrittenEventFile.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback while the publisher is still writing the event file
@@ -915,6 +950,7 @@ journeys:
         action: passes the verified complete event payload to sync.ts
 
   VerifyEventHashFormatBeforeSync:
+    files: [test/journeys/VerifyEventHashFormatBeforeSync.test.ts]
     steps:
       - node: DetectEventFileChange
         action: receives a filesystem notification for an event file change
@@ -936,6 +972,7 @@ journeys:
         action: returns to sleep without triggering sync since the hash cannot be trusted
 
   ReadBatchedEventFilesInParallel:
+    files: [test/journeys/ReadBatchedEventFilesInParallel.test.ts]
     steps:
       - node: DebounceEvents
         action: produces a large batch of events from many dependencies after the debounce window closes
@@ -961,6 +998,7 @@ journeys:
         action: passes the complete batch of validated payloads to sync.ts
 
   TimeoutSlowEventProcessing:
+    files: [test/journeys/TimeoutSlowEventProcessing.test.ts]
     steps:
       - node: _actors/FileSystem
         action: fires the fs.watch callback for a dependency event file change
@@ -988,6 +1026,7 @@ journeys:
         action: receives the timed-out event for deferred processing or operator review
 
   ShedEventsUnderBackpressure:
+    files: [test/journeys/ShedEventsUnderBackpressure.test.ts]
     steps:
       - node: DebounceEvents
         action: produces a batch of events during a sustained cascading ripple
@@ -1013,6 +1052,7 @@ journeys:
         action: passes only the retained events to sync.ts for processing
 
   PartitionAndProcessEventsInParallel:
+    files: [test/journeys/PartitionAndProcessEventsInParallel.test.ts]
     steps:
       - node: DebounceEvents
         action: produces a large batch of events from many unrelated dependencies
@@ -1040,6 +1080,7 @@ journeys:
         action: returns to sleep after all partitions complete processing
 
   SpillLargeBatchPayloadsToDisk:
+    files: [test/journeys/SpillLargeBatchPayloadsToDisk.test.ts]
     steps:
       - node: DebounceEvents
         action: produces a batch containing more events than the configured in-memory payload threshold
@@ -1065,3 +1106,138 @@ journeys:
         action: persists the payload spill log entry
       - node: EnterSleep
         action: returns to sleep after all payloads including spilled ones are processed
+
+  HandleWatcherRegistrationFailure:
+    steps:
+      - node: RegisterEventWatchers
+        action: attempts to create an fs.watch instance for a dependency's event file path
+      - node: _actors/FileSystem
+        action: rejects the watch registration because the target directory or event file does not exist on disk
+      - node: DeferWatcherForMissingPath
+        action: captures the dependency identifier and missing path for deferred retry
+      - node: LogEventFailure
+        action: records the registration failure with the missing path, dependency identifier, and error details
+      - node: EventLog
+        action: persists the registration failure log entry
+      - node: EventWatcherSet
+        action: remains without a watcher for the missing dependency while all other watchers are active
+      - node: EnterSleep
+        action: enters sleep with watchers for all reachable dependencies, deferring the missing one
+      - node: UpdateWatcherAfterDependencyChange
+        action: during the next watcher update cycle after reconvergence, re-reads the dependency list including deferred entries
+      - node: DeferWatcherForMissingPath
+        action: re-checks whether the previously missing event file path now exists because the dependency has since published
+      - node: RegisterEventWatchers
+        action: creates an fs.watch instance for the now-available event file path
+      - node: _actors/FileSystem
+        action: registers the watch callback at the kernel level for the previously missing dependency
+      - node: EventWatcherSet
+        action: updated with the newly registered watcher completing the full dependency coverage
+
+  TerminateRepeatedlyFailingWatcher:
+    steps:
+      - node: _actors/FileSystem
+        action: emits an error event on an fs.watch instance that was recently re-registered after a previous crash
+      - node: DetectWatcherCrash
+        action: receives the error and identifies this is a repeated crash for the same dependency's watcher
+      - node: ReregisterCrashedWatcher
+        action: checks the consecutive crash count for this dependency's watcher
+      - node: WatcherCrashRetryLimit
+        action: compares the consecutive crash count against the configured maximum re-registration attempts
+      - node: WatcherCrashRetryLimit
+        action: determines the count exceeds the limit, indicating a persistent unrecoverable failure at this path
+      - node: LogEventFailure
+        action: records the watcher as permanently failed with the crash count, dependency path, and consecutive error history
+      - node: EventLog
+        action: persists the permanent watcher failure entry for operator diagnosis
+      - node: EventWatcherSet
+        action: removes the persistently crashing watcher from the active set without replacement
+      - node: convergence/ConvergenceState
+        action: receives notification that a dependency is unwatched due to repeated watcher failures for operator awareness
+
+  CrossEngineRipplePropagation:
+    steps:
+      - node: _actors/ChildEngine
+        action: completes convergence and publishes a new interface with a changed hash
+      - node: publish/WriteEventFile
+        action: writes the event file into the child's output directory
+      - node: _actors/FileSystem
+        action: delivers the fs.watch notification to the parent engine's watcher
+      - node: DetectEventFileChange
+        action: receives the watch event from a child engine's event directory
+      - node: ReadEventFile
+        action: reads the child's event payload including origin chain and sequence number
+      - node: hierarchy/CollectChildInterfaces
+        action: identifies which child published and which parent modules reference its interface
+      - node: DelegateToSync
+        action: hands the event to sync for stale module detection in the parent graph
+      - node: sync/FindAffectedModules
+        action: traces which parent modules depend on the changed child interface
+      - node: convergence/TargetedReconvergence
+        action: reconverges only the parent modules affected by the child's change
+      - node: PropagateRipple
+        action: if the parent's interface changed, writes its own event file continuing the ripple
+
+  RegisterWatchersForChildEngines:
+    steps:
+      - node: hierarchy/SpawnChildEngine
+        action: launches a child engine process in its scoped directory
+      - node: hierarchy/ChildDirectory
+        action: provides the path to the child's output directory containing event files
+      - node: RegisterEventWatchers
+        action: creates an fs.watch on the child's event directory
+      - node: _actors/FileSystem
+        action: begins monitoring the child directory for new event files
+      - node: EventWatcherSet
+        action: adds the child engine's watcher to the active set keyed by child name
+
+  DetectSpoofedEventFile:
+    steps:
+      - node: _actors/EventSpoofer
+        action: writes a fake event file into a box's event directory
+      - node: _actors/FileSystem
+        action: delivers the watch notification for the spoofed file
+      - node: DetectEventFileChange
+        action: picks up the new event file from the watcher
+      - node: ReadEventFile
+        action: reads the event payload including hash and origin chain
+      - node: ValidateEventFileFormat
+        action: checks required fields are present and properly structured
+      - node: CrossCheckEventHashAgainstInterface
+        action: compares the event hash against the actual published interface hash
+      - node: _actors/DependentBox
+        action: rejects the spoofed event because the hash does not match the real interface
+
+  DetectInfiniteRippleLoop:
+    steps:
+      - node: _actors/InfiniteLoopTrigger
+        action: crafts oscillating changes between two boxes to cause unbounded ripple
+      - node: DetectEventFileChange
+        action: detects the oscillating event
+      - node: ExtractOriginChain
+        action: reads the origin chain from the event to check for cycles
+      - node: OscillationCooldown
+        action: enforces a cooldown window when the same origin appears repeatedly
+      - node: SuppressUnchangedRipple
+        action: suppresses the ripple because the interface hash has not actually changed
+      - node: _actors/DependentBox
+        action: remains in sleep as the oscillation is absorbed
+
+  EventTriggeredRecompilation:
+    steps:
+      - node: _actors/DependentBox
+        action: receives a ripple event from an upstream box
+      - node: DetectEventFileChange
+        action: detects the upstream event file change via fs.watch
+      - node: ReadEventFile
+        action: reads the event payload to identify what changed
+      - node: DelegateToSync
+        action: delegates to sync to determine which local modules are affected
+      - node: sync/FindAffectedModules
+        action: traces which local modules reference the changed dependency
+      - node: sync/MarkModulesStale
+        action: marks the affected modules for targeted reconvergence
+      - node: compilation/CompileFromModules
+        action: recompiles only the stale modules to validate the graph after reconvergence
+      - node: compilation/CompilationResult
+        action: produces the compilation result confirming zero errors after event-driven recompilation

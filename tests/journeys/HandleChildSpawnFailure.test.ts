@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: test/multi-engine.test.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HandleChildSpawnFailure", () => {
   it("step 1: _actors/ParentEngine attempts to spawn a child engine subprocess", () => {

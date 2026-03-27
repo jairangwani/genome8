@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/types.ts
 // Implementation: src/testgen.ts
 // Implementation: test/testgen.test.ts
+// Implementation: tests/journeys/
 
 describe("GenerateTestSkeletons", () => {
   it("step 1: convergence/TriggerTestgen invokes testgen.ts after codegen has generated and filled implementation files", () => {

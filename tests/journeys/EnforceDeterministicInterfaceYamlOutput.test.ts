@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/publish.ts
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("EnforceDeterministicInterfaceYamlOutput", () => {
   it("step 1: publish/CollectExportedNodes provides the exported nodes to be serialized into interface.yaml", () => {

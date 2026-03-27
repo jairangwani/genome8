@@ -13,33 +13,21 @@ describe("WaitForInitBeforeFirstTask", () => {
     // TODO: agent fills assertion
   });
 
-  it("step 2: llm/StreamJsonProtocol carries the system init message from the subprocess stdout", () => {
-    // Node: llm/StreamJsonProtocol (interface)
-    // Action: carries the system init message from the subprocess stdout
-    // TODO: agent fills assertion
-  });
-
-  it("step 3: llm/WaitForWorkerInit polls every 200ms checking for the system init message", () => {
+  it("step 2: llm/WaitForWorkerInit waits a flat 2-second delay to allow the subprocess to start up", () => {
     // Node: llm/WaitForWorkerInit (process) — has code: src/llm.ts
-    // Action: polls every 200ms checking for the system init message
+    // Action: waits a flat 2-second delay to allow the subprocess to start up
     // TODO: agent fills assertion
   });
 
-  it("step 4: llm/WaitForWorkerInit enforces a 60-second safety timeout to prevent infinite waiting on broken spawns", () => {
+  it("step 3: llm/WaitForWorkerInit sets the initialized flag to true after the delay completes", () => {
     // Node: llm/WaitForWorkerInit (process) — has code: src/llm.ts
-    // Action: enforces a 60-second safety timeout to prevent infinite waiting on broken spawns
+    // Action: sets the initialized flag to true after the delay completes
     // TODO: agent fills assertion
   });
 
-  it("step 5: llm/WaitForWorkerInit also exits early if the process dies before init completes", () => {
-    // Node: llm/WaitForWorkerInit (process) — has code: src/llm.ts
-    // Action: also exits early if the process dies before init completes
-    // TODO: agent fills assertion
-  });
-
-  it("step 6: llm/SendTask proceeds to send the first task after init is confirmed or timeout expires", () => {
+  it("step 4: llm/SendTask proceeds to send the first task after the startup delay", () => {
     // Node: llm/SendTask (process)
-    // Action: proceeds to send the first task after init is confirmed or timeout expires
+    // Action: proceeds to send the first task after the startup delay
     // TODO: agent fills assertion
   });
 

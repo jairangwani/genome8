@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/types.ts
 // Implementation: src/publish.ts
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("CollectExternalDependenciesForInterface", () => {
   it("step 1: graph/CompiledIndex provides the full compiled graph with all nodes and cross-module connections", () => {

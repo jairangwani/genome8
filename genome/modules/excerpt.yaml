@@ -21,7 +21,7 @@ nodes:
     description: gathers all compilation warnings relevant to the target module including external refs and orphans
   AssembleExcerpt:
     type: process
-    description: combines local nodes, journeys, cross-module connections, actors, and warnings into a single focused output
+    description: combines module status with node-type breakdown, local nodes, local journeys, cross-module connections, triggered-by actors, issues, all-modules overview, global stats, optional spec sections, and raw module YAML source into a single focused output
     files: ["src/excerpt.ts"]
   TruncateToLimit:
     type: process
@@ -125,9 +125,14 @@ nodes:
   AdaptiveBudgetAllocation:
     type: rule
     description: the ~200 line budget is allocated dynamically across sections based on module complexity, giving more space to cross-module connections for highly-connected modules and more to source for complex modules
+  ExcerptCLI:
+    type: interface
+    description: command-line interface to run excerpt generation for a target module with an optional round number
+    files: ["src/cli.ts"]
 
 journeys:
   GenerateModuleExcerpt:
+    files: [test/journeys/GenerateModuleExcerpt.test.ts]
     steps:
       - node: _actors/Compiler
         action: provides the compiled index with all nodes, journeys, and connections
@@ -163,6 +168,7 @@ journeys:
         action: stores the final focused context document for the module
 
   ProvideExcerptForModuleCreation:
+    files: [test/journeys/ProvideExcerptForModuleCreation.test.ts]
     steps:
       - node: convergence/ModuleCreation
         action: requests focused context for the next module to be created
@@ -190,6 +196,7 @@ journeys:
         action: packages the excerpt into the task payload sent to the worker
 
   ProvideExcerptForPerspectiveEnrichment:
+    files: [test/journeys/ProvideExcerptForPerspectiveEnrichment.test.ts]
     steps:
       - node: convergence/ExamineFromPerspective
         action: requests focused context for a perspective enrichment pass on a module
@@ -221,6 +228,7 @@ journeys:
         action: provides the enrichment-focused excerpt to the convergence pipeline
 
   ProvideExcerptForCodegenFill:
+    files: [test/journeys/ProvideExcerptForCodegenFill.test.ts]
     steps:
       - node: codegen/FillImplementation
         action: requests focused context for filling a code skeleton with implementation
@@ -244,6 +252,7 @@ journeys:
         action: provides the implementation-focused excerpt for the codegen pipeline
 
   ProvideExcerptForTestgenFill:
+    files: [test/journeys/ProvideExcerptForTestgenFill.test.ts]
     steps:
       - node: testgen/FillTestAssertions
         action: requests focused context for filling test assertion bodies
@@ -269,6 +278,7 @@ journeys:
         action: provides the test-focused excerpt for the testgen pipeline
 
   ProvideExcerptForAuditFix:
+    files: [test/journeys/ProvideExcerptForAuditFix.test.ts]
     steps:
       - node: convergence/AuditGapFix
         action: requests focused context for fixing a specific audit gap in a module
@@ -294,6 +304,7 @@ journeys:
         action: provides the fix-focused excerpt to the LLM worker for targeted repair
 
   ProvideExcerptForAudit:
+    files: [test/journeys/ProvideExcerptForAudit.test.ts]
     steps:
       - node: convergence/TargetedAudit
         action: requests focused context for an auditor to check a specific module
@@ -317,6 +328,7 @@ journeys:
         action: receives the focused context and begins coverage checking
 
   ProvideExcerptForHumanDeveloper:
+    files: [test/journeys/ProvideExcerptForHumanDeveloper.test.ts]
     steps:
       - node: _actors/HumanDeveloper
         action: requests context for a specific module to understand or edit it
@@ -342,6 +354,7 @@ journeys:
         action: displays the excerpt to the developer
 
   HandleHighConnectionModule:
+    files: [test/journeys/HandleHighConnectionModule.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies a module with a high number of cross-module connections
@@ -363,6 +376,7 @@ journeys:
         action: stores the connection-focused excerpt that fits within the line budget
 
   HandleOversizedModuleSource:
+    files: [test/journeys/HandleOversizedModuleSource.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies a module whose YAML source exceeds the line budget threshold
@@ -382,6 +396,7 @@ journeys:
         action: stores the excerpt with source summary fitting within the line budget
 
   ServeExcerptFromCache:
+    files: [test/journeys/ServeExcerptFromCache.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the module that needs an excerpt
@@ -395,6 +410,7 @@ journeys:
         action: serves the cached excerpt immediately without running any collection steps
 
   RegenerateAfterGraphChange:
+    files: [test/journeys/RegenerateAfterGraphChange.test.ts]
     steps:
       - node: _actors/Compiler
         action: completes a compilation that changes the compiled index
@@ -410,6 +426,7 @@ journeys:
         action: confirms the compilation is complete and excerpts are ready to be regenerated on demand
 
   ValidateAssembledExcerpt:
+    files: [test/journeys/ValidateAssembledExcerpt.test.ts]
     steps:
       - node: AssembleExcerpt
         action: produces a structured excerpt from the collected sections
@@ -427,6 +444,7 @@ journeys:
         action: stores the validated excerpt only after completeness and ordering checks pass
 
   DetectDanglingRefsInExcerpt:
+    files: [test/journeys/DetectDanglingRefsInExcerpt.test.ts]
     steps:
       - node: CollectCrossModuleConnections
         action: gathers all cross-module connections for the target module
@@ -444,6 +462,7 @@ journeys:
         action: includes the dangling reference warnings in the ISSUES section of the excerpt
 
   HandleMissingModuleSourceFile:
+    files: [test/journeys/HandleMissingModuleSourceFile.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module for excerpt generation
@@ -465,6 +484,7 @@ journeys:
         action: stores the source-less excerpt suitable for module creation context
 
   CompressModuleSummariesForLargeGraph:
+    files: [test/journeys/CompressModuleSummariesForLargeGraph.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module in a graph with many modules
@@ -488,6 +508,7 @@ journeys:
         action: stores the excerpt with compressed module summaries fitting within the line budget
 
   DetectAndRejectStaleExcerpt:
+    files: [test/journeys/DetectAndRejectStaleExcerpt.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: prepares to send a task to a worker using a previously generated excerpt
@@ -511,6 +532,7 @@ journeys:
         action: provides the freshly generated excerpt to the worker instead of the stale one
 
   IncludeSpecTextInCreationExcerpt:
+    files: [test/journeys/IncludeSpecTextInCreationExcerpt.test.ts]
     steps:
       - node: convergence/ModuleCreation
         action: requests context for creating a new module that must cover specific spec sections
@@ -532,6 +554,7 @@ journeys:
         action: provides the creation excerpt with spec text so the worker knows exactly what concepts to cover
 
   ProvideExcerptForSpecCoverageAudit:
+    files: [test/journeys/ProvideExcerptForSpecCoverageAudit.test.ts]
     steps:
       - node: convergence/TargetedAudit
         action: requests focused context for a spec coverage auditor to check a specific module
@@ -559,6 +582,7 @@ journeys:
         action: receives the excerpt with spec traceability and begins coverage checking
 
   DetectSpecScopeCreep:
+    files: [test/journeys/DetectSpecScopeCreep.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module and reads its spec_sections assignment
@@ -580,6 +604,7 @@ journeys:
         action: includes scope creep warnings in the ISSUES section of the excerpt
 
   IncludeSpecCoverageMappingInEnrichment:
+    files: [test/journeys/IncludeSpecCoverageMappingInEnrichment.test.ts]
     steps:
       - node: convergence/ExamineFromPerspective
         action: requests context for enriching a module from a specific perspective
@@ -607,6 +632,7 @@ journeys:
         action: provides the enrichment excerpt with spec coverage gaps highlighted for the worker
 
   SurfaceUncoveredSpecConceptsAsWarnings:
+    files: [test/journeys/SurfaceUncoveredSpecConceptsAsWarnings.test.ts]
     steps:
       - node: _actors/Compiler
         action: triggers excerpt generation after compilation completes
@@ -630,6 +656,7 @@ journeys:
         action: stores the excerpt with spec coverage gaps surfaced as actionable warnings
 
   EnforceDeterministicCollectionOrder:
+    files: [test/journeys/EnforceDeterministicCollectionOrder.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module for excerpt generation
@@ -655,6 +682,7 @@ journeys:
         action: receives all sections in stable sorted order and assembles the excerpt deterministically
 
   VerifyExcerptIdempotency:
+    files: [test/journeys/VerifyExcerptIdempotency.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module for idempotency verification
@@ -674,6 +702,7 @@ journeys:
         action: adds a non-determinism warning if the two passes produced different output
 
   DeduplicateCacheWriteOnStore:
+    files: [test/journeys/DeduplicateCacheWriteOnStore.test.ts]
     steps:
       - node: AssembleExcerpt
         action: produces a new excerpt ready to be cached
@@ -691,6 +720,7 @@ journeys:
         action: writes the excerpt to cache only if no identical entry existed
 
   EnforceDeterministicTruncation:
+    files: [test/journeys/EnforceDeterministicTruncation.test.ts]
     steps:
       - node: AssembleExcerpt
         action: produces an excerpt that exceeds the line budget and needs truncation
@@ -710,6 +740,7 @@ journeys:
         action: stores the deterministically truncated excerpt
 
   NormalizeSpecTextExtraction:
+    files: [test/journeys/NormalizeSpecTextExtraction.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module whose spec sections need extraction
@@ -729,6 +760,7 @@ journeys:
         action: includes the deterministically extracted spec text in the excerpt
 
   BatchGenerateExcerptsForParallelCreation:
+    files: [test/journeys/BatchGenerateExcerptsForParallelCreation.test.ts]
     steps:
       - node: convergence/ParallelModuleCreation
         action: requests excerpts for multiple modules that will be created concurrently
@@ -758,6 +790,7 @@ journeys:
         action: provides each batch-generated excerpt to the parallel worker pool
 
   CollapseDeepHierarchyInExcerpt:
+    files: [test/journeys/CollapseDeepHierarchyInExcerpt.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies a module inside a deeply nested hierarchy box structure
@@ -783,6 +816,7 @@ journeys:
         action: stores the excerpt with deep hierarchy connections collapsed into readable chain summaries
 
   HandleOversizedSpecSection:
+    files: [test/journeys/HandleOversizedSpecSection.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies a module whose assigned spec section is very large
@@ -806,6 +840,7 @@ journeys:
         action: stores the excerpt with the summarized spec section preserving key concepts within the line limit
 
   CompressLargeWarningSet:
+    files: [test/journeys/CompressLargeWarningSet.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies a module that has accumulated many warnings from compilation and spec coverage checks
@@ -827,6 +862,7 @@ journeys:
         action: stores the excerpt with compressed warnings preserving the most actionable issues
 
   TrackAndLogExcerptGenerationMetrics:
+    files: [test/journeys/TrackAndLogExcerptGenerationMetrics.test.ts]
     steps:
       - node: _actors/Compiler
         action: triggers excerpt generation for a module after compilation
@@ -850,3 +886,56 @@ journeys:
         action: records the end timestamp and computes total duration and traversal count
       - node: TrackExcerptGenerationCost
         action: logs the metrics identifying this module as a potential optimization target if generation exceeded the time threshold
+
+  GenerateExcerptFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome excerpt from the command line with a module name and optional round number
+      - node: ExcerptCLI
+        action: accepts the command, parses module name and round arguments
+      - node: compilation/CompilationResult
+        action: provides the compiled index, coverage, and issues from the modules directory
+      - node: ExcerptCLI
+        action: reads the target module's raw YAML file from disk
+      - node: SelectTargetModule
+        action: identifies the target module from the CLI argument
+      - node: AssembleExcerpt
+        action: generates the focused excerpt using index, coverage, issues, and module content
+      - node: ExcerptOutput
+        action: produces the final excerpt document
+      - node: ExcerptCLI
+        action: prints the excerpt to stdout
+
+  CollectActorContextForExcerpt:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the module whose excerpt is being generated
+      - node: CollectReferencedActors
+        action: scans the module's journey steps for _actors/ references
+      - node: actors/ActorsFile
+        action: provides the full actor definitions including descriptions and discovery angles
+      - node: actors/MergedActorList
+        action: supplies the deduplicated actor set with all three discovery angles merged
+      - node: CollectReferencedActors
+        action: extracts only the actors referenced by this module's journeys
+      - node: AssembleExcerpt
+        action: includes the filtered actor descriptions in the excerpt's actor summary section
+      - node: TruncateToLimit
+        action: trims the excerpt to the line budget, preserving actor context proportionally
+
+  IncludePublishedInterfaceInExcerpt:
+    steps:
+      - node: SelectTargetModule
+        action: identifies the module whose excerpt is being generated
+      - node: CollectCrossModuleConnections
+        action: finds dependencies on other modules referenced in journey steps
+      - node: publish/InterfaceYamlFile
+        action: provides the published interface.yaml for each dependency
+      - node: publish/CollectExportedNodes
+        action: lists the exported node names and types from each dependency's interface
+      - node: RankCrossModuleByRelevance
+        action: ranks dependency interfaces by how many connections the target module has to each
+      - node: AssembleExcerpt
+        action: includes the ranked dependency interface summaries in the cross-module section
+      - node: TruncateToLimit
+        action: trims to budget, giving higher priority to heavily-referenced dependency interfaces

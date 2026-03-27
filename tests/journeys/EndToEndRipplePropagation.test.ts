@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 // Implementation: test/sync-loop.test.ts
 // Implementation: src/types.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("EndToEndRipplePropagation", () => {
   it("step 1: _actors/FileSystem detects a dependency event file change via fs.watch", () => {

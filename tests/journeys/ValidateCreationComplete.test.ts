@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ValidateCreationComplete", () => {
   it("step 1: convergence/BoundedCreationLoop signals that the creation loop has finished all modules in build order", () => {

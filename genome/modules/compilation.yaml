@@ -3,7 +3,7 @@ spec_sections: [3]
 nodes:
   YAMLParsing:
     type: process
-    description: reads raw YAML module files from disk and parses them into structured data
+    description: reads .yaml and .yml files from the modules directory, derives the module name from each filename, parses raw YAML into structured data, and normalizes missing top-level fields (spec_sections, nodes, journeys) with empty defaults so downstream consumers never see undefined
     files: ["src/compile.ts"]
   DuplicateDetection:
     type: process
@@ -16,7 +16,7 @@ nodes:
     description: identifies nodes that are defined but never referenced in any journey step
   IsolatedModuleDetection:
     type: process
-    description: finds modules whose nodes have zero connections to nodes in any other module
+    description: finds modules with more than 3 nodes whose nodes have zero cross-module connections, exempting small modules with 3 or fewer nodes from isolation checks
   ExternalRefClassification:
     type: process
     description: classifies unresolved refs as external sibling-engine references and emits warnings instead of errors
@@ -58,8 +58,8 @@ nodes:
     description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions
   CompilationResult:
     type: artifact
-    description: the output of compile.ts containing error count, warning count, orphan list, duplicate list, and dangling ref list
-    files: [test/compile.test.ts]
+    description: the full output of compile.ts containing the CompiledIndex (all nodes with connections, all journeys with metadata, aggregate stats), a flat issues array of errors and warnings, and a per-module CoverageReport
+    files: [test/compile.test.ts, test/pando8.test.ts, test/pando9.test.ts]
   ErrorReport:
     type: artifact
     description: structured list of all validation errors with type, location, and message for each
@@ -81,11 +81,11 @@ nodes:
     description: halts remaining validation checks when accumulated error count exceeds a configurable threshold, returning the partial result immediately to avoid wasted work on a clearly failing compilation
   ValidateActionQuality:
     type: process
-    description: checks that every journey step has a meaningful action description, flagging steps with empty or too-short actions
+    description: post-compilation check that iterates every journey step and emits a warning for actions that are empty or shorter than 5 characters, reporting the journey name, step number, and module for each violation
     files: ["src/compile.ts"]
   DetectDuplicateSequences:
     type: process
-    description: scans all journeys for identical 3-step consecutive node sequences shared across two or more journeys, flagging potential copy-paste or redundant journey definitions
+    description: post-compilation analysis that slides a 3-step window across every journey's node sequence, deduplicates journey names per window, and returns structured records of sequences shared by two or more distinct journeys indicating potential copy-paste or redundancy
     files: ["src/compile.ts"]
   ExternalRefsAreWarnings:
     type: rule
@@ -107,31 +107,56 @@ nodes:
     description: scans the journey registry for duplicate journey names across all modules, analogous to DuplicateDetection for nodes
   PersistCompilationArtifacts:
     type: process
-    description: writes the compiled index as index.yaml and the coverage report as coverage.yaml to the compiled/ directory after a successful compilation
+    description: creates the compiled/ directory as a sibling to the modules directory if needed, then serializes the compiled index and coverage report to index.yaml and coverage.yaml using wide line wrapping and no YAML anchors for human-readable output
     files: [src/cli.ts]
   CoverageComputation:
     type: process
-    description: computes per-module coverage metrics including node count, journey count, connection count, cross-module connections, and spec section claims for every compiled module
+    description: computes per-module coverage metrics including node count, journey count, connection count, cross-module connections, and spec section claims, then derives orphan nodes with zero connections and journey memberships, and isolated modules with more than 3 nodes but zero cross-module connections
     files: [src/compile.ts]
   ModuleCoverageReport:
     type: artifact
     description: the coverage section of the compile result containing per-module metrics, orphan list, and isolated module list returned alongside errors and warnings
+  CompileFromModules:
+    type: process
+    description: in-memory compilation pipeline that accepts a pre-loaded module map and optional external interfaces, first collecting parse errors from malformed modules, then orchestrating node collection, journey resolution, connection computation, validation, stats, and coverage, merging issues from all four phases into a single flat array and stamping a compiled timestamp on the index
+    files: [src/compile.ts]
+  NodeTypeValidation:
+    type: process
+    description: validates that each node's type field is one of the five universal types (actor, process, artifact, interface, rule) and emits an error for any node with an invalid type
+    files: [src/compile.ts]
+  ExternalInterfaceResolution:
+    type: process
+    description: resolves cross-engine node references using flexible name matching against the sibling's provides map, emitting an error when the node is not found in a loaded interface, or degrading to a warning when no external interfaces are available so the parent can validate later
+    files: [src/compile.ts]
+  DefaultMissingModuleFields:
+    type: process
+    description: defaults missing top-level fields (spec_sections to empty array, nodes to empty map, journeys to empty map) during parsing, tolerating partial module files without schema errors
+    files: [src/compile.ts]
+  StatsComputation:
+    type: process
+    description: computes aggregate statistics including total_nodes, total_journeys, total_connections, modules count, orphans, isolated_modules, and duplicate_names from the compiled registries
+    files: [src/compile.ts]
 
 journeys:
   ParseAllModules:
+    files: [test/journeys/ParseAllModules.test.ts]
     steps:
       - node: _actors/Compiler
         action: scans the modules directory for all .yaml files
       - node: YAMLParsing
         action: reads each YAML file and parses it into structured data
       - node: YAMLErrorReporting
-        action: catches syntax errors in any malformed YAML file and records them
+        action: catches syntax errors in any malformed YAML file and records them as _parseError stubs
+      - node: DefaultMissingModuleFields
+        action: defaults missing spec_sections, nodes, and journeys to empty values for partial module files
       - node: SchemaViolationDetection
         action: validates each parsed module has spec_sections, nodes, and journeys top-level keys with correct types
       - node: graph/ModuleSchemaRule
         action: enforces that malformed modules missing required structure are rejected before content parsing
       - node: graph/NodeDefinition
         action: parses each node entry from the parsed YAML
+      - node: NodeTypeValidation
+        action: validates each node's type is one of actor, process, artifact, interface, or rule
       - node: graph/JourneyDefinition
         action: parses each journey entry from the parsed YAML
       - node: graph/NodeRegistry
@@ -142,6 +167,7 @@ journeys:
         action: merges all parsed modules into the in-memory compiled structure
 
   DetectDuplicates:
+    files: [test/journeys/DetectDuplicates.test.ts]
     steps:
       - node: graph/CompiledIndex
         action: provides the full node registry for inspection
@@ -151,13 +177,16 @@ journeys:
         action: records each duplicate as a validation error with both module locations
 
   DetectDanglingRefs:
+    files: [test/journeys/DetectDanglingRefs.test.ts]
     steps:
       - node: graph/CompiledIndex
         action: provides all journey steps and the node registry
       - node: DanglingRefDetection
         action: checks each step's node reference against the registry and flags misses
+      - node: ExternalInterfaceResolution
+        action: resolves cross-engine refs against published interfaces when external interfaces are provided
       - node: ExternalRefClassification
-        action: reclassifies unresolved refs matching sibling-engine patterns as external warnings
+        action: reclassifies remaining unresolved refs matching sibling-engine patterns as external warnings
       - node: ExternalRefsAreWarnings
         action: enforces that external refs produce warnings not errors at child level
       - node: ErrorReport
@@ -166,6 +195,7 @@ journeys:
         action: records external refs as warnings for parent validation
 
   DetectOrphans:
+    files: [test/journeys/DetectOrphans.test.ts]
     steps:
       - node: graph/CompiledIndex
         action: provides all nodes and all journey steps
@@ -175,6 +205,7 @@ journeys:
         action: records each orphan node as a validation error
 
   DetectIsolatedModules:
+    files: [test/journeys/DetectIsolatedModules.test.ts]
     steps:
       - node: graph/ConnectionSet
         action: provides all computed edges between nodes
@@ -184,6 +215,7 @@ journeys:
         action: records each isolated module as a validation error
 
   DetectMissingModules:
+    files: [test/journeys/DetectMissingModules.test.ts]
     steps:
       - node: organization/ModuleList
         action: provides the expected list of modules identified from ORGANIZATION.md
@@ -195,6 +227,7 @@ journeys:
         action: records each missing module as a validation error with the expected module name
 
   DetectStaleConnections:
+    files: [test/journeys/DetectStaleConnections.test.ts]
     steps:
       - node: graph/ConnectionSet
         action: provides all computed directed edges between nodes
@@ -206,6 +239,7 @@ journeys:
         action: records each stale connection as a validation error with the edge endpoints and originating journey
 
   FullCompilation:
+    files: [test/journeys/FullCompilation.test.ts]
     steps:
       - node: _actors/Compiler
         action: initiates a full compilation run
@@ -231,8 +265,14 @@ journeys:
         action: checks for modules with no cross-module connections
       - node: StaleConnectionDetection
         action: checks for connections referencing nodes no longer in the registry
+      - node: NodeTypeValidation
+        action: validates each node's type is one of the five universal types
       - node: ValidationAggregation
         action: collects all errors and warnings into a single result
+      - node: StatsComputation
+        action: computes total_nodes, total_journeys, total_connections, orphans, isolated_modules, and duplicate_names
+      - node: CoverageComputation
+        action: computes per-module coverage metrics
       - node: DeterministicOrdering
         action: sorts all error, warning, orphan, and duplicate lists by canonical key before output
       - node: CompilationResult
@@ -241,6 +281,7 @@ journeys:
         action: determines whether the result meets the 0-error 0-orphan threshold for convergence
 
   CompileFromCLI:
+    files: [test/journeys/CompileFromCLI.test.ts]
     steps:
       - node: _actors/HumanDeveloper
         action: runs compile.ts from the command line
@@ -254,6 +295,7 @@ journeys:
         action: displays errors, warnings, and summary to the developer
 
   CompileAfterModuleCreation:
+    files: [test/journeys/CompileAfterModuleCreation.test.ts]
     steps:
       - node: convergence/CompileCheck
         action: triggers compilation after LLMWorker creates a single new module
@@ -281,6 +323,7 @@ journeys:
         action: receives the result and proceeds to the next module if clean
 
   CompileAfterAuditFix:
+    files: [test/journeys/CompileAfterAuditFix.test.ts]
     steps:
       - node: convergence/RecompileAfterFix
         action: triggers recompilation after an audit gap fix has been applied
@@ -314,6 +357,7 @@ journeys:
         action: proceeds to re-audit to verify the gap is closed
 
   HandlePartialParseFailure:
+    files: [test/journeys/HandlePartialParseFailure.test.ts]
     steps:
       - node: _actors/Compiler
         action: begins parsing all module YAML files
@@ -339,6 +383,7 @@ journeys:
         action: fails the zero-error check, blocking convergence until the module is fixed
 
   RecoverFromLLMCreatedErrors:
+    files: [test/journeys/RecoverFromLLMCreatedErrors.test.ts]
     steps:
       - node: _actors/LLMWorker
         action: creates a module with YAML errors or validation problems during convergence
@@ -380,6 +425,7 @@ journeys:
         action: outputs a clean result confirming the fix resolved the errors
 
   FinalConvergenceGate:
+    files: [test/journeys/FinalConvergenceGate.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: indicates all audit fixes are complete and requests the definitive final compilation
@@ -421,6 +467,7 @@ journeys:
         action: receives the clean final compilation and marks the graph as CONVERGED
 
   ValidateActionDescriptions:
+    files: [test/journeys/ValidateActionDescriptions.test.ts]
     steps:
       - node: _actors/Compiler
         action: completes compilation and produces a CompileResult
@@ -432,6 +479,7 @@ journeys:
         action: records each low-quality action as a warning with journey name and step number
 
   VerifyCompilationIdempotency:
+    files: [test/journeys/VerifyCompilationIdempotency.test.ts]
     steps:
       - node: _actors/Compiler
         action: runs full compilation on all module files and stores the first CompilationResult
@@ -449,6 +497,7 @@ journeys:
         action: records any differences found between the two compilation runs
 
   VerifyIncrementalMatchesFull:
+    files: [test/journeys/VerifyIncrementalMatchesFull.test.ts]
     steps:
       - node: graph/CompiledIndex
         action: provides the compiled index built incrementally during module-by-module convergence
@@ -462,6 +511,7 @@ journeys:
         action: records any structural differences as drift errors indicating merge-order sensitivity
 
   ScaledParallelValidation:
+    files: [test/journeys/ScaledParallelValidation.test.ts]
     steps:
       - node: _actors/Compiler
         action: initiates compilation on a large graph with many modules
@@ -497,6 +547,7 @@ journeys:
         action: outputs the final compilation result identical to sequential FullCompilation
 
   TerminateOnExcessiveErrors:
+    files: [test/journeys/TerminateOnExcessiveErrors.test.ts]
     steps:
       - node: _actors/Compiler
         action: begins compilation on a graph with many pre-existing problems
@@ -520,6 +571,7 @@ journeys:
         action: outputs a partial result flagged as early-terminated with the error count at termination
 
   RevalidateChangedModulesOnly:
+    files: [test/journeys/RevalidateChangedModulesOnly.test.ts]
     steps:
       - node: convergence/RecompileAfterFix
         action: triggers recompilation after an audit fix edited a single module
@@ -547,6 +599,7 @@ journeys:
         action: outputs a scoped revalidation result covering only the affected subgraph
 
   ValidateModuleStructure:
+    files: [test/journeys/ValidateModuleStructure.test.ts]
     steps:
       - node: _actors/Compiler
         action: reads a module YAML file during the parsing phase
@@ -564,6 +617,7 @@ journeys:
         action: records each schema violation with the field path and expected structure
 
   DetectFieldLossAfterRewrite:
+    files: [test/journeys/DetectFieldLossAfterRewrite.test.ts]
     steps:
       - node: graph/ModuleFile
         action: provides the original module YAML content before an LLM rewrite
@@ -581,6 +635,7 @@ journeys:
         action: records each dropped field as a data-loss error with the node or journey name and the missing field key
 
   ValidateNodeDescriptions:
+    files: [test/journeys/ValidateNodeDescriptions.test.ts]
     steps:
       - node: _actors/Compiler
         action: completes compilation and produces a CompiledIndex with all nodes
@@ -594,6 +649,7 @@ journeys:
         action: records each low-quality or duplicate description as a validation issue with the node name and module
 
   DetectDuplicateJourneySequences:
+    files: [test/journeys/DetectDuplicateJourneySequences.test.ts]
     steps:
       - node: _actors/Compiler
         action: completes full compilation and produces a CompileResult
@@ -710,3 +766,69 @@ journeys:
         action: creates the compiled/ directory if needed and writes index.yaml and coverage.yaml to disk
       - node: CompileCLI
         action: prints stats as JSON and displays errors and up to 10 warnings to the developer
+
+  CompileFromInMemoryModules:
+    steps:
+      - node: CompileFromModules
+        action: receives a pre-loaded module map and optional external interfaces for cross-engine resolution
+      - node: YAMLErrorReporting
+        action: surfaces _parseError entries from modules that failed parsing as compilation errors
+      - node: DefaultMissingModuleFields
+        action: ensures all modules have spec_sections, nodes, and journeys defaulted to empty values
+      - node: DuplicateDetection
+        action: scans all node names across all modules for duplicates
+      - node: NodeTypeValidation
+        action: validates each node's type field is one of the five universal types
+      - node: DanglingRefDetection
+        action: checks every journey step ref against the node registry
+      - node: ExternalInterfaceResolution
+        action: resolves cross-engine refs against published interfaces when provided
+      - node: ExternalRefClassification
+        action: classifies remaining unresolved external refs as warnings
+      - node: graph/ConnectionComputation
+        action: computes all connections from consecutive journey steps
+      - node: OrphanDetection
+        action: identifies nodes not referenced in any journey
+      - node: StatsComputation
+        action: computes aggregate statistics for the compiled graph
+      - node: CoverageComputation
+        action: computes per-module coverage metrics with orphan and isolated module lists
+      - node: CompilationResult
+        action: assembles the compiled index, issues, and coverage into the final result
+
+  DetectYAMLTamperingDuringCompilation:
+    steps:
+      - node: _actors/YAMLTamperer
+        action: injects invalid node definitions or corrupts refs in a module YAML file
+      - node: YAMLParsing
+        action: parses the tampered file and catches syntax-level corruption
+      - node: YAMLErrorReporting
+        action: reports parse errors with file path and line number for the tampered content
+      - node: DanglingRefDetection
+        action: detects dangling refs introduced by the tampered node definitions
+      - node: SchemaViolationDetection
+        action: catches schema violations such as invalid node types or missing required fields
+      - node: ValidationAggregation
+        action: aggregates all tampering-induced errors into a single report blocking convergence
+
+  DetectStaleBoxDuringCompilation:
+    steps:
+      - node: _actors/StaleBox
+        action: provides modules with outdated external refs that no longer resolve
+      - node: ExternalRefClassification
+        action: classifies external refs and flags those pointing to missing or removed interfaces
+      - node: StaleConnectionDetection
+        action: detects connections referencing published interfaces that no longer match current hashes
+      - node: ErrorReport
+        action: reports stale connections as compilation warnings requiring upstream reconciliation
+
+  DetectDeprecatedModuleDuringCompilation:
+    steps:
+      - node: _actors/DeprecatedModule
+        action: exists on disk with orphaned nodes no longer referenced by any journey
+      - node: OrphanDetection
+        action: flags nodes in the deprecated module that have zero inbound or outbound connections
+      - node: IsolatedModuleDetection
+        action: detects the module has no cross-module connections to any other module
+      - node: _actors/Compiler
+        action: reports the module as isolated, signaling it should be removed from the graph

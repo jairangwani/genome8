@@ -15,7 +15,7 @@ nodes:
     description: compares the new interface hash against the previously published hash to determine if anything changed
   GenerateInterfaceYaml:
     type: process
-    description: writes interface.yaml containing the exported nodes, journeys, and their SHA256 hash
+    description: writes interface.yaml containing the engine name, provided nodes with type and journey count, required external references, and a SHA256 version hash
     files: ["src/publish.ts"]
   GenerateChangelogYaml:
     type: process
@@ -139,8 +139,8 @@ nodes:
     files: ["src/publish.ts"]
   InterfaceYamlFile:
     type: artifact
-    description: the published interface.yaml file containing exported nodes, journeys, and SHA256 hash for this box
-    files: [test/publish.test.ts]
+    description: the published interface.yaml file containing engine name, provided nodes with type and journey count, required external references, and a SHA256 version hash
+    files: [test/publish.test.ts, test/pando9-publish.test.ts]
   ChangelogYamlFile:
     type: artifact
     description: the published changelog.yaml file describing what changed in the latest publish
@@ -174,9 +174,14 @@ nodes:
   ChangelogScopedReconvergence:
     type: rule
     description: dependents must use the embedded changelog in the event file to scope reconvergence to only the modules affected by upstream changes rather than full reconvergence
+  PublishCLI:
+    type: interface
+    description: command-line interface to run publish and display interface stats, version hash, and changelog summary
+    files: ["src/cli.ts"]
 
 journeys:
   PublishInterface:
+    files: [test/journeys/PublishInterface.test.ts]
     steps:
       - node: convergence/TriggerPublish
         action: invokes publish.ts after convergence is confirmed complete
@@ -228,6 +233,7 @@ journeys:
         action: records publish completion and advances to the next pipeline phase
 
   FirstTimePublish:
+    files: [test/journeys/FirstTimePublish.test.ts]
     steps:
       - node: convergence/TriggerPublish
         action: invokes publish.ts after the first convergence of this box
@@ -277,6 +283,7 @@ journeys:
         action: records the successful first publish and proceeds to codegen
 
   ComputeDetailedChangelog:
+    files: [test/journeys/ComputeDetailedChangelog.test.ts]
     steps:
       - node: InterfaceYamlFile
         action: provides the previously published interface content for diffing
@@ -296,6 +303,7 @@ journeys:
         action: stores the detailed changelog on disk for dependent boxes and human review
 
   SkipUnchangedPublish:
+    files: [test/journeys/SkipUnchangedPublish.test.ts]
     steps:
       - node: convergence/TriggerPublish
         action: invokes publish.ts after convergence
@@ -321,6 +329,7 @@ journeys:
         action: records that publish was skipped due to no changes and proceeds to codegen
 
   RepublishAfterReconvergence:
+    files: [test/journeys/RepublishAfterReconvergence.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes targeted reconvergence on stale modules after an event
@@ -372,6 +381,7 @@ journeys:
         action: detects the new event and begins its own reconvergence cycle
 
   PublishParentInterface:
+    files: [test/journeys/PublishParentInterface.test.ts]
     steps:
       - node: _actors/ParentEngine
         action: has collected all child interfaces after hierarchy split
@@ -409,6 +419,7 @@ journeys:
         action: signals parent publish to any upstream watchers
 
   HandleInterfaceWriteFailure:
+    files: [test/journeys/HandleInterfaceWriteFailure.test.ts]
     steps:
       - node: GenerateInterfaceYaml
         action: attempts to write interface.yaml but the write operation fails
@@ -422,6 +433,7 @@ journeys:
         action: receives the failure report and decides to retry publish or abort the pipeline
 
   HandleEventWriteFailure:
+    files: [test/journeys/HandleEventWriteFailure.test.ts]
     steps:
       - node: GenerateInterfaceYaml
         action: successfully wrote interface.yaml to disk
@@ -443,6 +455,7 @@ journeys:
         action: receives the report and retries only the event file write since other artifacts are intact
 
   HandleValidationFailure:
+    files: [test/journeys/HandleValidationFailure.test.ts]
     steps:
       - node: CollectExportedNodes
         action: provides the collected exported nodes for validation
@@ -458,6 +471,7 @@ journeys:
         action: receives the validation failure and triggers audit or reconvergence to fix the broken refs
 
   RecoverFromCorruptedHash:
+    files: [test/journeys/RecoverFromCorruptedHash.test.ts]
     steps:
       - node: PreviousHash
         action: provides the hash file from disk for validation
@@ -479,6 +493,7 @@ journeys:
         action: the event file signals dependents to resync since hash continuity was broken
 
   RollbackAfterPartialPublish:
+    files: [test/journeys/RollbackAfterPartialPublish.test.ts]
     steps:
       - node: DetectWriteFailure
         action: reports that a write failed mid-pipeline leaving some files written and others not
@@ -500,6 +515,7 @@ journeys:
         action: receives the rollback confirmation and schedules a publish retry
 
   DetectAndPreventOscillation:
+    files: [test/journeys/DetectAndPreventOscillation.test.ts]
     steps:
       - node: _actors/DependentBox
         action: receives an event file from an upstream box triggering reconvergence
@@ -519,6 +535,7 @@ journeys:
         action: records that publish was skipped due to ripple oscillation and proceeds without event propagation
 
   DeduplicateRedundantEvent:
+    files: [test/journeys/DeduplicateRedundantEvent.test.ts]
     steps:
       - node: ComputeInterfaceHash
         action: computes the new interface hash after reconvergence
@@ -538,6 +555,7 @@ journeys:
         action: signals convergence that publish artifacts were updated but event propagation was suppressed
 
   PropagateChangelogForTargetedReconvergence:
+    files: [test/journeys/PropagateChangelogForTargetedReconvergence.test.ts]
     steps:
       - node: ComputeChangelogDiff
         action: produces the detailed diff identifying which specific nodes and journeys changed
@@ -559,6 +577,7 @@ journeys:
         action: reads the changelog from the event and triggers reconvergence only on modules that reference the changed nodes
 
   SuppressNoOpAfterReconvergence:
+    files: [test/journeys/SuppressNoOpAfterReconvergence.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes targeted reconvergence on modules affected by an upstream event
@@ -588,6 +607,7 @@ journeys:
         action: records that reconvergence completed but the ripple was suppressed due to no interface change
 
   EnforceRippleDepthLimit:
+    files: [test/journeys/EnforceRippleDepthLimit.test.ts]
     steps:
       - node: EventFile
         action: provides the incoming event with its ripple origin chain
@@ -607,6 +627,7 @@ journeys:
         action: records the depth-limited publish and flags it for operator review
 
   VerifyPublishedHashAfterWrite:
+    files: [test/journeys/VerifyPublishedHashAfterWrite.test.ts]
     steps:
       - node: GenerateInterfaceYaml
         action: writes interface.yaml to disk with embedded SHA256 hash
@@ -626,6 +647,7 @@ journeys:
         action: if hashes diverge, reports a hash integrity failure indicating silent corruption during write
 
   EnforceCanonicalHashInputOrder:
+    files: [test/journeys/EnforceCanonicalHashInputOrder.test.ts]
     steps:
       - node: CollectExportedNodes
         action: provides the set of exported nodes in whatever order they were collected
@@ -645,6 +667,7 @@ journeys:
         action: enforces that hash accuracy depends on canonical ordering, not on runtime collection order
 
   DetectEventInterfaceHashDivergence:
+    files: [test/journeys/DetectEventInterfaceHashDivergence.test.ts]
     steps:
       - node: WriteEventFile
         action: writes the event file containing the interface hash in its payload
@@ -664,6 +687,7 @@ journeys:
         action: if hashes match, confirms the publish artifacts are mutually consistent
 
   DetectBaselineDriftBeforeCompare:
+    files: [test/journeys/DetectBaselineDriftBeforeCompare.test.ts]
     steps:
       - node: _actors/Compiler
         action: initiates publish and needs to establish a trustworthy comparison baseline
@@ -683,6 +707,7 @@ journeys:
         action: falls back to forced publish since the baseline cannot be trusted
 
   ReconcileHashStateAfterCrash:
+    files: [test/journeys/ReconcileHashStateAfterCrash.test.ts]
     steps:
       - node: _actors/Compiler
         action: starts up after a crash or unexpected shutdown and needs to verify hash consistency
@@ -708,6 +733,7 @@ journeys:
         action: signals that hash state has been reconciled and publish can proceed safely
 
   EnforceDeterministicChangelogOutput:
+    files: [test/journeys/EnforceDeterministicChangelogOutput.test.ts]
     steps:
       - node: ComputeChangelogDiff
         action: produces the raw diff with added, removed, and modified lists in arbitrary internal order
@@ -725,6 +751,7 @@ journeys:
         action: embeds the deterministic changelog into the event so dependents receive consistent scoping data across re-runs
 
   NormalizeEventForIdempotentComparison:
+    files: [test/journeys/NormalizeEventForIdempotentComparison.test.ts]
     steps:
       - node: WriteEventFile
         action: produces an event file containing hash, origin chain, sequence number, changelog, and wall-clock timestamp
@@ -742,6 +769,7 @@ journeys:
         action: suppresses event propagation if the normalized content matches the last event, preventing false ripple from timestamp differences alone
 
   EnforceDeterministicInterfaceYamlOutput:
+    files: [test/journeys/EnforceDeterministicInterfaceYamlOutput.test.ts]
     steps:
       - node: CollectExportedNodes
         action: provides the exported nodes to be serialized into interface.yaml
@@ -763,6 +791,7 @@ journeys:
         action: computes SHA256 over the deterministic bytes guaranteeing same input always yields same hash
 
   GuardSequenceCounterOnPublishRetry:
+    files: [test/journeys/GuardSequenceCounterOnPublishRetry.test.ts]
     steps:
       - node: _actors/Compiler
         action: triggers a publish retry after a previous attempt crashed mid-pipeline
@@ -784,6 +813,7 @@ journeys:
         action: writes the event file reusing the existing sequence number since this is a retry of the same logical publish
 
   VerifyFullPublishIdempotency:
+    files: [test/journeys/VerifyFullPublishIdempotency.test.ts]
     steps:
       - node: convergence/VerifyPublishDeterminism
         action: triggers a second publish run on the same compiled index for idempotency verification
@@ -811,6 +841,7 @@ journeys:
         action: if all outputs match, confirms the publish pipeline is fully idempotent for this input
 
   CleanupOrphanTempFilesOnColdStart:
+    files: [test/journeys/CleanupOrphanTempFilesOnColdStart.test.ts]
     steps:
       - node: _actors/Compiler
         action: starts cold boot and initializes the publish subsystem
@@ -826,6 +857,7 @@ journeys:
         action: logs a recovery report listing the orphan temp files that were cleaned up for diagnostic review
 
   DiagnosePublishInterruptionOnRestart:
+    files: [test/journeys/DiagnosePublishInterruptionOnRestart.test.ts]
     steps:
       - node: _actors/Compiler
         action: starts up after crash and needs to determine publish pipeline state
@@ -851,6 +883,7 @@ journeys:
         action: receives the interruption classification to determine the correct recovery strategy
 
   RecoverMissedNotificationAfterCrash:
+    files: [test/journeys/RecoverMissedNotificationAfterCrash.test.ts]
     steps:
       - node: _actors/Compiler
         action: starts up and runs publish interruption diagnosis
@@ -870,6 +903,7 @@ journeys:
         action: receives the recovered notification and advances to codegen without triggering a redundant publish
 
   RestoreSequenceCounterOnColdStart:
+    files: [test/journeys/RestoreSequenceCounterOnColdStart.test.ts]
     steps:
       - node: _actors/Compiler
         action: starts cold boot and needs to restore in-memory publish state
@@ -887,6 +921,7 @@ journeys:
         action: confirms the restored counter maintains the monotonic guarantee with respect to all previously written events
 
   ResumePublishFromInterruption:
+    files: [test/journeys/ResumePublishFromInterruption.test.ts]
     steps:
       - node: _actors/Compiler
         action: decides to resume publish rather than restart from scratch after interruption diagnosis
@@ -908,6 +943,7 @@ journeys:
         action: receives the completion notification and advances the pipeline having avoided redundant work
 
   ValidateInterfaceSchemaBeforeWrite:
+    files: [test/journeys/ValidateInterfaceSchemaBeforeWrite.test.ts]
     steps:
       - node: CollectExportedNodes
         action: provides the collected nodes to be included in the interface
@@ -929,6 +965,7 @@ journeys:
         action: if schema validation fails, reports the specific field violations preventing publish
 
   ValidateChangelogSchemaBeforeWrite:
+    files: [test/journeys/ValidateChangelogSchemaBeforeWrite.test.ts]
     steps:
       - node: ComputeChangelogDiff
         action: provides the computed diff to be serialized into changelog.yaml
@@ -946,6 +983,7 @@ journeys:
         action: if schema validation fails, reports the specific changelog field violations preventing publish
 
   VerifyInterfaceRoundTripFidelity:
+    files: [test/journeys/VerifyInterfaceRoundTripFidelity.test.ts]
     steps:
       - node: GenerateInterfaceYaml
         action: writes interface.yaml to disk using the deterministic serializer
@@ -965,6 +1003,7 @@ journeys:
         action: if any field diverges between original and round-tripped content, reports the specific data loss with field path
 
   PreserveExtensionFieldsDuringExport:
+    files: [test/journeys/PreserveExtensionFieldsDuringExport.test.ts]
     steps:
       - node: graph/CompiledIndex
         action: provides the full compiled graph including nodes with extension fields like files
@@ -984,6 +1023,7 @@ journeys:
         action: stores the interface with extension fields preserved for dependents that need them
 
   ValidateEventFileAfterWrite:
+    files: [test/journeys/ValidateEventFileAfterWrite.test.ts]
     steps:
       - node: WriteEventFile
         action: writes the event file containing hash, origin chain, sequence number, and embedded changelog
@@ -1044,3 +1084,39 @@ journeys:
         action: receives the previous PublishedInterface to diff against the newly generated one
       - node: GenerateChangelogYaml
         action: writes the changelog describing changes between previous and current interface
+
+  PublishFromCLI:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: runs genome publish from the command line with an optional engine name
+      - node: PublishCLI
+        action: accepts the command and derives the engine name from the argument or directory name
+      - node: compilation/CompilationResult
+        action: provides the compiled index from the modules directory
+      - node: CollectExportedNodes
+        action: extracts the nodes to publish from the compiled index
+      - node: CollectExportedJourneys
+        action: extracts the journeys to publish from the compiled index
+      - node: ComputeInterfaceHash
+        action: computes the version hash for the published interface
+      - node: GenerateInterfaceYaml
+        action: writes the interface.yaml to the published directory
+      - node: GenerateChangelogYaml
+        action: writes the changelog.yaml to the published directory
+      - node: PublishCLI
+        action: prints interface stats, version hash, provides count, requires count, and changelog summary
+
+  DetectHashCollisionOnPublish:
+    steps:
+      - node: _actors/HashCollisionExploiter
+        action: manipulates exported content to produce a SHA256 hash matching the previous version
+      - node: ComputeInterfaceHash
+        action: computes hash over the manipulated content
+      - node: ComparePreviousHash
+        action: finds the hash unchanged despite real content differences
+      - node: ComputeChangelogDiff
+        action: diffs the actual content and detects structural changes the hash missed
+      - node: VerifyPublishedHashIntegrity
+        action: flags the hash-content divergence as an integrity violation
+      - node: GenerateInterfaceYaml
+        action: publishes anyway because the changelog proves content changed

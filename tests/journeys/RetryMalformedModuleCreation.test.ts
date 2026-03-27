@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("RetryMalformedModuleCreation", () => {
   it("step 1: _actors/LLMWorker creates a module YAML file that compiles but contains subtle schema violations", () => {

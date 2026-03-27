@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("DiagnosePublishInterruptionOnRestart", () => {
   it("step 1: _actors/Compiler starts up after crash and needs to determine publish pipeline state", () => {

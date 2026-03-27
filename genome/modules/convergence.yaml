@@ -1,4 +1,4 @@
-spec_sections: [1, 3, 5, 6]
+spec_sections: [1, 3, 5, 6, 7, 8, 9, 10, 11]
 
 nodes:
   ReadSpec:
@@ -7,7 +7,7 @@ nodes:
     files: ["src/convergence.ts"]
   RetryOnLLMTimeout:
     type: process
-    description: when an LLM call times out, automatically retries up to 3 times with exponential backoff before failing
+    description: wraps worker.call with retry logic that detects timeout errors by string matching, retries up to 3 times with fixed backoff delays of 5s, 15s, and 45s, and propagates non-timeout errors immediately
     files: ["src/convergence.ts"]
 
   WriteOrganization:
@@ -178,6 +178,9 @@ nodes:
   RetryActorDiscovery:
     type: process
     description: retries actor discovery when the LLM produces an invalid or incomplete _actors.yaml by passing the validation errors as context for a corrected attempt
+  RetryHierarchyDecision:
+    type: process
+    description: retries the hierarchy decision step when the LLM produces an unparseable or invalid split-or-no-split response by passing the validation errors as context for a corrected attempt
   FullGraphCheckAfterReconvergence:
     type: process
     description: runs a full compilation across all modules after targeted reconvergence completes to catch cross-module breakage from changes to stale modules before publishing
@@ -199,7 +202,7 @@ nodes:
   ConvergenceCLI:
     type: interface
     description: command-line interface to trigger and monitor the convergence pipeline
-    files: [src/cli.ts, src/convergence.ts, test/integration.test.ts]
+    files: [src/cli.ts, src/convergence.ts, test/integration.test.ts, test-project/]
   StopConvergenceProcesses:
     type: process
     description: reads pids.json to find running convergence process tree, kills children first then main process with cross-platform support, and deletes the pid file
@@ -210,22 +213,30 @@ nodes:
     files: [src/cli.ts]
   CheckConvergenceStatus:
     type: process
-    description: compiles the graph and evaluates whether zero errors, zero orphans, zero isolated modules, and zero duplicates are met, printing actionable fix guidance if not
+    description: evaluates whether zero errors, zero orphans, zero isolated modules, and zero duplicates are met against compiled stats, generating actionable fix guidance for each unmet criterion
     files: [src/cli.ts]
   LoadProjectConfig:
     type: process
-    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, and sessionResetChars
+    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, and messageTimeoutMs
     files: [src/convergence.ts]
   ProjectConfig:
     type: artifact
     description: the merged configuration controlling pipeline behavior including LLM model, retry limits, split thresholds, and watch intervals
+  EnsureOutputDirectories:
+    type: process
+    description: creates the modules, compiled, and published directories under genome/ with recursive mkdir if they do not already exist
+    files: [src/convergence.ts]
   WritePidFile:
     type: process
     description: writes genome/pids.json tracking the convergence process PID, worker status, child engine PIDs, and start timestamp for clean shutdown via the stop command
     files: [src/convergence.ts]
   SkipToWatchIfConverged:
     type: process
-    description: on startup checks convergence-state.json and compares the current interface hash against the stored hash, skipping the full pipeline and entering watch mode directly if already converged
+    description: on startup checks convergence-state.json and compares the current interface hash against the stored hash, skipping the full pipeline and entering watch mode directly if already converged, bypassed when --once flag is set
+    files: [src/convergence.ts]
+  SinglePassMode:
+    type: rule
+    description: when the --once flag is passed, runs a single convergence pass and exits instead of entering the watch loop, used for testing and child engine processes
     files: [src/convergence.ts]
   CodeOrchestratesLLMCreates:
     type: rule
@@ -254,9 +265,49 @@ nodes:
   ReconvergenceDepthLimit:
     type: rule
     description: enforces a maximum nesting depth for targeted reconvergence chains to prevent unbounded reconvergence-triggers-reconvergence loops
+  GenomeIsProtocolNotTool:
+    type: rule
+    description: genome8 is a self-describing protocol that manages itself — same convergence.ts runs at every level, the graph describes its own architecture, and the protocol applies to any system
+  ProductionReadyNoShortcuts:
+    type: rule
+    description: no hacks or shortcuts — every change is validated by compilation, tested by journey tests, protected by destructive edit detection, bounded by retry limits, and staged before deployment
+  SelfSustainingWithoutHumans:
+    type: rule
+    description: the system runs autonomously after initial spec — sleep/wake cycle monitors for changes at zero cost, event-driven ripple propagates updates, and reconvergence restores consistency without human intervention
+  WarmWorkersAcrossPhases:
+    type: rule
+    description: never kill LLM workers between pipeline phases — warm workers are more reliable than fresh spawns, Claude Code handles its own compaction
+  JourneyTestsAreValidation:
+    type: rule
+    description: run real tests from real journeys instead of relying on LLM-judged validation — journey steps are test cases, compile-and-run proves correctness
+  BatchHeavyOperations:
+    type: rule
+    description: error fixes in batches of 5, test fills in batches of 10 — single massive LLM calls timeout, bounded batches complete reliably
+  AutoScaffoldProjectFiles:
+    type: rule
+    description: auto-create package.json and tsconfig.json so the user writes ONLY spec.md — no manual project setup required
+  SourceOfTruthHierarchy:
+    type: rule
+    description: spec.md is authority, graph derives from spec, code derives from graph, tests derive from journeys — conflicts are always resolved by re-deriving from the higher authority
+  EveryChangeStartsInSpec:
+    type: rule
+    description: to add features, edit the spec first then converge — never edit code to add features, the graph and code follow automatically
+  CodeFixesAreOKForBugs:
+    type: rule
+    description: code-only fixes are permitted for bugs that journey tests validate — Step 4d syncs code changes back to graph
+  NoSeparateDocumentationFiles:
+    type: rule
+    description: the graph IS the documentation — no standalone goal docs, architecture docs, or roadmap files; they all live as nodes and journeys
+  NoIgnoredTestFailures:
+    type: rule
+    description: every test failure must be diagnosed (code bug, test bug, or graph bug) and fixed — never skip or suppress failing tests
+  NoDriftBetweenLayers:
+    type: rule
+    description: spec, graph, code, and tests must never drift apart — the source of truth hierarchy and reconvergence enforce alignment at every level
 
 journeys:
   ProjectConvergence:
+    files: [test/journeys/ProjectConvergence.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: writes spec.md describing the project
@@ -290,6 +341,7 @@ journeys:
         action: records that organization and actors are complete, ready for module creation
 
   ModuleCreationPipeline:
+    files: [test/journeys/ModuleCreationPipeline.test.ts]
     steps:
       - node: ConvergenceState
         action: provides the list of modules in build order from ORGANIZATION.md
@@ -321,6 +373,7 @@ journeys:
         action: records all modules created and last compilation result
 
   PerspectiveEnrichmentPipeline:
+    files: [test/journeys/PerspectiveEnrichmentPipeline.test.ts]
     steps:
       - node: ConvergenceState
         action: indicates all modules have been created and initial compilation passed
@@ -360,6 +413,7 @@ journeys:
         action: records that perspective enrichment is complete for all modules
 
   ConvergenceCheck:
+    files: [test/journeys/ConvergenceCheck.test.ts]
     steps:
       - node: ConvergenceState
         action: indicates all modules have been created and enriched from all perspectives
@@ -383,6 +437,7 @@ journeys:
         action: records audit results and whether gaps were found
 
   AuditFixCycle:
+    files: [test/journeys/AuditFixCycle.test.ts]
     steps:
       - node: ConvergenceState
         action: provides the list of audit gaps to fix
@@ -404,6 +459,7 @@ journeys:
         action: updates convergence status — either more fixes needed or CONVERGED
 
   PublishAfterConvergence:
+    files: [test/journeys/PublishAfterConvergence.test.ts]
     steps:
       - node: ConvergenceState
         action: confirms convergence is complete with 0 errors and 0 audit gaps
@@ -423,6 +479,7 @@ journeys:
         action: records that interface and event file have been published
 
   CodeGenerationPipeline:
+    files: [test/journeys/CodeGenerationPipeline.test.ts]
     steps:
       - node: ConvergenceState
         action: confirms publish is complete, ready for code generation
@@ -466,6 +523,7 @@ journeys:
         action: records code generation complete with all tests passing
 
   SleepWakeCycle:
+    files: [test/journeys/SleepWakeCycle.test.ts]
     steps:
       - node: ConvergenceState
         action: confirms all pipeline steps are complete
@@ -489,6 +547,7 @@ journeys:
         action: returns to zero-cost sleep waiting for the next event
 
   RecoverFromCreationFailure:
+    files: [test/journeys/RecoverFromCreationFailure.test.ts]
     steps:
       - node: ModuleCreation
         action: delegates to LLM to create a module
@@ -526,6 +585,7 @@ journeys:
         action: records the retry outcome and updates module completion status
 
   RecoverFromFixRegression:
+    files: [test/journeys/RecoverFromFixRegression.test.ts]
     steps:
       - node: AuditGapFix
         action: applies a targeted fix to a module
@@ -563,6 +623,7 @@ journeys:
         action: records the fix-retry outcome
 
   ResumeAfterCrash:
+    files: [test/journeys/ResumeAfterCrash.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: restarts the convergence pipeline after a crash or interruption
@@ -588,6 +649,7 @@ journeys:
         action: updates to reflect the verified state and resumes from the next incomplete step
 
   RecoverFromWorkerCrash:
+    files: [test/journeys/RecoverFromWorkerCrash.test.ts]
     steps:
       - node: _actors/LLMWorker
         action: becomes unresponsive or crashes during a task
@@ -613,6 +675,7 @@ journeys:
         action: records that the worker has been replaced and the task resubmitted
 
   HandleTestFixExhaustion:
+    files: [test/journeys/HandleTestFixExhaustion.test.ts]
     steps:
       - node: ExecuteTests
         action: runs tests after a fix attempt
@@ -638,6 +701,7 @@ journeys:
         action: records that test generation completed with unresolved failures, blocking full pipeline completion
 
   ValidateAfterActorDiscovery:
+    files: [test/journeys/ValidateAfterActorDiscovery.test.ts]
     steps:
       - node: DiscoverActors
         action: completes all 3 rounds of actor discovery
@@ -655,6 +719,7 @@ journeys:
         action: records that actor discovery is validated with all 3 angles covered
 
   ValidateCreationComplete:
+    files: [test/journeys/ValidateCreationComplete.test.ts]
     steps:
       - node: BoundedCreationLoop
         action: signals that the creation loop has finished all modules in build order
@@ -674,6 +739,7 @@ journeys:
         action: records that creation completeness is validated
 
   ValidatePerspectivesComplete:
+    files: [test/journeys/ValidatePerspectivesComplete.test.ts]
     steps:
       - node: BoundedCreationLoop
         action: signals that the perspective enrichment loop has finished all pairs
@@ -693,6 +759,7 @@ journeys:
         action: records that perspective completeness is validated
 
   FinalConvergenceGate:
+    files: [test/journeys/FinalConvergenceGate.test.ts]
     steps:
       - node: ConvergenceState
         action: indicates all audit gaps have been fixed and reaudits passed
@@ -730,6 +797,7 @@ journeys:
         action: proceeds to publish the converged interface
 
   HandleCompactionDuringCreation:
+    files: [test/journeys/HandleCompactionDuringCreation.test.ts]
     steps:
       - node: BoundedCreationLoop
         action: is mid-way through creating modules in a large project
@@ -765,6 +833,7 @@ journeys:
         action: records that compaction was handled and creation continues
 
   HierarchySplitPipeline:
+    files: [test/journeys/HierarchySplitPipeline.test.ts]
     steps:
       - node: HierarchyDecision
         action: determines that the module set should split into child engines
@@ -808,6 +877,7 @@ journeys:
         action: records that hierarchy split is complete and all children have converged
 
   HandleCoalescedWakeEvents:
+    files: [test/journeys/HandleCoalescedWakeEvents.test.ts]
     steps:
       - node: _actors/DependentBox
         action: publishes a change event while the box is sleeping
@@ -843,6 +913,7 @@ journeys:
         action: returns to zero-cost sleep after processing all coalesced events
 
   SpecChangeOnSelf:
+    files: [test/journeys/SpecChangeOnSelf.test.ts]
     steps:
       - node: _actors/ReturningOwner
         action: edits spec.md for a project whose graph describes its own convergence pipeline
@@ -878,6 +949,7 @@ journeys:
         action: records that self-referential reconvergence is complete
 
   SafeCodegenForSelf:
+    files: [test/journeys/SafeCodegenForSelf.test.ts]
     steps:
       - node: ConvergenceState
         action: confirms convergence of a self-referential project where codegen will produce code that replaces the running pipeline
@@ -919,6 +991,7 @@ journeys:
         action: records that self-referential code generation is complete and the new code is live
 
   ValidateGraphDescribesItself:
+    files: [test/journeys/ValidateGraphDescribesItself.test.ts]
     steps:
       - node: ConvergenceState
         action: confirms convergence is complete for a self-referential project
@@ -944,6 +1017,7 @@ journeys:
         action: records self-consistency validation results — either clean or flagging mismatches for manual review
 
   HandleAuditCycleExhaustion:
+    files: [test/journeys/HandleAuditCycleExhaustion.test.ts]
     steps:
       - node: ConvergenceState
         action: provides the current audit-fix-reaudit cycle count
@@ -975,6 +1049,7 @@ journeys:
         action: records that audit cycle exhausted with unresolved gaps, blocking convergence and requiring human review
 
   HandleWakeOscillation:
+    files: [test/journeys/HandleWakeOscillation.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers a wake event while the box is in sleep mode
@@ -1000,6 +1075,7 @@ journeys:
         action: returns to sleep without reconverging, waiting for the cooldown period to fully elapse
 
   HandleEnrichmentExhaustion:
+    files: [test/journeys/HandleEnrichmentExhaustion.test.ts]
     steps:
       - node: ExamineFromPerspective
         action: delegates to LLM to enrich a module from a specific perspective
@@ -1043,6 +1119,7 @@ journeys:
         action: records the skipped enrichment so it can be flagged during final convergence gate
 
   DetectAndHaltStalledPipeline:
+    files: [test/journeys/DetectAndHaltStalledPipeline.test.ts]
     steps:
       - node: ConvergenceState
         action: provides the pipeline progress snapshot including completed modules, closed gaps, and cycle count
@@ -1068,6 +1145,7 @@ journeys:
         action: receives notification that the pipeline has stalled and requires manual intervention
 
   BoundReconvergenceDepth:
+    files: [test/journeys/BoundReconvergenceDepth.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers a wake event triggering targeted reconvergence
@@ -1105,6 +1183,7 @@ journeys:
         action: returns to sleep without reconverging, deferring the cascading event until the next manual or scheduled wake
 
   VerifyReconvergenceIsIdempotent:
+    files: [test/journeys/VerifyReconvergenceIsIdempotent.test.ts]
     steps:
       - node: TargetedReconvergence
         action: completes the first reconvergence pass on the stale module set
@@ -1136,6 +1215,7 @@ journeys:
         action: records whether reconvergence idempotency check passed or failed
 
   VerifyAuditIsRepeatable:
+    files: [test/journeys/VerifyAuditIsRepeatable.test.ts]
     steps:
       - node: _actors/Compiler
         action: produces a clean compilation with zero errors as the stable baseline for audit
@@ -1173,6 +1253,7 @@ journeys:
         action: records whether audit determinism check passed or failed
 
   VerifyPublishIsDeterministic:
+    files: [test/journeys/VerifyPublishIsDeterministic.test.ts]
     steps:
       - node: ConvergenceState
         action: confirms convergence is complete with zero errors and zero audit gaps
@@ -1206,6 +1287,7 @@ journeys:
         action: records whether publish determinism check passed or failed
 
   VerifyEnrichmentReachesFixpoint:
+    files: [test/journeys/VerifyEnrichmentReachesFixpoint.test.ts]
     steps:
       - node: ExamineFromPerspective
         action: completes the initial enrichment of a module from a specific perspective
@@ -1239,6 +1321,7 @@ journeys:
         action: records whether enrichment fixpoint check passed or failed for this module-perspective pair
 
   VerifyPipelineEndStateDeterminism:
+    files: [test/journeys/VerifyPipelineEndStateDeterminism.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: provides the same spec.md for two independent convergence runs
@@ -1270,6 +1353,7 @@ journeys:
         action: records whether pipeline end-state determinism check passed or failed
 
   ParallelModuleCreationPipeline:
+    files: [test/journeys/ParallelModuleCreationPipeline.test.ts]
     steps:
       - node: ConvergenceState
         action: provides the full module list with dependency graph from ORGANIZATION.md
@@ -1303,6 +1387,7 @@ journeys:
         action: records all parallel batches completed and the final compilation result
 
   ParallelPerspectiveEnrichmentPipeline:
+    files: [test/journeys/ParallelPerspectiveEnrichmentPipeline.test.ts]
     steps:
       - node: ConvergenceState
         action: indicates all modules have been created and provides the perspective mapping
@@ -1336,6 +1421,7 @@ journeys:
         action: records all parallel enrichment batches completed
 
   HandleLargeSpec:
+    files: [test/journeys/HandleLargeSpec.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: provides a spec.md that exceeds the LLM context window size
@@ -1363,6 +1449,7 @@ journeys:
         action: records that spec chunking and organization are complete for the large spec
 
   ThrottleHighFanoutWake:
+    files: [test/journeys/ThrottleHighFanoutWake.test.ts]
     steps:
       - node: _actors/DependentBox
         action: publishes a change event while many other dependencies are also publishing
@@ -1408,6 +1495,7 @@ journeys:
         action: returns to zero-cost sleep after processing all throttled event batches
 
   BoundConcurrentChildEngines:
+    files: [test/journeys/BoundConcurrentChildEngines.test.ts]
     steps:
       - node: HierarchyDecision
         action: determines that the module set should split into many child engines
@@ -1445,6 +1533,7 @@ journeys:
         action: records that all child engines converged within the concurrency limit
 
   ValidateStateOnStartup:
+    files: [test/journeys/ValidateStateOnStartup.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: starts or restarts the convergence pipeline
@@ -1468,6 +1557,7 @@ journeys:
         action: proceeds to resume from the validated last completed step
 
   RecoverFromCorruptConvergenceState:
+    files: [test/journeys/RecoverFromCorruptConvergenceState.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: starts the pipeline and the ConvergenceState file is missing or corrupt
@@ -1503,6 +1593,7 @@ journeys:
         action: resumes the pipeline from the reconstructed state treating missing modules as the next work items
 
   DetectAndRepairPartialWrites:
+    files: [test/journeys/DetectAndRepairPartialWrites.test.ts]
     steps:
       - node: ResumePipeline
         action: begins scanning disk state after a crash to assess module integrity
@@ -1532,6 +1623,7 @@ journeys:
         action: records which modules were repaired and updates the completed module list accordingly
 
   RecoverFromSleepWatcherFailure:
+    files: [test/journeys/RecoverFromSleepWatcherFailure.test.ts]
     steps:
       - node: EnterSleepMode
         action: sets up fs.watch on dependency event files and enters sleep
@@ -1561,6 +1653,7 @@ journeys:
         action: returns to sleep with the restored watcher confirmed active
 
   RecoverCrashedChildEngine:
+    files: [test/journeys/RecoverCrashedChildEngine.test.ts]
     steps:
       - node: SplitIntoChildEngines
         action: has spawned multiple child engine processes for a hierarchy split
@@ -1799,6 +1892,8 @@ journeys:
         action: reads genome/config.json and merges overrides with default pipeline parameters
       - node: ProjectConfig
         action: stores the merged configuration used by every subsequent pipeline step
+      - node: EnsureOutputDirectories
+        action: creates modules/, compiled/, and published/ directories under genome/ if they do not exist
       - node: WritePidFile
         action: writes pids.json so the stop and ps commands can find and manage this process tree
       - node: ReadSpec
@@ -1814,6 +1909,8 @@ journeys:
         action: registers the process for stop and ps commands
       - node: ReadSpec
         action: reads spec.md from disk
+      - node: SinglePassMode
+        action: checks whether --once flag is set and allows the skip optimization to proceed
       - node: SkipToWatchIfConverged
         action: reads convergence-state.json and finds status is sleeping or unstable
       - node: SkipToWatchIfConverged
@@ -1847,3 +1944,398 @@ journeys:
         action: receives the successful response after the retry succeeds
       - node: BoundedRetryRule
         action: enforces that retries stop after 3 attempts and the error propagates
+
+  RecoverFromHierarchyDecisionFailure:
+    steps:
+      - node: HierarchyDecision
+        action: delegates to LLM to decide whether the module set should split into child engines
+      - node: _actors/LLMWorker
+        action: produces a response that is unparseable, missing the split decision, or contains an invalid child engine assignment
+      - node: hierarchy/ValidateSplitDecision
+        action: checks the LLM output for a valid split-or-no-split decision with well-formed child definitions
+      - node: compilation/ErrorReport
+        action: records the specific validation failures in the hierarchy decision output
+      - node: BoundedRetryRule
+        action: checks that the retry count for hierarchy decision has not exceeded the cap
+      - node: RetryHierarchyDecision
+        action: packages the validation errors as context for a corrected hierarchy decision attempt
+      - node: _actors/LLMWorker
+        action: reads the validation errors and the original independence analysis to produce a corrected split decision
+      - node: hierarchy/ValidateSplitDecision
+        action: validates the corrected response contains a valid decision with consistent module assignments
+      - node: ConvergenceState
+        action: records the hierarchy decision as complete after retry
+
+  AchieveGoalSolveContextProblem:
+    steps:
+      - node: _goals/SolveContextProblem
+        action: asserts that any system at any scale gets scoped, connected, synced context
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing a system too large for any single brain to hold
+      - node: ReadSpec
+        action: reads the spec as the sole human input to the pipeline
+      - node: WriteOrganization
+        action: breaks the system into scoped independent modules — solving the scoping problem
+      - node: ModuleCreation
+        action: creates a YAML module for each scoped piece with focused context
+      - node: CompileCheck
+        action: validates all pieces connect through journeys — solving the connection problem
+      - node: TriggerPublish
+        action: publishes interfaces so dependent boxes can detect changes
+      - node: EnterSleepMode
+        action: enters zero-cost sleep until an upstream change occurs
+      - node: WakeOnEvent
+        action: wakes on upstream change and triggers targeted reconvergence — solving the sync problem
+      - node: hierarchy/SpawnChildEngine
+        action: scales to any depth by spawning child engines — proving it works at any scale
+
+  AchieveGoalGenomeIsProtocol:
+    steps:
+      - node: _goals/GenomeIsTheProduct
+        action: asserts that genome8 is a protocol applicable to any system, not a single-purpose tool
+      - node: _actors/ProjectOwner
+        action: writes a spec.md describing genome8 itself as the target system
+      - node: ReadSpec
+        action: reads genome8's own spec as input to its own convergence pipeline
+      - node: WriteOrganization
+        action: discovers genome8's own modules from its own spec
+      - node: ModuleCreation
+        action: creates YAML modules that describe the very pipeline creating them
+      - node: DetectSelfModification
+        action: detects that the graph being built describes the code that is building it
+      - node: ValidateSelfConsistency
+        action: verifies the graph accurately describes its own architecture
+      - node: hierarchy/SameCodeEveryLevel
+        action: confirms the same convergence.ts runs at parent, child, and grandchild levels
+      - node: ValidateSelfConsistency
+        action: confirms the protocol is self-describing — genome managing genome
+
+  AchieveGoalProductionReady:
+    steps:
+      - node: _goals/ProductionReady
+        action: asserts that every pipeline phase enforces production-quality safeguards
+      - node: BoundedCreationRule
+        action: bounds module creation to prevent unbounded loops
+      - node: BoundedRetryRule
+        action: caps retries on any single operation to prevent infinite retry loops
+      - node: CompileCheck
+        action: validates every change with zero-error compilation — no skipping validation
+      - node: TargetedAudit
+        action: audits coverage from three angles — no unchecked gaps
+      - node: graph/DestructiveEditProtectionRule
+        action: auto-reverts any change that decreases node count — no silent content loss
+      - node: NeverModifyRunningCode
+        action: stages generated code and tests it before replacing the running pipeline
+      - node: TriggerCodegen
+        action: generates code from the graph, not from ad-hoc instructions
+      - node: ExecuteTests
+        action: runs journey tests as the validation — no LLM-judged quality checks
+      - node: PipelineInvariantCheck
+        action: verifies all phases completed in correct order before declaring convergence
+
+  AchieveGoalSelfSustaining:
+    steps:
+      - node: _goals/SelfSustaining
+        action: asserts that the system operates autonomously after the initial spec is written
+      - node: OnlyHumanInputIsSpec
+        action: confirms spec.md is the only human-authored artifact — everything else is auto-generated
+      - node: _actors/ProjectOwner
+        action: writes spec.md once and walks away
+      - node: ConvergenceState
+        action: the full pipeline runs automatically from spec to converged graph to code to tests
+      - node: TriggerPublish
+        action: publishes the interface and writes event files without human intervention
+      - node: EnterSleepMode
+        action: enters zero-cost sleep monitoring dependencies via fs.watch
+      - node: WakeOnEvent
+        action: wakes autonomously when an upstream dependency publishes a change
+      - node: TargetedReconvergence
+        action: reconverges only affected modules without human triggering
+      - node: EnterSleepMode
+        action: returns to sleep after autonomous reconvergence — the cycle is fully self-sustaining
+
+  AchieveGoalBuildPando:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes a spec.md describing Pando — a decentralized AI platform with multiple independent subsystems
+      - node: ReadSpec
+        action: reads Pando's spec as the first real external test case for the genome8 protocol
+      - node: WriteOrganization
+        action: discovers Pando's modules — networking, consensus, agent orchestration, storage — as independent concerns
+      - node: HierarchyDecision
+        action: determines that Pando's independent subsystems warrant splitting into child engines
+      - node: SplitIntoChildEngines
+        action: creates child engines for each Pando subsystem with scoped specs and shared actors
+      - node: hierarchy/SpawnChildEngine
+        action: launches child convergence processes for each Pando subsystem
+      - node: hierarchy/CollectChildInterfaces
+        action: collects published interfaces from all Pando child engines after they converge
+      - node: hierarchy/CreateCrossEngineJourneys
+        action: creates journeys connecting Pando subsystem interfaces at the parent level
+      - node: TriggerCodegen
+        action: generates TypeScript code for the Pando integration layer from the cross-engine graph
+      - node: ExecuteTests
+        action: runs journey tests validating that Pando subsystems interact correctly through published interfaces
+
+  AchieveGoalBuildPandoRipple:
+    steps:
+      - node: _actors/ChildEngine
+        action: converges Pando's consensus subsystem and publishes an interface change
+      - node: publish/WriteEventFile
+        action: writes an event file signaling the consensus interface changed
+      - node: events/DetectEventFileChange
+        action: parent engine detects the consensus child's event via fs.watch
+      - node: sync/FindAffectedModules
+        action: traces which Pando parent modules depend on the consensus interface
+      - node: TargetedReconvergence
+        action: reconverges only Pando modules affected by the consensus change
+      - node: TriggerPublish
+        action: re-publishes the Pando parent interface reflecting the consensus update
+      - node: events/PropagateRipple
+        action: ripples the change to any boxes that depend on Pando's published interface
+
+  AchieveGoalBuildPandoValidatesProtocol:
+    steps:
+      - node: _goals/GenomeIsTheProduct
+        action: asserts Pando proves genome8 works on a system genome8 did not build
+      - node: _actors/ProjectOwner
+        action: evaluates whether Pando's converged graph accurately represents its decentralized architecture
+      - node: hierarchy/ValidateCrossEngineRefs
+        action: confirms all cross-subsystem references in Pando resolve to published interface nodes
+      - node: audit/CheckSpecCoverage
+        action: verifies Pando's graph covers every section of Pando's spec
+      - node: audit/CheckCrossModuleCoverage
+        action: verifies Pando subsystems are connected through cross-engine journeys
+      - node: _goals/ProductionReady
+        action: confirms Pando passed the same production-quality gates as genome8 itself
+      - node: _goals/SelfSustaining
+        action: confirms Pando's graph auto-updates when its spec changes — the protocol scales beyond genome8
+
+  EnforceArchitecturalDecisions:
+    steps:
+      - node: _actors/ProjectOwner
+        action: triggers convergence on a spec that will exercise the full pipeline
+      - node: WarmWorkersAcrossPhases
+        action: ensures LLM workers spawned in module creation are reused for enrichment, codegen, and testgen
+      - node: _actors/LLMWorker
+        action: remains alive across pipeline phases with Claude Code handling its own compaction
+      - node: BoundedCreationRule
+        action: ensures module creation is bounded by module count times relevant lenses
+      - node: BatchHeavyOperations
+        action: groups error fixes into batches of 5 and test fills into batches of 10 to prevent timeouts
+      - node: llm/PayloadSizeBudget
+        action: enforces compact prompts by sending file paths instead of embedding YAML content
+      - node: DataDecidesWhenToStop
+        action: uses zero-delta detection instead of hardcoded iteration limits for early termination
+      - node: graph/DestructiveEditProtectionRule
+        action: auto-reverts any pass that decreases node count to protect against LLM content destruction
+      - node: codegen/NeverOverwriteExisting
+        action: updates existing code via Edit rather than regenerating from scratch
+      - node: AutoScaffoldProjectFiles
+        action: auto-creates package.json and tsconfig.json so the user writes only spec.md
+
+  EnforceArchitecturalDecisionTargetedReconvergence:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: changes spec.md with a targeted update to specific sections
+      - node: ReadSpec
+        action: reads the updated spec and computes a hash to detect changes
+      - node: TargetedReconvergence
+        action: asks LLM which modules are affected by the spec change instead of reconverging everything
+      - node: sync/FindAffectedModules
+        action: traces only the modules that reference the changed spec sections
+      - node: sync/MarkModulesStale
+        action: marks only the affected modules as stale, leaving the rest untouched
+      - node: CompileCheck
+        action: recompiles only stale modules instead of the full graph
+      - node: NeverOpenEndedLoop
+        action: ensures the reconvergence fix loop is bounded, not an infinite retry
+      - node: JourneyTestsAreValidation
+        action: validates changes by running real journey tests, not LLM-judged checks
+
+  EnforceArchitecturalDecisionTestFeedback:
+    steps:
+      - node: TriggerTestgen
+        action: generates test skeletons from journey steps
+      - node: JourneyTestsAreValidation
+        action: asserts that real test execution is the validation mechanism, not LLM judgment
+      - node: ExecuteTests
+        action: runs the generated journey tests against the implementation
+      - node: FixTestFailures
+        action: on failure, diagnoses root cause as code bug, test bug, or graph bug
+      - node: testgen/DiagnoseFailureRoot
+        action: classifies the failure type per spec §9 feedback loop rules
+      - node: _actors/LLMWorker
+        action: fixes the identified root cause with targeted edits
+      - node: ExecuteTests
+        action: re-runs tests to confirm the fix resolves the failure
+      - node: BatchHeavyOperations
+        action: groups multiple test fixes into bounded batches to avoid timeout
+
+  ResolveGraphSpecConflict:
+    steps:
+      - node: _actors/ProjectOwner
+        action: updates spec.md with new requirements that contradict existing graph nodes
+      - node: SourceOfTruthHierarchy
+        action: spec is authority — when graph contradicts spec, the graph must update
+      - node: EveryChangeStartsInSpec
+        action: confirms the change originated in spec.md, the only valid starting point
+      - node: ReadSpec
+        action: reads the updated spec with the new requirements
+      - node: TargetedReconvergence
+        action: identifies which modules are affected by the spec change
+      - node: _actors/LLMWorker
+        action: updates affected modules to align their nodes and journeys with the new spec
+      - node: CompileCheck
+        action: validates the updated graph compiles with zero errors
+      - node: TargetedAudit
+        action: verifies the updated graph covers the new spec requirements
+      - node: NoDriftBetweenLayers
+        action: confirms spec, graph, code, and tests are now aligned
+
+  ResolveCodeGraphConflict:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: notices code behavior doesn't match what the graph describes
+      - node: SourceOfTruthHierarchy
+        action: graph is authority over code — journey tests should catch divergence
+      - node: ExecuteTests
+        action: runs journey tests which fail because code contradicts graph
+      - node: testgen/DiagnoseFailureRoot
+        action: diagnoses the failure as a code bug since the graph matches spec
+      - node: FixTestFailures
+        action: fixes the code to match what the graph and journey tests expect
+      - node: ExecuteTests
+        action: re-runs tests to confirm code now matches graph
+      - node: NoDriftBetweenLayers
+        action: confirms code and graph are back in alignment
+
+  ResolveDirectCodeEdit:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: edits implementation code directly to fix a bug without changing spec or graph
+      - node: CodeFixesAreOKForBugs
+        action: permits direct code fixes for bugs that journey tests can validate
+      - node: ExecuteTests
+        action: runs journey tests to confirm the code fix is correct
+      - node: SourceOfTruthHierarchy
+        action: code changed without graph update — Step 4d must sync the drift back
+      - node: DetectSelfModification
+        action: detects that implementation code has changed outside the normal convergence flow
+      - node: TargetedReconvergence
+        action: triggers code-to-graph sync to update the graph to reflect the code fix
+      - node: CompileCheck
+        action: validates the synced graph still compiles cleanly
+      - node: NoDriftBetweenLayers
+        action: confirms all layers are aligned after the direct code edit
+
+  EnforceNoSeparateDocumentation:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes spec.md as the sole human input describing goals, architecture, and roadmap
+      - node: NoSeparateDocumentationFiles
+        action: asserts that no standalone docs exist — everything is in the graph
+      - node: ReadSpec
+        action: reads the spec containing goals, architecture, and roadmap in a single document
+      - node: ModuleCreation
+        action: creates modules where goals become rule nodes connected to governing journeys
+      - node: _actors/LLMWorker
+        action: writes journeys where architecture is process nodes connected to implementing code
+      - node: CompileCheck
+        action: validates the graph captures all documentation as connected nodes and journeys
+      - node: TriggerCodegen
+        action: generates code from nodes, proving the graph IS the executable documentation
+      - node: TriggerTestgen
+        action: generates tests from journeys, proving the graph IS the test specification
+      - node: NoSeparateDocumentationFiles
+        action: confirms the living graph serves as goals, architecture, roadmap, tests, and code simultaneously
+
+  EnforceNoDriftBetweenLayers:
+    steps:
+      - node: SourceOfTruthHierarchy
+        action: establishes that spec derives graph, graph derives code, code derives tests
+      - node: ReadSpec
+        action: reads spec.md as the highest authority
+      - node: CompileCheck
+        action: validates graph matches spec by checking all modules compile cleanly
+      - node: TargetedAudit
+        action: audits that graph covers all spec sections, actors, and cross-module connections
+      - node: TriggerCodegen
+        action: generates code from graph, ensuring code reflects the graph
+      - node: TriggerTestgen
+        action: generates tests from journeys, ensuring tests reflect the graph
+      - node: ExecuteTests
+        action: runs tests to confirm code matches graph
+      - node: NoIgnoredTestFailures
+        action: requires every failure to be diagnosed and fixed, never suppressed
+      - node: NoDriftBetweenLayers
+        action: all four layers are verified aligned — spec, graph, code, tests
+
+  EnforceNoIgnoredTestFailures:
+    steps:
+      - node: ExecuteTests
+        action: runs journey tests and detects failures
+      - node: NoIgnoredTestFailures
+        action: requires every failure to be diagnosed, not skipped
+      - node: testgen/DiagnoseFailureRoot
+        action: analyzes the failure to classify it as code bug, test bug, or graph bug
+      - node: FixTestFailures
+        action: fixes the identified root cause with the appropriate mechanism
+      - node: ExecuteTests
+        action: re-runs tests to confirm the fix resolves the failure
+      - node: NoDriftBetweenLayers
+        action: confirms the fix maintains alignment across all layers
+
+  EnforceNoHardcodedLimits:
+    steps:
+      - node: DataDecidesWhenToStop
+        action: asserts that no hardcoded constants determine convergence termination
+      - node: BoundedCreationLoop
+        action: bounds creation by modules times lenses derived from the data, not a fixed cap
+      - node: DetectAuditCycleExhaustion
+        action: detects when audit rounds produce no new gaps, signaling data-driven completion
+      - node: compilation/EarlyTerminationRule
+        action: terminates on 2 consecutive zero-delta passes determined by compilation output
+      - node: LoadProjectConfig
+        action: reads configurable thresholds from project config instead of embedding constants
+
+  EnforceNoOpenEndedLoops:
+    steps:
+      - node: NeverOpenEndedLoop
+        action: asserts that LLM is never asked open-ended questions in an unbounded loop
+      - node: BoundedCreationRule
+        action: bounds module creation to a finite set derived from organization output
+      - node: BoundedCreationLoop
+        action: iterates exactly once per module with compile check between each
+      - node: TargetedAudit
+        action: dispatches exactly 3 auditors with specific coverage angles, not open-ended review
+      - node: audit/AuditRoundLimit
+        action: enforces a maximum number of audit fix rounds to guarantee termination
+
+  EnforceNoFileRewrites:
+    steps:
+      - node: NeverModifyRunningCode
+        action: asserts that working files are updated in place, never regenerated from scratch
+      - node: codegen/NeverOverwriteExisting
+        action: skips skeleton generation for files that already exist on disk
+      - node: graph/DestructiveEditDetection
+        action: detects any edit that decreases node or journey count in a module
+      - node: graph/FieldPreservation
+        action: preserves existing fields when merging new content into a module
+      - node: audit/DetectFixContentLoss
+        action: rejects audit fixes that remove existing content from the target module
+
+  ReadMetricsForEarlyTermination:
+    steps:
+      - node: ModuleCreation
+        action: completes a creation pass for a module
+      - node: metrics/ConvergenceMetricsRecord
+        action: provides the delta counts from the last two creation passes
+      - node: metrics/TrackGraphCounts
+        action: records the node and journey counts after this pass
+      - node: DataDecidesWhenToStop
+        action: compares current pass delta against previous pass delta
+      - node: compilation/EarlyTerminationRule
+        action: terminates creation for the module after 2 consecutive zero-delta passes
+      - node: BoundedCreationLoop
+        action: advances to the next module or exits creation if all modules are saturated

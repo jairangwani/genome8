@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/types.ts
 // Implementation: src/publish.ts
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("FlattenGrandchildInterfacesIntoChild", () => {
   it("step 1: _actors/ChildEngine has split into grandchildren and all grandchildren have converged", () => {

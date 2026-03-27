@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: test/cross-project.test.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 // Implementation: test/director.test.ts
 // Implementation: src/types.ts
 

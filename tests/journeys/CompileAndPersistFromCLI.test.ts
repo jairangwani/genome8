@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/cli.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("CompileAndPersistFromCLI", () => {
   it("step 1: _actors/HumanDeveloper runs genome compile from the command line with a modules directory argument", () => {

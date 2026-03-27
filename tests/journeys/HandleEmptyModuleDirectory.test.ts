@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HandleEmptyModuleDirectory", () => {
   it("step 1: _actors/Compiler scans the modules directory for .yaml files", () => {

@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: test/multi-engine.test.ts
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("SpawnAndWaitForChildren", () => {
   it("step 1: _actors/ParentEngine has all child directories prepared and ready to spawn", () => {

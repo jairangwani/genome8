@@ -8,6 +8,7 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/codegen.ts
 // Implementation: test/codegen.test.ts
 // Implementation: test/testgen.test.ts
+// Implementation: tests/journeys/
 // Implementation: test/journeys/
 
 describe("CodeGenerationPipeline", () => {

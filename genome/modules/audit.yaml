@@ -100,9 +100,13 @@ nodes:
   AuditRoundLimit:
     type: rule
     description: audit-fix-reaudit cycles are capped at a maximum number of rounds to prevent infinite loops when gaps cannot be resolved
+  DetectFixContentLoss:
+    type: process
+    description: compares pre-fix and post-fix node and journey counts in the target module to detect a fix that removed existing content, implementing spec section 9's destructive edit protection for the audit fix pipeline
 
 journeys:
   DepthAudit:
+    files: [test/journeys/DepthAudit.test.ts]
     steps:
       - node: convergence/CompileCheck
         action: confirms compilation passed with 0 errors and 0 orphans
@@ -150,6 +154,7 @@ journeys:
         action: stores the complete list of coverage gaps
 
   FixAuditGaps:
+    files: [test/journeys/FixAuditGaps.test.ts]
     steps:
       - node: AuditFindingsList
         action: provides the list of coverage gaps to fix
@@ -187,6 +192,7 @@ journeys:
         action: updates with the fix result — either more gaps remain or all are closed
 
   AuditFixReauditCycle:
+    files: [test/journeys/AuditFixReauditCycle.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: indicates gaps remain after a fix round
@@ -226,6 +232,7 @@ journeys:
         action: stores the updated gap list — may be empty
 
   DeclareConvergence:
+    files: [test/journeys/DeclareConvergence.test.ts]
     steps:
       - node: AuditFindingsList
         action: provides the gap list from the latest audit round
@@ -245,6 +252,7 @@ journeys:
         action: proceeds to publish the converged interface
 
   ProvideAuditExcerptContext:
+    files: [test/journeys/ProvideAuditExcerptContext.test.ts]
     steps:
       - node: convergence/TargetedAudit
         action: requests focused context for each auditor to check a specific module
@@ -270,6 +278,7 @@ journeys:
         action: wraps the excerpt with the specific coverage angle instructions
 
   ProvideFixExcerptToWorker:
+    files: [test/journeys/ProvideFixExcerptToWorker.test.ts]
     steps:
       - node: SelectNextGapToFix
         action: identifies which module contains the gap to be fixed
@@ -297,6 +306,7 @@ journeys:
         action: packages the fix context into the prompt sent to the LLM worker
 
   FixSingleGap:
+    files: [test/journeys/FixSingleGap.test.ts]
     steps:
       - node: AuditFindingsList
         action: provides the prioritized list of gaps
@@ -334,6 +344,7 @@ journeys:
         action: records that one more gap has been fixed in this round
 
   EndToEndAuditToConvergence:
+    files: [test/journeys/EndToEndAuditToConvergence.test.ts]
     steps:
       - node: convergence/BoundedCreationLoop
         action: completes all module creation with all perspectives applied
@@ -383,6 +394,7 @@ journeys:
         action: proceeds to publish the converged interface
 
   TrackAuditFixProgress:
+    files: [test/journeys/TrackAuditFixProgress.test.ts]
     steps:
       - node: convergence/ConvergenceState
         action: provides the current pipeline step showing audit is in progress
@@ -398,6 +410,7 @@ journeys:
         action: updates with the audit progress metrics for the current round
 
   HandleFixInducedErrors:
+    files: [test/journeys/HandleFixInducedErrors.test.ts]
     steps:
       - node: ApplyFix
         action: has just edited a module to close a coverage gap
@@ -427,6 +440,7 @@ journeys:
         action: records the failed fix attempt for progress analysis
 
   HandleFixInducedGaps:
+    files: [test/journeys/HandleFixInducedGaps.test.ts]
     steps:
       - node: ApplyFix
         action: has edited a module to close a specific coverage gap
@@ -452,6 +466,7 @@ journeys:
         action: records that the fix closed one gap but opened others for progress tracking
 
   EnforceAuditTermination:
+    files: [test/journeys/EnforceAuditTermination.test.ts]
     steps:
       - node: TrackAuditRound
         action: provides the current round number and gap count history across rounds
@@ -469,6 +484,7 @@ journeys:
         action: provides the final compilation state at the point of termination
 
   ValidateGraphInvariantsAfterFixRound:
+    files: [test/journeys/ValidateGraphInvariantsAfterFixRound.test.ts]
     steps:
       - node: convergence/RecompileAfterFix
         action: triggers full compilation after all fixes in this round are applied
@@ -492,6 +508,7 @@ journeys:
         action: records that all graph invariants are satisfied after this fix round
 
   HandleFailedFixVerification:
+    files: [test/journeys/HandleFailedFixVerification.test.ts]
     steps:
       - node: ApplyFix
         action: has edited a module to close a gap
@@ -517,6 +534,7 @@ journeys:
         action: records the failed verification for progress tracking
 
   AuditAuditsItself:
+    files: [test/journeys/AuditAuditsItself.test.ts]
     steps:
       - node: convergence/TargetedAudit
         action: dispatches auditors to check all modules including audit.yaml
@@ -544,6 +562,7 @@ journeys:
         action: stores the self-referential gaps alongside gaps from other modules
 
   FixGapInAuditModule:
+    files: [test/journeys/FixGapInAuditModule.test.ts]
     steps:
       - node: AuditFindingsList
         action: provides a gap that targets audit.yaml itself
@@ -575,6 +594,7 @@ journeys:
         action: records the self-fix attempt for progress tracking
 
   DetectSpecChangeToAuditDomain:
+    files: [test/journeys/DetectSpecChangeToAuditDomain.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: signals that the spec has changed and modules may need updating
@@ -596,6 +616,7 @@ journeys:
         action: records that audit.yaml needs updating due to spec changes in its own domain
 
   ValidateAuditInfrastructurePresent:
+    files: [test/journeys/ValidateAuditInfrastructurePresent.test.ts]
     steps:
       - node: convergence/CompileCheck
         action: triggers compilation as a prerequisite for the audit pipeline
@@ -617,6 +638,7 @@ journeys:
         action: proceeds to the audit phase now that audit infrastructure is confirmed present
 
   ReauditAfterAuditSelfFix:
+    files: [test/journeys/ReauditAfterAuditSelfFix.test.ts]
     steps:
       - node: ApplyFix
         action: has just modified audit.yaml to close a self-referential gap
@@ -682,3 +704,60 @@ journeys:
         action: records which sections are covered, which are unclaimed, and which are thinly covered
       - node: CollectAuditFindings
         action: adds spec coverage gaps to the findings list with the organization mapping as context
+
+  RevertDestructiveFix:
+    steps:
+      - node: ApplyFix
+        action: has edited the target module to close a coverage gap
+      - node: VerifyFixCompiles
+        action: compilation passes with zero new errors
+      - node: VerifyGapClosed
+        action: confirms the targeted gap is now closed
+      - node: DetectFixContentLoss
+        action: compares pre-fix node count against post-fix node count in the target module
+      - node: DetectFixContentLoss
+        action: compares pre-fix journey count against post-fix journey count in the target module
+      - node: DetectFixContentLoss
+        action: detects that the fix decreased node or journey count indicating existing content was removed
+      - node: RejectAndRevertFix
+        action: restores the module to its pre-fix state to preserve the destroyed content
+      - node: graph/ModuleFile
+        action: stores the reverted module on disk
+      - node: _actors/Compiler
+        action: recompiles to confirm the revert restored the previous state
+      - node: BuildGapFixPrompt
+        action: rebuilds the fix prompt with explicit instruction to ADD content without removing existing nodes or journeys
+      - node: TrackAuditRound
+        action: records the destructive fix attempt for progress tracking
+
+  AuditCompletionTriggersPublish:
+    steps:
+      - node: _actors/Auditor
+        action: completes the final audit round with zero remaining gaps
+      - node: ConfirmAllGapsResolved
+        action: verifies every auditor reports no outstanding coverage gaps
+      - node: DeclareConverged
+        action: declares the graph converged after all audit checks pass
+      - node: convergence/TriggerPublish
+        action: signals that convergence is complete and publish should proceed
+      - node: publish/GenerateInterfaceYaml
+        action: generates interface.yaml from the audit-verified converged graph
+      - node: publish/ComputeInterfaceHash
+        action: computes SHA256 hash over the newly published interface
+      - node: publish/WriteEventFile
+        action: writes the event file notifying dependents of the converged interface
+
+  AuditPassTriggersCodegen:
+    steps:
+      - node: _actors/Auditor
+        action: completes the final audit round with all coverage gaps resolved
+      - node: DeclareConverged
+        action: declares the graph converged and ready for code generation
+      - node: convergence/TriggerCodegen
+        action: signals that audit has passed and codegen should begin
+      - node: codegen/ReadConvergedGraph
+        action: reads the audit-verified converged graph as input for skeleton generation
+      - node: codegen/GenerateProcessSkeletons
+        action: generates TypeScript skeletons from the converged process nodes
+      - node: codegen/FillImplementation
+        action: dispatches LLM workers to fill the skeleton implementations

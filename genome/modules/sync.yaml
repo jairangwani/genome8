@@ -165,9 +165,19 @@ nodes:
   DependencyFanOutLimit:
     type: rule
     description: enforces a maximum number of dependencies a single box may declare, preventing sync from becoming unresponsive due to excessive upstream watchers and hash fetches
+  RejectMalformedEvent:
+    type: rule
+    description: requires that incoming event files contain valid YAML with all mandatory fields including interface hash, sequence number, and origin chain, and rejects sync when parsing fails
+  RetryDeferredSync:
+    type: process
+    description: re-queues a sync cycle that was blocked by GuardAgainstConcurrentSync so it runs after the active sync releases the lock, preventing silently lost dependency changes that would leave modules stale
+  VerifyOutgoingEventWritten:
+    type: process
+    description: reads the outgoing event file back after WriteEventFile and confirms its content matches the expected changelog, origin chain, and sequence number, detecting silent write failures that would break the ripple chain
 
 journeys:
   CheckDependencyHashes:
+    files: [test/journeys/CheckDependencyHashes.test.ts]
     steps:
       - node: _actors/DependentBox
         action: has received an event indicating a dependency may have changed
@@ -189,6 +199,7 @@ journeys:
         action: records which dependencies changed
 
   SkipSyncWhenCurrent:
+    files: [test/journeys/SkipSyncWhenCurrent.test.ts]
     steps:
       - node: _actors/DependentBox
         action: receives an event and initiates a sync check
@@ -206,6 +217,7 @@ journeys:
         action: records that no dependencies changed, no reconvergence needed
 
   FindAndMarkStaleModules:
+    files: [test/journeys/FindAndMarkStaleModules.test.ts]
     steps:
       - node: SyncResult
         action: provides the list of changed dependencies
@@ -227,6 +239,7 @@ journeys:
         action: ensures only stale modules will be reprocessed, not the full creation pipeline
 
   TriggerTargetedReconvergence:
+    files: [test/journeys/TriggerTargetedReconvergence.test.ts]
     steps:
       - node: StaleModuleList
         action: provides the list of modules that need reconvergence
@@ -254,6 +267,7 @@ journeys:
         action: the event file signals downstream dependents to run their own sync
 
   SyncAfterEventDetection:
+    files: [test/journeys/SyncAfterEventDetection.test.ts]
     steps:
       - node: _actors/FileSystem
         action: detects a change on a dependency's event file via fs.watch
@@ -331,6 +345,7 @@ journeys:
         action: the event file notifies downstream dependents
 
   HandleMultipleDependencyChanges:
+    files: [test/journeys/HandleMultipleDependencyChanges.test.ts]
     steps:
       - node: events/DebounceEvents
         action: batches multiple rapid event file changes into a single sync trigger
@@ -366,6 +381,7 @@ journeys:
         action: ensures the combined set enters targeted reconvergence, not full rebuild
 
   SyncOnFirstBoot:
+    files: [test/journeys/SyncOnFirstBoot.test.ts]
     steps:
       - node: _actors/DependentBox
         action: boots for the first time and needs to establish baseline dependency state
@@ -405,6 +421,7 @@ journeys:
         action: initialized with the current sequence numbers from each dependency's event
 
   ValidateDependenciesBeforeSync:
+    files: [test/journeys/ValidateDependenciesBeforeSync.test.ts]
     steps:
       - node: _actors/DependentBox
         action: initiates a sync check after receiving an event
@@ -422,6 +439,7 @@ journeys:
         action: receives the sync result with validation failures and blocks sync until dependency configuration is fixed
 
   PropagateNarrowedStaleList:
+    files: [test/journeys/PropagateNarrowedStaleList.test.ts]
     steps:
       - node: events/ReadEventFile
         action: reads the incoming event file from the changed dependency
@@ -447,6 +465,7 @@ journeys:
         action: stores the narrowed stale module list for targeted reconvergence
 
   DetectAndBlockOscillation:
+    files: [test/journeys/DetectAndBlockOscillation.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers an event file change notification via fs.watch
@@ -468,6 +487,7 @@ journeys:
         action: receives the suppressed sync result and does not trigger reconvergence or republish
 
   DiscardOutOfOrderEvent:
+    files: [test/journeys/DiscardOutOfOrderEvent.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers an event file change notification
@@ -487,6 +507,7 @@ journeys:
         action: records that the event was discarded as out-of-order with no sync triggered
 
   NarrowRippleScopeBeforePropagation:
+    files: [test/journeys/NarrowRippleScopeBeforePropagation.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes reconvergence on stale modules after a dependency change
@@ -512,6 +533,7 @@ journeys:
         action: the narrowed event file propagates only relevant changes to downstream dependents
 
   EndToEndRipplePropagation:
+    files: [test/journeys/EndToEndRipplePropagation.test.ts]
     steps:
       - node: _actors/FileSystem
         action: detects a dependency event file change via fs.watch
@@ -577,6 +599,7 @@ journeys:
         action: the narrowed event ripples to downstream dependents
 
   HandleConcurrentDependencyRipples:
+    files: [test/journeys/HandleConcurrentDependencyRipples.test.ts]
     steps:
       - node: events/DebounceEvents
         action: batches event file changes from multiple dependencies into a single sync trigger
@@ -632,6 +655,7 @@ journeys:
         action: produces a single narrowed outgoing changelog combining locally-relevant changes from all dependencies
 
   VerifyHashIntegrityAfterStore:
+    files: [test/journeys/VerifyHashIntegrityAfterStore.test.ts]
     steps:
       - node: UpdateStoredHashes
         action: writes new dependency hashes to DependencyHashStore after reconvergence
@@ -647,6 +671,7 @@ journeys:
         action: records whether all hashes verified successfully or logs the specific write failures
 
   CrossValidateEventAndInterfaceHash:
+    files: [test/journeys/CrossValidateEventAndInterfaceHash.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers an event file change notification via fs.watch
@@ -668,6 +693,7 @@ journeys:
         action: records the cross-validation result alongside the staleness determination
 
   DetectAndRecoverPartialHashWrite:
+    files: [test/journeys/DetectAndRecoverPartialHashWrite.test.ts]
     steps:
       - node: UpdateStoredHashes
         action: attempts to write new hashes for multiple changed dependencies in a single batch
@@ -687,6 +713,7 @@ journeys:
         action: confirms all hashes including the retried ones are now correctly stored
 
   RevalidateStalenessBeforeReconvergence:
+    files: [test/journeys/RevalidateStalenessBeforeReconvergence.test.ts]
     steps:
       - node: StaleModuleList
         action: provides the list of modules marked stale from the initial hash comparison
@@ -708,6 +735,7 @@ journeys:
         action: receives the re-validated stale list and begins reprocessing only confirmed changes
 
   SuppressFalseRippleOnNoActualChange:
+    files: [test/journeys/SuppressFalseRippleOnNoActualChange.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: completes reconvergence on stale modules after a dependency change
@@ -727,6 +755,7 @@ journeys:
         action: records that reconvergence produced no interface change and no outgoing event was written
 
   EnforceDeterministicStaleModuleOrder:
+    files: [test/journeys/EnforceDeterministicStaleModuleOrder.test.ts]
     steps:
       - node: FindAffectedModules
         action: produces the set of affected modules from connection tracing in iteration-dependent order
@@ -744,6 +773,7 @@ journeys:
         action: receives the deterministically ordered stale list for reproducible processing
 
   PreventConcurrentSyncRuns:
+    files: [test/journeys/PreventConcurrentSyncRuns.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers an event file change notification during an already-active sync cycle
@@ -759,6 +789,7 @@ journeys:
         action: records that the sync was deferred due to an active concurrent sync cycle
 
   VerifySyncProducesNoOpOnRerun:
+    files: [test/journeys/VerifySyncProducesNoOpOnRerun.test.ts]
     steps:
       - node: UpdateStoredHashes
         action: completes writing new hashes after successful reconvergence
@@ -778,6 +809,7 @@ journeys:
         action: records that idempotency verification passed with zero drift detected
 
   EnforceCanonicalChangelogOrder:
+    files: [test/journeys/EnforceCanonicalChangelogOrder.test.ts]
     steps:
       - node: publish/ComputeChangelogDiff
         action: produces the raw changelog diff with entries in arbitrary iteration order
@@ -793,6 +825,7 @@ journeys:
         action: produces the narrowed changelog in the same deterministic order regardless of input iteration order
 
   AcquireAndReleaseSyncLock:
+    files: [test/journeys/AcquireAndReleaseSyncLock.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers an event file change notification triggering a new sync cycle
@@ -816,6 +849,7 @@ journeys:
         action: confirms the lock was cleanly released and new sync cycles may proceed
 
   FetchHashesInParallelForManyDependencies:
+    files: [test/journeys/FetchHashesInParallelForManyDependencies.test.ts]
     steps:
       - node: _actors/DependentBox
         action: initiates sync for a box with a large number of upstream dependencies
@@ -839,6 +873,7 @@ journeys:
         action: records the comparison results for all dependencies
 
   BatchMarkStaleModulesAtScale:
+    files: [test/journeys/BatchMarkStaleModulesAtScale.test.ts]
     steps:
       - node: SyncResult
         action: provides the list of changed dependencies affecting many local modules
@@ -862,6 +897,7 @@ journeys:
         action: ensures the large stale set enters targeted reconvergence, not full rebuild
 
   ChunkLargeGraphTracingForAffectedModules:
+    files: [test/journeys/ChunkLargeGraphTracingForAffectedModules.test.ts]
     steps:
       - node: SyncResult
         action: provides the changed dependency list for affected module tracing
@@ -885,6 +921,7 @@ journeys:
         action: stores the final narrowed stale list after chunked tracing completes
 
   EnforceRippleDepthLimit:
+    files: [test/journeys/EnforceRippleDepthLimit.test.ts]
     steps:
       - node: _actors/FileSystem
         action: delivers an event file change notification via fs.watch
@@ -906,6 +943,7 @@ journeys:
         action: receives the suppressed result and does not trigger reconvergence or republish
 
   RejectExcessiveDependencyFanOut:
+    files: [test/journeys/RejectExcessiveDependencyFanOut.test.ts]
     steps:
       - node: _actors/DependentBox
         action: attempts to sync a box whose configuration declares many dependencies
@@ -923,6 +961,7 @@ journeys:
         action: receives the sync failure and blocks until the dependency configuration is reduced
 
   ClearOrphanSyncLockOnStartup:
+    files: [test/journeys/ClearOrphanSyncLockOnStartup.test.ts]
     steps:
       - node: _actors/DependentBox
         action: starts the sync subsystem after a process restart or cold boot
@@ -942,6 +981,7 @@ journeys:
         action: records that an orphan sync lock was detected and cleared during startup
 
   ScanForMissedEventsOnWake:
+    files: [test/journeys/ScanForMissedEventsOnWake.test.ts]
     steps:
       - node: _actors/DependentBox
         action: wakes from sleep or restarts after a period of being offline
@@ -967,6 +1007,7 @@ journeys:
         action: records the missed events discovered during wake and their staleness status
 
   ValidateHashStoreOnColdStart:
+    files: [test/journeys/ValidateHashStoreOnColdStart.test.ts]
     steps:
       - node: _actors/DependentBox
         action: starts the sync subsystem and needs to verify stored state integrity
@@ -990,6 +1031,7 @@ journeys:
         action: records that hash store corruption was detected and the store was rebuilt on cold start
 
   RecoverInterruptedStaleMarkingOnRestart:
+    files: [test/journeys/RecoverInterruptedStaleMarkingOnRestart.test.ts]
     steps:
       - node: _actors/DependentBox
         action: restarts and needs to check for interrupted sync state
@@ -1015,6 +1057,7 @@ journeys:
         action: receives the recovered stale list and begins reconvergence on all affected modules
 
   ReconcileSequenceNumbersAfterCrash:
+    files: [test/journeys/ReconcileSequenceNumbersAfterCrash.test.ts]
     steps:
       - node: _actors/DependentBox
         action: restarts after a crash that may have interrupted sequence number updates
@@ -1102,3 +1145,152 @@ journeys:
         action: writes stale markers only on modules not already stale
       - node: StaleModuleList
         action: stores the final list including both newly and previously stale modules
+
+  RejectMalformedEventPayload:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification via fs.watch
+      - node: events/ReadEventFile
+        action: reads the incoming event file from disk
+      - node: ParseEventPayload
+        action: attempts to parse the event file content as YAML
+      - node: ParseEventPayload
+        action: encounters a YAML syntax error or finds required fields such as interface hash, sequence number, or origin chain are missing
+      - node: RejectMalformedEvent
+        action: enforces that events with unparseable or incomplete payloads must not trigger sync
+      - node: SyncResult
+        action: records that the event was rejected due to a malformed payload with the specific parse error details
+      - node: convergence/ConvergenceState
+        action: receives the rejection result and does not trigger reconvergence
+
+  RollbackSyncOnReconvergenceFailure:
+    steps:
+      - node: StaleModuleList
+        action: provides the stale modules identified by the sync pipeline for targeted reconvergence
+      - node: convergence/TargetedReconvergence
+        action: begins reconvergence on the stale modules
+      - node: _actors/Compiler
+        action: recompiles the stale modules and finds compilation errors persist after reconvergence attempts
+      - node: compilation/CompilationResult
+        action: reports validation errors that reconvergence could not resolve
+      - node: compilation/ErrorReport
+        action: records the specific compilation failures from the failed reconvergence attempt
+      - node: DependencyHashStore
+        action: retains the previous stored hashes unchanged since reconvergence did not succeed
+      - node: LastProcessedSequence
+        action: is not updated since the sync cycle did not complete successfully
+      - node: SyncResult
+        action: records that sync detected dependency changes but reconvergence failed, stored hashes were not updated, and no outgoing event was written
+
+  FallbackToFullStaleOnMissingChangelog:
+    steps:
+      - node: CompareStoredHash
+        action: detects a hash mismatch for a dependency indicating a change
+      - node: ReadDependencyChangelog
+        action: attempts to read changelog.yaml from the dependency published directory
+      - node: ReadDependencyChangelog
+        action: finds the changelog file is missing or contains unparseable YAML
+      - node: graph/CompiledIndex
+        action: provides the full graph for affected module tracing without changelog-based narrowing
+      - node: graph/ConnectionSet
+        action: provides edges showing which local nodes reference the changed dependency
+      - node: FindAffectedModules
+        action: traces all local modules that reference any node in the changed dependency
+      - node: MarkModulesStale
+        action: marks all referencing modules stale since without a valid changelog there is no basis for narrowing the affected set
+      - node: ComputeStaleModuleCount
+        action: counts the conservatively broad stale set and records it in the sync result
+      - node: StaleModuleList
+        action: stores the unnarrowed stale list as the safe fallback
+
+  RetryDeferredSyncAfterLockRelease:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification during an active sync cycle
+      - node: GuardAgainstConcurrentSync
+        action: detects the SyncLock is held and blocks the new sync from running
+      - node: RetryDeferredSync
+        action: records the deferred event and its dependency identifier for later retry
+      - node: SyncLock
+        action: is released when the active sync cycle completes
+      - node: RetryDeferredSync
+        action: detects the lock release and re-triggers sync for the deferred dependency event
+      - node: ReadDependencyList
+        action: reads the dependency configuration to begin the deferred sync
+      - node: FetchDependencyHash
+        action: fetches the current hash from the deferred dependency's interface.yaml
+      - node: DependencyHashStore
+        action: provides the stored hash updated by the previous sync cycle
+      - node: CompareStoredHash
+        action: compares the fetched hash against the just-updated stored hash to determine if the deferred event represents a newer change
+      - node: IdentifyStaleDependencies
+        action: collects any dependencies whose hashes still differ after the previous sync
+      - node: SyncResult
+        action: records whether the deferred sync found additional changes or confirmed the previous sync already handled them
+
+  ResyncOnPostSyncDrift:
+    steps:
+      - node: UpdateStoredHashes
+        action: completes writing new hashes after successful reconvergence
+      - node: VerifySyncIdempotency
+        action: re-fetches current hashes from all dependency interfaces as a post-sync consistency check
+      - node: DependencyHashStore
+        action: provides the just-updated stored hashes for comparison
+      - node: VerifySyncIdempotency
+        action: compares re-fetched hashes against stored and finds at least one mismatch indicating a dependency changed during the sync cycle
+      - node: IdentifyStaleDependencies
+        action: collects the dependencies that drifted during the sync cycle into a new changed list
+      - node: SyncResult
+        action: records that post-sync drift was detected and a follow-up sync is required
+      - node: graph/CompiledIndex
+        action: provides the graph for tracing modules affected by the drifted dependencies
+      - node: graph/ConnectionSet
+        action: provides edges for reference tracing
+      - node: FindAffectedModules
+        action: traces connections from the drifted dependencies to local modules
+      - node: MarkModulesStale
+        action: marks the newly affected modules stale for another round of targeted reconvergence
+      - node: StaleModuleList
+        action: stores the new stale list from drift detection
+      - node: convergence/TargetedReconvergence
+        action: begins a follow-up reconvergence on the modules affected by changes that occurred during the previous sync cycle
+
+  DetectAndRetryFailedOutgoingEvent:
+    steps:
+      - node: UpdateStoredHashes
+        action: writes new dependency hashes to DependencyHashStore after successful reconvergence
+      - node: DependencyHashStore
+        action: updated with the latest hashes before the outgoing event is written
+      - node: AppendBoxToOriginChain
+        action: prepares the origin chain with this box's ID for the outgoing event
+      - node: NarrowOutgoingChangelog
+        action: produces the narrowed changelog for the outgoing event
+      - node: publish/WriteEventFile
+        action: attempts to write the outgoing event file but the write fails due to disk error or crash mid-write
+      - node: VerifyOutgoingEventWritten
+        action: reads the event file location and finds it missing or truncated
+      - node: VerifyOutgoingEventWritten
+        action: detects the outgoing event was not successfully written despite stored hashes already being updated
+      - node: publish/WriteEventFile
+        action: retries writing the outgoing event file with the same changelog and origin chain
+      - node: VerifyOutgoingEventWritten
+        action: reads the event file back and confirms its content matches the expected changelog, origin chain, and sequence number
+      - node: publish/EventFile
+        action: the verified event file propagates the ripple to downstream dependents
+      - node: SyncResult
+        action: records that the outgoing event required a retry but was successfully written
+
+  DetectHashCollisionDuringSyncCheck:
+    steps:
+      - node: _actors/HashCollisionExploiter
+        action: manipulates artifact content to produce an identical SHA256 hash as the previous version
+      - node: FetchDependencyHash
+        action: fetches the dependency hash which matches the stored hash despite real changes
+      - node: CompareStoredHash
+        action: compares hashes and incorrectly finds no mismatch
+      - node: CrossValidateEventHashWithFetchedHash
+        action: cross-validates by comparing the event payload hash against the fetched interface hash
+      - node: ReadDependencyChangelog
+        action: reads the changelog to detect that content changed even though the hash did not
+      - node: MarkModulesStale
+        action: marks modules stale based on changelog evidence overriding the hash match

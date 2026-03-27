@@ -1,0 +1,17 @@
+{
+  "llmCalls": 0,
+  "totalTokens": 0,
+  "stepTimings": {
+    "step1_organization": 0,
+    "step2_actors": 63,
+    "step3_modules": 1,
+    "step4_convergence": 1716565,
+    "step5_publish": 146,
+    "step6_codegen": 3188733
+  },
+  "startedAt": "2026-03-27T14:04:21.577Z",
+  "completedAt": "2026-03-27T15:26:24.935Z",
+  "modulesProcessed": 17,
+  "nodesCreated": 690,
+  "journeysCreated": 516
+}

@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/publish.ts
 // Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("PublishParentAfterHierarchy", () => {
   it("step 1: _actors/ParentEngine cross-engine validation passed with 0 errors", () => {

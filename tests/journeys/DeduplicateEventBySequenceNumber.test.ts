@@ -7,62 +7,63 @@ import { describe, it, expect } from 'vitest';
 
 describe("DeduplicateEventBySequenceNumber", () => {
   it("step 1: _actors/FileSystem fires the fs.watch callback, possibly a duplicate notification for the same file write", () => {
-    // fs.watch can fire multiple times for a single write
-    const notifications = ['change', 'change']; // duplicate
-    expect(notifications).toHaveLength(2);
+    // Node: _actors/FileSystem (actor)
+    // Action: fires the fs.watch callback, possibly a duplicate notification for the same file write
+    // TODO: agent fills assertion
   });
 
   it("step 2: events/DetectEventFileChange receives the filesystem notification", () => {
-    const notification = { eventType: 'change', filename: 'event.json' };
-    expect(notification.eventType).toBe('change');
+    // Node: events/DetectEventFileChange (process)
+    // Action: receives the filesystem notification
+    // TODO: agent fills assertion
   });
 
   it("step 3: events/ReadEventFile reads the event file from disk", () => {
-    const event = { hash: 'sha256:abc', sequence: 5, origin_chain: ['box-1'] };
-    expect(event.sequence).toBe(5);
+    // Node: events/ReadEventFile (process)
+    // Action: reads the event file from disk
+    // TODO: agent fills assertion
   });
 
   it("step 4: events/ValidateEventFileFormat validates the event file structure", () => {
-    const event = { hash: 'sha256:abc', sequence: 5, origin_chain: ['box-1'] };
-    expect(event).toHaveProperty('hash');
-    expect(event).toHaveProperty('sequence');
+    // Node: events/ValidateEventFileFormat (process)
+    // Action: validates the event file structure
+    // TODO: agent fills assertion
   });
 
   it("step 5: events/ExtractEventSequenceNumber reads the sequence number from the validated payload", () => {
-    const event = { sequence: 5 };
-    expect(event.sequence).toBe(5);
-    expect(typeof event.sequence).toBe('number');
+    // Node: events/ExtractEventSequenceNumber (process)
+    // Action: reads the sequence number from the validated payload
+    // TODO: agent fills assertion
   });
 
   it("step 6: events/DetectDuplicateEventSequence compares the sequence number against the last-processed sequence for this dependency", () => {
-    const lastProcessed: Record<string, number> = { 'dep-a': 5 };
-    const incomingSequence = 5;
-    const isDuplicate = lastProcessed['dep-a'] !== undefined && incomingSequence <= lastProcessed['dep-a'];
-    expect(isDuplicate).toBe(true);
+    // Node: events/DetectDuplicateEventSequence (process)
+    // Action: compares the sequence number against the last-processed sequence for this dependency
+    // TODO: agent fills assertion
   });
 
   it("step 7: events/DetectDuplicateEventSequence determines the event is a duplicate because the sequence number was already processed", () => {
-    const lastProcessed = 5;
-    const incoming = 5;
-    expect(incoming).toBeLessThanOrEqual(lastProcessed);
+    // Node: events/DetectDuplicateEventSequence (process)
+    // Action: determines the event is a duplicate because the sequence number was already processed
+    // TODO: agent fills assertion
   });
 
   it("step 8: events/LogEventReceived records the event disposition as suppressed-duplicate with the repeated sequence number", () => {
-    const logEntry = { disposition: 'suppressed-duplicate', sequence: 5, dependency: 'dep-a' };
-    expect(logEntry.disposition).toBe('suppressed-duplicate');
-    expect(logEntry.sequence).toBe(5);
+    // Node: events/LogEventReceived (process)
+    // Action: records the event disposition as suppressed-duplicate with the repeated sequence number
+    // TODO: agent fills assertion
   });
 
   it("step 9: events/EventLog persists the duplicate suppression log entry", () => {
-    const log: Array<Record<string, unknown>> = [];
-    log.push({ type: 'duplicate-suppressed', sequence: 5 });
-    expect(log).toHaveLength(1);
+    // Node: events/EventLog (artifact)
+    // Action: persists the duplicate suppression log entry
+    // TODO: agent fills assertion
   });
 
   it("step 10: events/EnterSleep returns to sleep without triggering sync since the event was already processed", () => {
-    const syncTriggered = false;
-    const sleeping = true;
-    expect(syncTriggered).toBe(false);
-    expect(sleeping).toBe(true);
+    // Node: events/EnterSleep (process)
+    // Action: returns to sleep without triggering sync since the event was already processed
+    // TODO: agent fills assertion
   });
+
 });

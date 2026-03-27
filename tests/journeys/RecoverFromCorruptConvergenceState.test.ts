@@ -8,8 +8,11 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
 // Implementation: test/integration.test.ts
+// Implementation: test-project/
 // Implementation: src/compile.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("RecoverFromCorruptConvergenceState", () => {
   it("step 1: _actors/ProjectOwner starts the pipeline and the ConvergenceState file is missing or corrupt", () => {

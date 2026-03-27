@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("RecoverFromCreationFailure", () => {
   it("step 1: convergence/ModuleCreation delegates to LLM to create a module", () => {

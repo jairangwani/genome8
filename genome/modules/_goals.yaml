@@ -45,7 +45,7 @@ journeys:
         action: encounters genome8 and writes a spec.md for their own system
       - node: convergence/ReadSpec
         action: reads any project spec as input — not hardcoded to genome8
-      - node: convergence/ProjectConvergence
+      - node: convergence/ResumePipeline
         action: runs the full pipeline on an external project spec
       - node: hierarchy/SameCodeEveryLevel
         action: the same convergence.ts works at any hierarchy level for any project
@@ -77,9 +77,9 @@ journeys:
     steps:
       - node: ProductionReady
         action: governs that every component is reliable enough for real workloads
-      - node: compilation/FullCompilation
+      - node: compilation/CompileFromModules
         action: validates every change with zero-error compilation
-      - node: audit/DepthAudit
+      - node: audit/MergeAuditReports
         action: checks coverage from three angles after zero errors
       - node: graph/DestructiveEditDetection
         action: detects any change that decreases node count
@@ -106,7 +106,7 @@ journeys:
         action: traces which modules are affected without human guidance
       - node: convergence/TargetedReconvergence
         action: reconverges only affected modules automatically
-      - node: convergence/RecoverFromWorkerCrash
+      - node: convergence/DetectWorkerFailure
         action: respawns crashed workers and resumes without human intervention
       - node: convergence/EnterSleepMode
         action: returns to sleep after autonomous reconvergence completing the self-sustaining cycle

@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ValidateFullGraphAfterReconvergence", () => {
   it("step 1: convergence/TargetedReconvergence completes reconvergence of stale modules after a wake event", () => {

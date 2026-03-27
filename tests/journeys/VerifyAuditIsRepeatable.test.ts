@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("VerifyAuditIsRepeatable", () => {
   it("step 1: _actors/Compiler produces a clean compilation with zero errors as the stable baseline for audit", () => {

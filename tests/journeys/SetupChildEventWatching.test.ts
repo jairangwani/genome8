@@ -1,0 +1,52 @@
+// Auto-generated from journey: SetupChildEventWatching
+// Module: hierarchy
+// Modules touched: hierarchy, events
+
+import { describe, it, expect } from 'vitest';
+
+// Implementation: test/multi-engine.test.ts
+
+describe("SetupChildEventWatching", () => {
+  it("step 1: hierarchy/SpawnChildEngine launches child engine processes in their scoped directories", () => {
+    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Action: launches child engine processes in their scoped directories
+    // TODO: agent fills assertion
+  });
+
+  it("step 2: hierarchy/ChildDirectory provides the output path where each child will write event files", () => {
+    // Node: hierarchy/ChildDirectory (artifact)
+    // Action: provides the output path where each child will write event files
+    // TODO: agent fills assertion
+  });
+
+  it("step 3: events/RegisterEventWatchers creates fs.watch instances on each child's event directory", () => {
+    // Node: events/RegisterEventWatchers (process)
+    // Action: creates fs.watch instances on each child's event directory
+    // TODO: agent fills assertion
+  });
+
+  it("step 4: events/EventWatcherSet stores the child watchers in the active set for the parent engine", () => {
+    // Node: events/EventWatcherSet (artifact)
+    // Action: stores the child watchers in the active set for the parent engine
+    // TODO: agent fills assertion
+  });
+
+  it("step 5: hierarchy/WaitForAllChildren parent enters wait mode, relying on event watchers to detect child completion", () => {
+    // Node: hierarchy/WaitForAllChildren (process)
+    // Action: parent enters wait mode, relying on event watchers to detect child completion
+    // TODO: agent fills assertion
+  });
+
+  it("step 6: events/DetectEventFileChange receives notification when a child writes its published interface event", () => {
+    // Node: events/DetectEventFileChange (process)
+    // Action: receives notification when a child writes its published interface event
+    // TODO: agent fills assertion
+  });
+
+  it("step 7: hierarchy/CollectChildInterfaces reads the child's published interface triggered by the event notification", () => {
+    // Node: hierarchy/CollectChildInterfaces (process)
+    // Action: reads the child's published interface triggered by the event notification
+    // TODO: agent fills assertion
+  });
+
+});

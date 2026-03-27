@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: test/journeys/
 // Implementation: test/testgen.test.ts
+// Implementation: tests/journeys/
 
 describe("RecoverFromFillAssertionError", () => {
   it("step 1: testgen/FillTestAssertions has produced a filled test file from the LLM worker", () => {

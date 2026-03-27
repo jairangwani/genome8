@@ -9,6 +9,8 @@ import { describe, it, expect } from 'vitest';
 // Implementation: test/cross-project.test.ts
 // Implementation: test/director.test.ts
 // Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HierarchySplitPipeline", () => {
   it("step 1: convergence/HierarchyDecision determines that the module set should split into child engines", () => {

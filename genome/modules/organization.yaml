@@ -94,9 +94,19 @@ nodes:
   ModuleSpecSectionMap:
     type: artifact
     description: the mapping from each module name to its assigned spec section numbers used in each module's spec_sections field
+  DetectDuplicateModuleNames:
+    type: process
+    description: scans the identified module list for entries sharing the same name, which would cause YAML filename collisions and node name ambiguity in the compiled graph
+  ValidateDependencyTargetsExist:
+    type: process
+    description: checks that every module name referenced as a dependency target in the dependency graph exists in the identified module list, catching dangling references the LLM may produce
+  DetectUngroundedModules:
+    type: process
+    description: checks that every identified module maps to at least one spec section, catching hallucinated modules the LLM invented without spec basis
 
 journeys:
   AnalyzeSpecAndWriteOrganization:
+    files: [test/journeys/AnalyzeSpecAndWriteOrganization.test.ts]
     steps:
       - node: convergence/ReadSpec
         action: triggers the organization step by reading spec.md
@@ -138,6 +148,7 @@ journeys:
         action: the organization file is now on disk and ready for consumption
 
   ProvideModuleListForCreation:
+    files: [test/journeys/ProvideModuleListForCreation.test.ts]
     steps:
       - node: OrganizationFile
         action: provides the organization containing the module list and build order
@@ -153,6 +164,7 @@ journeys:
         action: iterates through the module list bounded by the dependency graph
 
   ProvideIndependenceForHierarchy:
+    files: [test/journeys/ProvideIndependenceForHierarchy.test.ts]
     steps:
       - node: OrganizationFile
         action: provides the organization with independence analysis
@@ -166,6 +178,7 @@ journeys:
         action: uses independence and coupling data to decide whether to split
 
   UpdateOrganizationAfterReconvergence:
+    files: [test/journeys/UpdateOrganizationAfterReconvergence.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: signals that reconvergence may have changed the module structure
@@ -195,6 +208,7 @@ journeys:
         action: the updated organization is now on disk
 
   ValidateOrganizationBeforeProceeding:
+    files: [test/journeys/ValidateOrganizationBeforeProceeding.test.ts]
     steps:
       - node: WriteOrganizationFile
         action: has just written ORGANIZATION.md to disk
@@ -218,6 +232,7 @@ journeys:
         action: receives the validated organization and proceeds to the next pipeline step
 
   ProvideOrganizationForActorDiscovery:
+    files: [test/journeys/ProvideOrganizationForActorDiscovery.test.ts]
     steps:
       - node: OrganizationFile
         action: provides the organization file after it has been written and validated
@@ -231,6 +246,7 @@ journeys:
         action: analyzes module descriptions to find actors involved in each activity
 
   ProvideModuleListForCompletenessCheck:
+    files: [test/journeys/ProvideModuleListForCompletenessCheck.test.ts]
     steps:
       - node: OrganizationFile
         action: provides the organization as the source of truth for expected modules
@@ -242,6 +258,7 @@ journeys:
         action: checks that every expected module has been created during bounded creation
 
   ProvideDependencyGraphForCodegen:
+    files: [test/journeys/ProvideDependencyGraphForCodegen.test.ts]
     steps:
       - node: OrganizationFile
         action: provides the organization containing the dependency graph
@@ -253,6 +270,7 @@ journeys:
         action: uses the dependency graph to determine import relationships between generated source files
 
   ProvideSpecSectionsForModuleCreation:
+    files: [test/journeys/ProvideSpecSectionsForModuleCreation.test.ts]
     steps:
       - node: convergence/ModuleCreation
         action: is about to create a new module and needs to know its spec_sections
@@ -268,6 +286,7 @@ journeys:
         action: packages the excerpt with spec_sections into the creation task sent to the worker
 
   HandleMissingSpec:
+    files: [test/journeys/HandleMissingSpec.test.ts]
     steps:
       - node: convergence/ReadSpec
         action: triggers the organization step expecting spec.md on disk
@@ -283,6 +302,7 @@ journeys:
         action: is notified that spec.md must be created before convergence can proceed
 
   RecoverFromMalformedOrganization:
+    files: [test/journeys/RecoverFromMalformedOrganization.test.ts]
     steps:
       - node: _actors/LLMWorker
         action: produces an organization output from the spec analysis
@@ -306,6 +326,7 @@ journeys:
         action: proceeds with the validated output to build ORGANIZATION.md
 
   RecoverFromCircularDependency:
+    files: [test/journeys/RecoverFromCircularDependency.test.ts]
     steps:
       - node: DependencyGraph
         action: provides the dependency graph produced by the LLM
@@ -329,6 +350,7 @@ journeys:
         action: proceeds with the corrected build order
 
   RecoverFromSpecCoverageGap:
+    files: [test/journeys/RecoverFromSpecCoverageGap.test.ts]
     steps:
       - node: ValidateSpecCoverage
         action: detects that one or more spec sections are not covered by any module
@@ -352,6 +374,7 @@ journeys:
         action: re-validates and confirms all spec sections are now covered
 
   RecoverFromEmptyModuleList:
+    files: [test/journeys/RecoverFromEmptyModuleList.test.ts]
     steps:
       - node: _actors/LLMWorker
         action: returns an organization output from spec analysis
@@ -375,6 +398,7 @@ journeys:
         action: stores the dependency graph from the retried analysis
 
   OrganizationRecognizesSelf:
+    files: [test/journeys/OrganizationRecognizesSelf.test.ts]
     steps:
       - node: _actors/LLMWorker
         action: analyzes genome's own spec.md which describes the convergence pipeline
@@ -396,6 +420,7 @@ journeys:
         action: confirms the build order is valid because the bootstrap code breaks the circular dependency
 
   DetectSpecChangeToOrganizationSections:
+    files: [test/journeys/DetectSpecChangeToOrganizationSections.test.ts]
     steps:
       - node: sync/CompareStoredHash
         action: detects that genome's own spec.md has changed via hash mismatch
@@ -419,6 +444,7 @@ journeys:
         action: re-identifies modules accounting for changes in how the organization step is described
 
   ValidateInfrastructureModulesPresent:
+    files: [test/journeys/ValidateInfrastructureModulesPresent.test.ts]
     steps:
       - node: IdentifyModules
         action: has produced a module list from the spec analysis
@@ -442,6 +468,7 @@ journeys:
         action: adds the missing infrastructure modules to the organization output
 
   DiffModuleListForIncrementalUpdate:
+    files: [test/journeys/DiffModuleListForIncrementalUpdate.test.ts]
     steps:
       - node: convergence/TargetedReconvergence
         action: triggers re-analysis of the organization after a spec or dependency change
@@ -465,6 +492,7 @@ journeys:
         action: records the diff result showing added, preserved, and flagged modules
 
   HandleOrganizationWriteError:
+    files: [test/journeys/HandleOrganizationWriteError.test.ts]
     steps:
       - node: AssembleOrganization
         action: has assembled the complete ORGANIZATION.md content in memory
@@ -501,3 +529,87 @@ journeys:
         action: records the rename mapping so downstream consumers reference the new module name
       - node: convergence/ConvergenceState
         action: records the rename instead of an add/remove preventing unnecessary module recreation
+
+  RejectDuplicateModuleNames:
+    steps:
+      - node: _actors/LLMWorker
+        action: produces an organization output containing a module list
+      - node: IdentifyModules
+        action: extracts module names and descriptions from the LLM output
+      - node: ModuleList
+        action: provides the raw module list for duplicate checking
+      - node: DetectDuplicateModuleNames
+        action: scans the module names and finds two or more entries sharing the same name
+      - node: DetectDuplicateModuleNames
+        action: collects the duplicate name and the conflicting descriptions for the error report
+      - node: llm/SendTask
+        action: sends the duplicate names with their descriptions as a correction task
+      - node: _actors/LLMWorker
+        action: re-analyzes the duplicates and assigns unique names to each distinct concern
+      - node: IdentifyModules
+        action: re-extracts the corrected module list with unique names
+      - node: DetectDuplicateModuleNames
+        action: re-validates and confirms all module names are now unique
+      - node: ModuleList
+        action: stores the deduplicated module list
+
+  RepairDanglingDependencyRef:
+    steps:
+      - node: AnalyzeDependencies
+        action: produces a dependency graph from the LLM organizational analysis
+      - node: DependencyGraph
+        action: provides the raw dependency relationships for validation
+      - node: ModuleList
+        action: provides the identified module names as the valid reference set
+      - node: ValidateDependencyTargetsExist
+        action: checks each dependency target against the module list
+      - node: ValidateDependencyTargetsExist
+        action: detects a dependency referencing a module name not present in the module list
+      - node: llm/SendTask
+        action: sends the dangling reference and the valid module list as a correction task
+      - node: _actors/LLMWorker
+        action: corrects the dependency to reference an existing module or proposes the missing module for inclusion
+      - node: AnalyzeDependencies
+        action: re-computes the dependency graph with the corrected references
+      - node: DependencyGraph
+        action: stores the corrected dependency graph
+      - node: ValidateDependencyTargetsExist
+        action: re-validates and confirms all dependency targets now exist in the module list
+
+  RejectUngroundedModule:
+    steps:
+      - node: AssignSpecSectionsToModules
+        action: maps each module to spec sections based on its domain and the section content
+      - node: ModuleSpecSectionMap
+        action: provides the module-to-section assignments for grounding validation
+      - node: ModuleList
+        action: provides the full list of identified modules
+      - node: DetectUngroundedModules
+        action: checks each module in the list against the section map for at least one assignment
+      - node: DetectUngroundedModules
+        action: identifies a module with zero assigned spec sections as likely hallucinated
+      - node: llm/SendTask
+        action: sends the ungrounded module name and description with the full spec section list as a correction task
+      - node: _actors/LLMWorker
+        action: re-evaluates and either assigns the module to relevant spec sections or removes it as hallucinated
+      - node: AssignSpecSectionsToModules
+        action: re-maps sections with the corrected module set
+      - node: ModuleSpecSectionMap
+        action: stores the updated section assignments
+      - node: DetectUngroundedModules
+        action: re-validates and confirms all remaining modules now map to at least one spec section
+
+  ProvideModuleListForGraphConstruction:
+    steps:
+      - node: OrganizationFile
+        action: completes organization producing the module list and dependency graph
+      - node: ModuleList
+        action: provides the list of identified modules to downstream consumers
+      - node: DependencyGraph
+        action: provides the dependency ordering between modules
+      - node: graph/NodeRegistry
+        action: receives module names as the expected set of graph partitions
+      - node: graph/JourneyRegistry
+        action: prepares to receive journeys scoped to the identified modules
+      - node: graph/CompiledIndex
+        action: structures the compiled index with one section per identified module
