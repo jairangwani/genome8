@@ -193,7 +193,30 @@ Goals are not proven by journey coverage. They are proven by ACTUAL achievement.
 - The engine must NEVER report a goal as PROVEN unless it has actual evidence
 - Journey coverage means "we have a plan for this goal." Achievement means "the plan worked."
 
-## 12. What Genome Must NOT Do
+## 12. Self-Healing: Genome Must Fix Itself
+
+The engine must not require human intervention to fix its own bugs. This means:
+
+### Self-Audit (new step after Step 6b)
+- Read own source code + own goals
+- Ask: "what's preventing each goal from being ACTUALLY achieved?"
+- If a bug is found: create a journey for it, generate a test, fix the code
+- If a spec gap is found: flag it (humans update spec, engine reconverges)
+
+### Self-Improvement Loop
+- After convergence: verify goals against REAL evidence (not journey coverage)
+- If any goal is UNPROVEN: identify what's blocking it
+- Create targeted journeys/tests for the blocker
+- Fix the code via Mode 2 (update, not rewrite)
+- Re-verify
+- Only declare CONVERGED when goals are ACTUALLY achieved
+
+### What This Enables
+- No human fixes bugs in convergence.ts — the engine finds and fixes them itself
+- No human adds missing features — the engine discovers them from goals
+- The spec is still human-only, but everything else is self-managed
+
+## 13. What Genome Must NOT Do
 
 - Do not maintain separate documentation files. The graph IS the documentation.
 - Do not hardcode limits. Data decides when to stop. (maxZeroDelta, minModulesForSplit are configurable)
