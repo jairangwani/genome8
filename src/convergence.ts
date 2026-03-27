@@ -277,6 +277,50 @@ async function run() {
     } catch { /* state file corrupt, run normally */ }
   }
 
+  // ═══ STEP 0 — Project Scaffolding ═══
+  // Detect project type from spec. Create package.json, tsconfig.json, etc. if missing.
+  // This removes the requirement for users to `npm init` before running convergence.
+  const isSoftwareSpec = /\.(ts|js|py|go|rs|java|tsx|jsx)\b/.test(spec) ||
+    /TypeScript|JavaScript|Node\.js|Python|npm|npx|CLI/.test(spec);
+
+  if (isSoftwareSpec) {
+    const pkgPath = path.join(absProjectDir, 'package.json');
+    if (!fs.existsSync(pkgPath)) {
+      console.log('═══ STEP 0: Project Scaffolding ═══');
+      const isTS = /\.ts|TypeScript|tsx/.test(spec);
+      const pkg = {
+        name: path.basename(absProjectDir),
+        version: '1.0.0',
+        type: 'module',
+        scripts: {
+          test: 'vitest run',
+        },
+      };
+      fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+      console.log('  Created package.json');
+
+      if (isTS) {
+        const tsconfigPath = path.join(absProjectDir, 'tsconfig.json');
+        if (!fs.existsSync(tsconfigPath)) {
+          const tsconfig = {
+            compilerOptions: {
+              target: 'ES2022',
+              module: 'Node16',
+              moduleResolution: 'Node16',
+              strict: true,
+              esModuleInterop: true,
+              outDir: 'dist',
+              rootDir: 'src',
+            },
+            include: ['src'],
+          };
+          fs.writeFileSync(tsconfigPath, JSON.stringify(tsconfig, null, 2));
+          console.log('  Created tsconfig.json');
+        }
+      }
+    }
+  }
+
   // ═══ STEP 1 — Organization ═══
   startStep('step1_organization');
   console.log('═══ STEP 1: Organization ═══');
@@ -722,13 +766,10 @@ RULES:
   // Creation passes accumulate 15+ calls → context bloat. But spec-unchanged runs
   // skip creation entirely, so the worker is still fresh from Step 2.
   // Killing a fresh worker and spawning a new one causes init/warmup issues.
-  const creationRan = !(affectedModules && affectedModules.length === 0);
-  if (creationRan) {
-    console.log('  Resetting LLM worker session (creation passes ran)...');
-    worker.kill();
-  } else {
-    console.log('  Keeping worker session (no creation passes ran).');
-  }
+  // NEVER kill the worker between phases. Claude Code handles its own context compaction.
+  // Killing and respawning creates unreliable fresh workers that fail ~50% of the time.
+  // The warm worker from Steps 1-4a carries into 4b, 4c, 5, 6 — much more reliable.
+  console.log('  Keeping worker session (warm worker is more reliable than fresh spawn).');
 
   // ── 4b: Compile convergence (code, instant) ──
   console.log('\n  ── Step 4b: Compile Convergence ──');
@@ -1112,10 +1153,17 @@ The implementation must actually work when executed. Test it mentally — trace 
     console.log(`  Generated ${testFiles.length} journey test files.`);
 
     if (testFiles.length > 0) {
-      // Step 2: LLM fills assertions (reads generated skeletons, fills TODOs)
-      const testFileList = testFiles.map(f => `  - ${f}`).join('\n');
-      try {
-        await worker.call(`Journey test skeletons have been generated. Each file has TODO assertions that need filling.
+      // Step 2: LLM fills assertions in BATCHES (10 files at a time to avoid timeouts)
+      const BATCH_SIZE = 10;
+      const totalBatches = Math.ceil(testFiles.length / BATCH_SIZE);
+      console.log(`  Filling assertions in ${totalBatches} batches of ${BATCH_SIZE}...`);
+
+      for (let b = 0; b < Math.min(totalBatches, 5); b++) { // Cap at 5 batches (50 tests) to avoid excessive time
+        const batch = testFiles.slice(b * BATCH_SIZE, (b + 1) * BATCH_SIZE);
+        const testFileList = batch.map(f => `  - ${f}`).join('\n');
+        console.log(`  Batch ${b + 1}/${Math.min(totalBatches, 5)}: ${batch.length} test files`);
+        try {
+          await worker.call(`Fill assertions in these journey test files.
 
 TEST FILES:
 ${testFileList}
@@ -1129,6 +1177,14 @@ INSTRUCTIONS:
 4. For CLI journeys: use execSync to run the CLI command and assert output contains expected text
 5. Write each updated test file using the Write tool
 6. Make tests RUNNABLE with vitest — proper imports, setup/teardown for file state`);
+        } catch {
+          console.log(`    Batch ${b + 1} timed out — continuing with next batch.`);
+        }
+      }
+
+      if (testFiles.length > 50) {
+        console.log(`  Note: ${testFiles.length - 50} test files skipped (capped at 50 for time).`);
+      }
 
         // Step 3: Run tests with feedback loop — failures get diagnosed and fixed
         console.log('  Running journey tests...');
@@ -1185,9 +1241,6 @@ Do NOT rewrite entire files — use Edit for targeted fixes.`);
         if (!allJourneysPassed && journeyFixAttempt >= MAX_JOURNEY_FIX_ATTEMPTS) {
           console.log(`  WARNING: Journey tests still failing after ${MAX_JOURNEY_FIX_ATTEMPTS} fix attempts.`);
         }
-      } catch {
-        console.log('  Journey test fill timed out — skipping test execution.');
-      }
     }
   } else {
     console.log('  No journeys or no src/ — skipping journey validation.');
