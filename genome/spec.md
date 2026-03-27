@@ -182,7 +182,18 @@ tests (journey tests — proof that code matches graph)
 - **The graph is the single source of truth** for what the system IS. The spec is the single source of truth for what the system SHOULD BE.
 - **GOALPOST.md and BLUEPRINT.md are deprecated.** Their content is in this spec (§7-10) and in the graph. They will be deleted when the graph fully represents them.
 
-## 11. What Genome Must NOT Do
+## 11. Goal Verification Must Be Real
+
+Goals are not proven by journey coverage. They are proven by ACTUAL achievement.
+
+- Goals that reference external projects (e.g., BuildPando) must be connected via dependencies.yaml
+- When the external project converges, it publishes an event. Genome watches for it (Step 7).
+- Goal status updates automatically: event → wake → re-verify → PROVEN/UNPROVEN
+- Goals that reference internal capabilities (e.g., SolveContextProblem) are proven by running a fresh project and checking the output works
+- The engine must NEVER report a goal as PROVEN unless it has actual evidence
+- Journey coverage means "we have a plan for this goal." Achievement means "the plan worked."
+
+## 12. What Genome Must NOT Do
 
 - Do not maintain separate documentation files. The graph IS the documentation.
 - Do not hardcode limits. Data decides when to stop. (maxZeroDelta, minModulesForSplit are configurable)
