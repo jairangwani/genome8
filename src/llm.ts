@@ -20,7 +20,7 @@ import { platform } from 'node:os';
 
 // ── Configuration ──
 
-const MESSAGE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes per call. Safety net only — not a limit.
+const MESSAGE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes per call. Audit/codegen are the heaviest — 5-8min typical.
 // DO NOT manage context manually. Claude Code handles its own context compaction.
 // Session reset disabled (Infinity). The persistent process lives until killed.
 const SESSION_RESET_CHARS = Infinity;
@@ -273,12 +273,54 @@ export class LLMWorker {
     this.ensureProcess();
     const w = this.worker!;
 
+    // Wait for Claude Code to finish initializing before sending
+    if (!w.initialized) {
+      console.log('  [llm] Waiting for Claude Code init...');
+      await new Promise<void>((resolve) => {
+        if (w.initialized) return resolve();
+        const checkInit = setInterval(() => {
+          if (w.initialized || w.process.exitCode !== null) {
+            clearInterval(checkInit);
+            resolve();
+          }
+        }, 200);
+        // Safety: don't wait more than 60s for init
+        setTimeout(() => { clearInterval(checkInit); resolve(); }, 60000);
+      });
+      console.log(`  [llm] Init complete (initialized: ${w.initialized})`);
+    }
+
     if (w.responseResolve) {
       throw new Error('A message is already in flight');
     }
 
     w.charsSent += prompt.length;
     w.resultText = '';
+
+    // Build the JSON message
+    const jsonLine = JSON.stringify({
+      type: 'user',
+      message: { role: 'user', content: prompt },
+    });
+
+    // Handle backpressure: large prompts (30KB+) can overflow stdin buffer.
+    // write() returns false when buffer is full — must wait for 'drain' before continuing.
+    const canWrite = w.process.stdin!.write(jsonLine + '\n');
+    if (!canWrite) {
+      console.log(`  [llm] Backpressure detected (${Math.round(jsonLine.length / 1024)}KB) — waiting for drain...`);
+      // Drain wait with timeout — if worker dies during drain, don't hang forever
+      await new Promise<void>((resolve) => {
+        const drainTimeout = setTimeout(() => {
+          console.log('  [llm] Drain timeout (60s) — worker may be dead. Continuing.');
+          resolve();
+        }, 60_000);
+        w.process.stdin!.once('drain', () => { clearTimeout(drainTimeout); resolve(); });
+        // Also resolve if process dies
+        if (w.process.exitCode !== null) { clearTimeout(drainTimeout); resolve(); }
+        w.process.once('exit', () => { clearTimeout(drainTimeout); resolve(); });
+      });
+      console.log(`  [llm] Drain complete, message sent.`);
+    }
 
     return new Promise<string>((resolve, reject) => {
       w.responseResolve = resolve;
@@ -293,13 +335,6 @@ export class LLMWorker {
         this.kill();
         reject(new Error('LLM call timeout'));
       }, MESSAGE_TIMEOUT_MS);
-
-      // Send as stream-json NDJSON
-      const jsonLine = JSON.stringify({
-        type: 'user',
-        message: { role: 'user', content: prompt },
-      });
-      w.process.stdin!.write(jsonLine + '\n');
     });
   }
 

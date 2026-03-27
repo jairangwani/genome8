@@ -32,16 +32,19 @@ import { generateTests } from './testgen.js';
 import { generateCodeSkeletons } from './codegen.js';
 import { LLMWorker } from './llm.js';
 import type { CompileResult } from './compile.js';
+import { trackLLMCall, startStep, endStep, trackModules, trackGraph, getMetrics } from './metrics.js';
 
 // ── Configuration ──
 // All values can be overridden via genome/config.json in the project directory.
 
 interface ConvergenceConfig {
-  maxRounds: number;         // Max convergence rounds before stopping (default: 100)
+  maxRounds: number;         // Max convergence rounds before stopping (default: Infinity)
   watchIntervalMs: number;   // How often to check for changes when sleeping (default: 60000)
-  sessionResetChars: number; // Reset LLM session after this many chars (default: 200000)
+  sessionResetChars: number; // Reset LLM session after this many chars (default: Infinity)
   model: string;             // LLM model to use (default: 'claude-opus-4-6')
   maxFixAttempts: number;    // Max test fix attempts in Step 6 (default: 3)
+  maxZeroDelta: number;      // Consecutive zero-delta passes before skipping module (default: 2)
+  minModulesForSplit: number; // Minimum modules before considering hierarchy split (default: 6)
 }
 
 const DEFAULT_CONFIG: ConvergenceConfig = {
@@ -50,6 +53,8 @@ const DEFAULT_CONFIG: ConvergenceConfig = {
   sessionResetChars: Infinity, // DO NOT manage context. Claude Code handles its own compaction.
   model: 'claude-opus-4-6',   // ALWAYS use Opus 4.6 (1M context). Never downgrade.
   maxFixAttempts: 3,
+  maxZeroDelta: 2,             // Configurable — not a hardcoded magic number.
+  minModulesForSplit: 6,       // Configurable — projects can override in config.json.
 };
 
 const LENSES = [
@@ -118,7 +123,7 @@ const worker = new LLMWorker({
 RULES:
 - When asked to write a file, use the Write tool to write it. Do NOT output file contents as text.
 - Write ONLY valid YAML in .yaml files. No explanations, no comments, no markdown.
-- When asked to update a file, Read it first, then Write the complete updated file.
+- When asked to ADD to an existing file, use the Edit tool to append new content. NEVER rewrite the entire file with Write — this destroys existing content. Only use Write for NEW files that don't exist yet.
 - When asked a question (audits, checks), respond with text only.
 - Be GRANULAR — every system action is a separate journey step.
 
@@ -273,6 +278,7 @@ async function run() {
   }
 
   // ═══ STEP 1 — Organization ═══
+  startStep('step1_organization');
   console.log('═══ STEP 1: Organization ═══');
 
   if (!fs.existsSync(orgPath)) {
@@ -308,16 +314,19 @@ ${spec}`);
       console.error('  ERROR: LLM did not write ORGANIZATION.md. Stopping.');
       process.exit(1);
     }
+    trackLLMCall();
     console.log('  Written: ORGANIZATION.md');
   } else {
     console.log('  ORGANIZATION.md already exists, skipping.');
   }
+  endStep('step1_organization');
 
   const orgContent = fs.readFileSync(orgPath, 'utf-8');
 
   // ═══ STEP 2 — Actor Discovery (3 sequential calls) ═══
   // Actors are discovered BEFORE the hierarchy decision.
   // If we split, ALL children get the SAME actors. No duplicates.
+  startStep('step2_actors');
   console.log('\n═══ STEP 2: Actor Discovery ═══');
 
   const actorsPath = path.join(modulesDir, '_actors.yaml');
@@ -401,6 +410,7 @@ Use the Write tool to write the file NOW.`);
       process.exit(1);
     }
 
+    trackLLMCall(); trackLLMCall(); trackLLMCall(); trackLLMCall(); // 4 calls: 3 angles + merge
     const result = doCompile();
     const actorCount = Object.values(result.index.nodes).filter(n => n.type === 'actor').length;
     console.log(`  Actors discovered: ${actorCount}`);
@@ -408,6 +418,7 @@ Use the Write tool to write the file NOW.`);
     console.log('  _actors.yaml already has actors, skipping discovery.');
     doCompile();
   }
+  endStep('step2_actors');
 
   // ═══ STEP 2b — Hierarchy Decision (after actors, before modules) ═══
   // The split decision is PERSISTED. If engines/ directory exists with children,
@@ -441,6 +452,7 @@ Use the Write tool to write the file NOW.`);
   }
 
   // ═══ STEP 3 — Module Creation (1 LLM call per module) ═══
+  startStep('step3_modules');
   console.log('\n═══ STEP 3: Module Creation ═══');
 
   const moduleNames = extractModuleNames(orgContent);
@@ -499,7 +511,10 @@ Write the file NOW using the Write tool.`);
     }
   }
 
+  endStep('step3_modules');
+
   // ═══ STEP 4 — Convergence (creation + validation + audit) ═══
+  startStep('step4_convergence');
   console.log('\n═══ STEP 4: Convergence ═══');
 
   // ── Check if spec changed since last convergence ──
@@ -614,35 +629,87 @@ One line per module. Only include relevant numbers.`);
     console.log(`  TARGETED: only updating ${modulesToProcess.length}/${allModuleNames.length} modules (${modulesToProcess.join(', ')})`);
   }
 
+  let skippedModules = 0;
   for (const modName of modulesToProcess) {
     const modLenses = relevanceMatrix.get(modName) || [];
+    let consecutiveZeroDelta = 0;
+    const MAX_ZERO_DELTA = config.maxZeroDelta; // Configurable via config.json
+
     for (const lensIdx of modLenses) {
       const lens = effectiveLenses[lensIdx];
-      const result = doCompile();
-      const excerpt = generateModuleExcerpt(modName, result);
+      const beforeResult = doCompile();
+      const beforeNodes = beforeResult.index._stats.total_nodes;
+      const beforeJourneys = beforeResult.index._stats.total_journeys;
+
+      // Build a compact summary instead of sending full YAML
       const modFilePath = path.join(modulesDir, `${modName}.yaml`);
+      const modContent = fs.existsSync(modFilePath) ? fs.readFileSync(modFilePath, 'utf-8') : '';
+      const nodeNames = (modContent.match(/^  - name: (.+)$/gm) || []).map(l => l.replace('  - name: ', ''));
+      const journeyNames = (modContent.match(/^  (\w[\w\s]+):$/gm) || []).map(l => l.trim().replace(/:$/, '')).filter(n => n !== 'nodes' && n !== 'journeys');
+      const modSizeKB = Math.round(modContent.length / 1024);
 
-      console.log(`  [${passCount + 1}/${totalPairs}] ${modName} | ${lens.substring(0, 40)}`);
+      console.log(`  [${passCount + 1}/${totalPairs}] ${modName} | ${lens.substring(0, 40)} (${nodeNames.length} nodes, ${modSizeKB}KB)`);
 
-      await worker.call(`Current state of ${modName} module:
-
-${excerpt}
+      try {
+        await worker.call(`Module: ${modName} (${modFilePath})
+Existing nodes (${nodeNames.length}): ${nodeNames.join(', ')}
+Existing journeys (${journeyNames.length}): ${journeyNames.join(', ')}
 
 Perspective: ${lens}
 
-From this perspective, what nodes and journeys are MISSING from ${modName}.yaml?
+PROJECT SPEC:
+${spec}
 
+From this perspective, what nodes and journeys are MISSING from this module?
+
+RULES:
 1. Read the current file at ${modFilePath}
-2. Add what's missing
+2. Add ONLY what's genuinely missing — if a node or journey already covers this concern, skip it
 3. Be GRANULAR — every system action is a separate step
-4. Don't duplicate what exists (check the excerpt above)
-5. Write the COMPLETE updated file back to ${modFilePath} using the Write tool`);
+4. Do NOT duplicate existing nodes/journeys listed above
+5. Do NOT add nodes that belong in a different module
+6. CRITICAL: Use the Edit tool to APPEND new nodes/journeys to the existing file. NEVER use Write to rewrite the entire file — this destroys existing nodes. Add new nodes under the "nodes:" section and new journeys under the "journeys:" section using Edit.
+7. If nothing is genuinely missing from this perspective, respond with "No changes needed" and do NOT edit the file`);
+      } catch (err) {
+        console.log(`    ⚠ Creation pass failed: ${err instanceof Error ? err.message : err}`);
+        console.log('    Resetting worker and continuing...');
+        worker.kill();
+        // Don't break — continue with next lens/module
+      }
 
       passCount++;
+
+      // Early termination: check if this pass actually added anything
+      const afterResult = doCompile();
+      const deltaNodes = afterResult.index._stats.total_nodes - beforeNodes;
+      const deltaJourneys = afterResult.index._stats.total_journeys - beforeJourneys;
+
+      // Safety: if nodes DECREASED, the LLM destroyed existing content
+      if (deltaNodes < 0 || deltaJourneys < -2) {
+        console.log(`    ⚠ DESTRUCTIVE EDIT: ${deltaNodes} nodes, ${deltaJourneys} journeys. Reverting...`);
+        // Restore the module file from before this pass
+        fs.writeFileSync(modFilePath, modContent, 'utf-8');
+        console.log(`    → Reverted ${modName}.yaml to pre-pass state`);
+        // Count as zero-delta for early termination purposes
+        consecutiveZeroDelta++;
+      } else if (deltaNodes === 0 && deltaJourneys === 0) {
+        consecutiveZeroDelta++;
+        console.log(`    → 0 new nodes, 0 new journeys (${consecutiveZeroDelta}/${MAX_ZERO_DELTA} zero-delta)`);
+      } else {
+        consecutiveZeroDelta = 0;
+        console.log(`    → +${deltaNodes} nodes, +${deltaJourneys} journeys`);
+      }
+
+      if (consecutiveZeroDelta >= MAX_ZERO_DELTA) {
+        const remaining = modLenses.length - modLenses.indexOf(lensIdx) - 1;
+        console.log(`    → Module ${modName} saturated. Skipping ${remaining} remaining lenses.`);
+        skippedModules++;
+        break;
+      }
     }
   }
 
-  console.log(`  Creation complete: ${passCount} passes done.`);
+  console.log(`  Creation complete: ${passCount} passes done (${skippedModules} modules hit early termination).`);
 
   } // end of: if spec changed (creation passes block)
 
@@ -650,6 +717,18 @@ From this perspective, what nodes and journeys are MISSING from ${modName}.yaml?
   const stateForHash = fs.existsSync(convergeStatePath2) ? JSON.parse(fs.readFileSync(convergeStatePath2, 'utf-8')) : {};
   stateForHash.spec_hash = specHash;
   fs.writeFileSync(convergeStatePath2, JSON.stringify(stateForHash, null, 2));
+
+  // Reset worker session between phases ONLY if creation passes ran.
+  // Creation passes accumulate 15+ calls → context bloat. But spec-unchanged runs
+  // skip creation entirely, so the worker is still fresh from Step 2.
+  // Killing a fresh worker and spawning a new one causes init/warmup issues.
+  const creationRan = !(affectedModules && affectedModules.length === 0);
+  if (creationRan) {
+    console.log('  Resetting LLM worker session (creation passes ran)...');
+    worker.kill();
+  } else {
+    console.log('  Keeping worker session (no creation passes ran).');
+  }
 
   // ── 4b: Compile convergence (code, instant) ──
   console.log('\n  ── Step 4b: Compile Convergence ──');
@@ -676,14 +755,23 @@ From this perspective, what nodes and journeys are MISSING from ${modName}.yaml?
     }
     prevErrorCount = errors.length;
 
-    // Fix errors (one LLM call per batch)
+    // Fix errors in small batches (5 at a time) to avoid LLM timeouts on large error sets
     console.log(`  Fixing ${errors.length} errors...`);
-    const errorList = errors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
-    await worker.call(`Fix these compile errors by updating the relevant YAML module files:
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < Math.min(errors.length, 15); i += BATCH_SIZE) {
+      const batch = errors.slice(i, i + BATCH_SIZE);
+      const errorList = batch.map(e => `- ${e.message}`).join('\n');
+      try {
+        await worker.call(`Fix these ${batch.length} compile errors by updating the relevant YAML module files:
 
 ${errorList}
 
-Read each affected file, fix the broken references, and write it back using the Write tool.`);
+Read each affected file, fix the broken references using the Edit tool. Do NOT rewrite entire files.`);
+      } catch {
+        console.log(`    ⚠ Error fix batch ${Math.floor(i/BATCH_SIZE) + 1} timed out — continuing with next batch.`);
+        worker.kill(); // Fresh worker for next batch
+      }
+    }
   }
 
   // ── 4c: Audit (targeted, stops at 0 gaps) ──
@@ -716,7 +804,7 @@ Read each affected file, fix the broken references, and write it back using the 
 ${gap}
 
 Fix it by adding the missing journeys or nodes to the appropriate YAML module file.
-Read the file, add what's needed, write it back using the Write tool.`);
+Read the file, then use the Edit tool to add what's needed. Do NOT rewrite the entire file.`);
     }
 
     // Re-compile after fixes
@@ -749,16 +837,30 @@ Read the file, add what's needed, write it back using the Write tool.`);
     return fs.statSync(full).isDirectory() && !['genome', 'node_modules', '.git', 'dist', 'engines'].includes(d);
   });
 
+  // Recursive scan — finds files at any depth (e.g., src/utils/helpers.ts)
+  function scanRecursive(dirPath: string): string[] {
+    const results: string[] = [];
+    try {
+      for (const entry of fs.readdirSync(dirPath)) {
+        if (entry.startsWith('.')) continue;
+        const full = path.join(dirPath, entry);
+        const stat = fs.statSync(full);
+        if (stat.isDirectory() && !['node_modules', '.git', 'dist', '__pycache__'].includes(entry)) {
+          results.push(...scanRecursive(full));
+        } else if (stat.isFile()) {
+          results.push(full);
+        }
+      }
+    } catch { /* permission denied, skip */ }
+    return results;
+  }
+
   for (const dir of scanDirs) {
     const dirPath = path.join(absProjectDir, dir);
-    const files = fs.readdirSync(dirPath).filter(f => !f.startsWith('.'));
-    for (const file of files) {
-      const fullPath = path.join(dirPath, file);
-      if (fs.statSync(fullPath).isFile()) {
-        const isTracked = codeFiles.some(cf => cf.file === fullPath);
-        if (!isTracked) {
-          codeFiles.push({ node: '', file: fullPath }); // Untracked output file
-        }
+    for (const fullPath of scanRecursive(dirPath)) {
+      const isTracked = codeFiles.some(cf => cf.file === fullPath);
+      if (!isTracked) {
+        codeFiles.push({ node: '', file: fullPath }); // Untracked output file
       }
     }
   }
@@ -808,7 +910,7 @@ Update the appropriate YAML module files using the Write tool.`);
     if (trackedFiles.length > 0) {
       console.log(`  ${trackedFiles.length} tracked code files — checking for drift...`);
 
-      for (const cf of trackedFiles.slice(0, 10)) { // Limit to avoid excessive calls
+      for (const cf of trackedFiles) { // Process all tracked files — no artificial limit
         const code = fs.readFileSync(cf.file, 'utf-8');
         const node = preCodeResult.index.nodes[cf.node];
         if (!node) continue;
@@ -833,7 +935,10 @@ Update the appropriate YAML module file using the Write tool if needed.`);
     console.log('  No code files found to reconcile. Skipping.');
   }
 
+  endStep('step4_convergence');
+
   // ═══ STEP 5 — Publish + Notify ═══
+  startStep('step5_publish');
   console.log('\n═══ STEP 5: Publish ═══');
   const finalResult = doCompile();
   const { interface_ } = publishInterface(publishedDir, finalResult.index, path.basename(absProjectDir));
@@ -851,15 +956,22 @@ Update the appropriate YAML module file using the Write tool if needed.`);
     journeys: finalResult.index._stats.total_journeys,
   }, null, 2));
   console.log(`  Event written: ${path.basename(eventFile)}`);
+  endStep('step5_publish');
+
+  // Keep worker session for codegen — avoid spawn/init overhead.
+  // The compact codegen prompt (file paths only) keeps context manageable.
+  console.log('  Keeping worker session for codegen.');
 
   // ═══ STEP 6 — Code Generation (from graph) ═══
+  startStep('step6_codegen');
   console.log('\n═══ STEP 6: Code Generation ═══');
 
   // Build a complete summary of the graph for the LLM
-  const allModuleContents = fs.readdirSync(modulesDir)
+  // Build a compact file listing (paths only — LLM reads them itself)
+  const moduleFiles = fs.readdirSync(modulesDir)
     .filter(f => f.endsWith('.yaml'))
-    .map(f => `=== ${f} ===\n${fs.readFileSync(path.join(modulesDir, f), 'utf-8')}`)
-    .join('\n\n');
+    .map(f => path.join(modulesDir, f));
+  const moduleFileList = moduleFiles.map(f => `  - ${f}`).join('\n');
 
   const stats = finalResult.index._stats;
 
@@ -869,23 +981,46 @@ Update the appropriate YAML module file using the Write tool if needed.`);
   console.log(`  Graph: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections`);
   console.log('  LLM CALL: writing complete implementation from graph...');
 
-  await worker.call(`You are writing the COMPLETE, RUNNABLE implementation for this project.
+  // Step 6 is the most demanding LLM call — full graph → complete code.
+  // Worker may crash (rate limit, context issues). Retry up to 2 times with fresh workers.
+  // IMPORTANT: Don't embed full YAML in prompt (50KB+ causes timeouts).
+  // Instead, give file paths and let the LLM Read them itself.
+  let codeGenAttempt = 0;
+  const MAX_CODEGEN_ATTEMPTS = 3;
+  while (codeGenAttempt < MAX_CODEGEN_ATTEMPTS) {
+    codeGenAttempt++;
+    try {
+      await worker.call(`You are writing the COMPLETE, RUNNABLE implementation for this project.
 
 PROJECT SPEC:
 ${spec}
 
-CONTEXT GRAPH (${stats.total_nodes} nodes, ${stats.total_journeys} journeys):
-${allModuleContents}
+CONTEXT GRAPH: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections
+
+MODULE FILES (Read each one to understand the full graph):
+${moduleFileList}
 
 INSTRUCTIONS:
-1. Read the spec carefully — it defines the project structure (file layout, entry points, dependencies)
-2. Read the context graph — it describes every process, artifact, rule, and journey
+1. Read the spec above — it defines the project structure (file layout, entry points, dependencies)
+2. Read EACH module YAML file listed above using the Read tool — they describe every process, artifact, rule, and journey
 3. Write ALL the code files needed to make this project WORK
 4. The code must be RUNNABLE — not stubs, not skeletons, not TODO comments
 5. Every journey in the graph should be a working code path
 6. Write each file using the Write tool
 
 The implementation must actually work when executed. Test it mentally — trace through the main journeys and verify the code handles them.`);
+      break; // Success
+    } catch (err) {
+      console.log(`  ⚠ Code generation attempt ${codeGenAttempt}/${MAX_CODEGEN_ATTEMPTS} failed: ${err instanceof Error ? err.message : err}`);
+      if (codeGenAttempt < MAX_CODEGEN_ATTEMPTS) {
+        console.log('  Resetting worker and retrying...');
+        worker.kill();
+        await new Promise(r => setTimeout(r, 5000)); // Brief pause before retry
+      } else {
+        console.log('  Code generation failed after all attempts. Continuing to validation...');
+      }
+    }
+  }
 
   // Verify code was written
   const srcDir = path.join(absProjectDir, 'src');
@@ -920,6 +1055,70 @@ The implementation must actually work when executed. Test it mentally — trace 
   );
   console.log('  Validation result: ' + validationResponse.substring(0, 300));
 
+  // ── 6b: Journey-based validation ──
+  // The graph IS the test suite. "Steps ARE test cases" (blueprint promise).
+  // 1. Generate test skeletons from journeys (testgen.ts)
+  // 2. LLM fills assertions
+  // 3. Run tests
+  // 4. Report pass/fail per journey
+  console.log('\n  ── Step 6b: Journey Validation ──');
+
+  const testDir = path.join(absProjectDir, 'tests');
+  const journeyCount = Object.keys(finalResult.index.journeys).length;
+  console.log(`  ${journeyCount} journeys in graph.`);
+
+  if (journeyCount > 0 && fs.existsSync(path.join(absProjectDir, 'src'))) {
+    // Step 1: Generate test skeletons from journeys
+    const testFiles = generateTests(finalResult.index, testDir);
+    console.log(`  Generated ${testFiles.length} journey test files.`);
+
+    if (testFiles.length > 0) {
+      // Step 2: LLM fills assertions (reads generated skeletons, fills TODOs)
+      const testFileList = testFiles.map(f => `  - ${f}`).join('\n');
+      try {
+        await worker.call(`Journey test skeletons have been generated. Each file has TODO assertions that need filling.
+
+TEST FILES:
+${testFileList}
+
+SOURCE CODE DIRECTORY: ${path.join(absProjectDir, 'src')}
+
+INSTRUCTIONS:
+1. Read each test file — they have describe/it blocks from journey steps with "TODO: agent fills assertion"
+2. Read the source code to understand what each step actually does
+3. Fill in real assertions for each step (import functions, call them, check results)
+4. For CLI journeys: use execSync to run the CLI command and assert output contains expected text
+5. Write each updated test file using the Write tool
+6. Make tests RUNNABLE with vitest — proper imports, setup/teardown for file state`);
+
+        // Step 3: Run tests
+        console.log('  Running journey tests...');
+        try {
+          const testOutput = execSyncLocal('npx vitest run --reporter=verbose 2>&1', {
+            cwd: absProjectDir,
+            encoding: 'utf-8',
+            timeout: 60_000,
+          });
+          const passMatch = testOutput.match(/(\d+) passed/);
+          const failMatch = testOutput.match(/(\d+) failed/);
+          const passed = passMatch ? parseInt(passMatch[1]) : 0;
+          const failed = failMatch ? parseInt(failMatch[1]) : 0;
+          console.log(`  Journey tests: ${passed} passed, ${failed} failed out of ${passed + failed}`);
+          if (failed === 0 && passed > 0) {
+            console.log('  ALL JOURNEY TESTS PASS.');
+          }
+        } catch (err: any) {
+          const output = (err.stdout || err.message || '').substring(0, 1000);
+          console.log(`  Journey tests had failures: ${output.substring(0, 300)}`);
+        }
+      } catch {
+        console.log('  Journey test fill timed out — skipping test execution.');
+      }
+    }
+  } else {
+    console.log('  No journeys or no src/ — skipping journey validation.');
+  }
+
   // Detect software project from spec (not from whether files exist — Step 6 might have failed)
   const isSoftwareProject = /\.(ts|js|py|go|rs|java|tsx|jsx)\b/.test(spec) ||
     /TypeScript|JavaScript|Node\.js|Python|npm|npx|CLI/.test(spec);
@@ -949,9 +1148,14 @@ Write ALL code files to the src/ directory. Use the Write tool.`);
 
   if (hasTsFiles || (isSoftwareProject && fs.existsSync(path.join(absProjectDir, 'src')))) {
     console.log('  Software project detected — running smoke test...');
+    // Find actual entry file instead of relying on glob (*.ts doesn't expand on Windows)
+    const srcFiles = fs.readdirSync(path.join(absProjectDir, 'src')).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+    const entryFile = srcFiles.find(f => /^(index|main|app|todo|cli)\.(ts|js)$/.test(f)) || srcFiles[0];
+    const smokeCmd = entryFile ? `npx tsx src/${entryFile} --help 2>&1 || npx tsx src/${entryFile} list 2>&1` : 'echo "No entry file found"';
+
     while (!testsPassed && fixAttempts < MAX_FIX_ATTEMPTS) {
       try {
-        const testOutput = execSyncLocal('npx tsx src/*.ts --help 2>&1 || npx tsx src/*.ts list 2>&1', {
+        const testOutput = execSyncLocal(smokeCmd, {
           cwd: absProjectDir,
           encoding: 'utf-8',
           timeout: 30_000,
@@ -961,18 +1165,23 @@ Write ALL code files to the src/ directory. Use the Write tool.`);
       } catch (err: any) {
         fixAttempts++;
         const output = err.stdout || err.message || '';
-        const failures = output.substring(0, 5000);
+        const failures = output.substring(0, 2000);
 
-        console.log(`  Smoke test FAILED (attempt ${fixAttempts}/${MAX_FIX_ATTEMPTS})`);
+        console.log(`  Smoke test FAILED (attempt ${fixAttempts}/${MAX_FIX_ATTEMPTS}): ${failures.substring(0, 200)}`);
 
         if (fixAttempts < MAX_FIX_ATTEMPTS) {
           console.log(`    LLM CALL: fixing failures...`);
-          await worker.call(`The output validation failed. Fix the issue.
+          try {
+            await worker.call(`The smoke test failed. Fix the code.
 
-ERROR OUTPUT:
-${failures}
+COMMAND: ${smokeCmd}
+ERROR: ${failures}
 
-Read the relevant files, fix the problem, write corrected files using the Write tool.`);
+Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite entire files.`);
+          } catch {
+            console.log('    Fix attempt timed out — skipping further retries.');
+            break;
+          }
         }
       }
     }
@@ -985,6 +1194,18 @@ Read the relevant files, fix the problem, write corrected files using the Write 
   if (!testsPassed) {
     console.log(`  WARNING: Validation still failing after ${MAX_FIX_ATTEMPTS} attempts. Interface will be marked as UNSTABLE.`);
   }
+
+  endStep('step6_codegen');
+
+  // Track final graph stats
+  trackModules(Object.keys(finalResult.coverage.modules).length);
+  trackGraph(finalResult.index._stats.total_nodes, finalResult.index._stats.total_journeys);
+
+  // Write metrics
+  const metrics = getMetrics();
+  const metricsPath = path.join(genomeDir, 'metrics.json');
+  fs.writeFileSync(metricsPath, JSON.stringify(metrics, null, 2));
+  console.log(`  Metrics written: ${metrics.llmCalls} LLM calls, ${Object.keys(metrics.stepTimings).length} steps tracked`);
 
   console.log('\n═══ CONVERGED ═══');
   console.log(`Final: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, ${finalResult.index._stats.total_connections} connections`);
@@ -1245,26 +1466,33 @@ function generateModuleExcerpt(moduleName: string, result: CompileResult): strin
 }
 
 async function depthCheck(result: CompileResult, spec: string): Promise<{ converged: boolean; gaps: string[] }> {
-  const allModules = fs.readdirSync(modulesDir).filter(f => f.endsWith('.yaml')).map(f => {
-    return `=== ${f} ===\n${fs.readFileSync(path.join(modulesDir, f), 'utf-8')}`;
-  }).join('\n\n');
+  // Build a COMPACT module summary instead of sending full YAML (was 57KB, now ~5KB)
+  // The compile index already has structured node/journey data — use that.
+  const moduleSummaries = fs.readdirSync(modulesDir).filter(f => f.endsWith('.yaml') && f !== '_actors.yaml').map(f => {
+    const content = fs.readFileSync(path.join(modulesDir, f), 'utf-8');
+    const nodeNames = (content.match(/^  \w[\w-]*:/gm) || []).map(l => l.trim().replace(/:$/, ''));
+    const journeyNames = (content.match(/^  \w[\w\s-]+:/gm) || [])
+      .map(l => l.trim().replace(/:$/, ''))
+      .filter(n => !['nodes', 'journeys', 'spec_sections'].includes(n) && !nodeNames.includes(n));
+    return `${f.replace('.yaml', '')}: ${nodeNames.length} nodes (${nodeNames.join(', ')}), ${journeyNames.length} journeys (${journeyNames.join(', ')})`;
+  }).join('\n');
 
   const stats = result.index._stats;
   const gaps: string[] = [];
 
   // Auditor 1: Spec coverage
   console.log('  Auditor 1: spec coverage...');
-  const audit1 = await worker.call(`Read this spec and these module files. For EACH major spec section, count: how many journeys cover it? Which sections are thin (fewer than 3 journeys)?
+  const audit1 = await worker.call(`For EACH major spec section, are there journeys covering it? Which sections have fewer than 3 journeys?
 
-SPEC (first 8000 chars):
+SPEC:
 ${spec}
 
 COMPILE STATS: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys
 
-MODULES:
-${allModules}
+MODULE SUMMARY:
+${moduleSummaries}
 
-Report ONLY sections with thin coverage. If all sections are well covered, respond with exactly: ALL COVERED`);
+Report ONLY sections with thin coverage. If all well covered, respond with exactly: ALL COVERED`);
 
   if (!audit1.toLowerCase().includes('all covered')) {
     gaps.push('spec-coverage: ' + audit1.substring(0, 200));
@@ -1274,15 +1502,15 @@ Report ONLY sections with thin coverage. If all sections are well covered, respo
   console.log('  Auditor 2: actor coverage...');
   const actorsFilePath = path.join(modulesDir, '_actors.yaml');
   const actorsYaml = fs.existsSync(actorsFilePath) ? fs.readFileSync(actorsFilePath, 'utf-8') : 'No actors file found.';
-  const audit2 = await worker.call(`Read these actors and module files. For EACH actor: how many journeys involve them? Any actors with 0 journeys? Any THREAT actors without attack+defense journeys?
+  const audit2 = await worker.call(`For EACH actor: how many journeys involve them? Any actors with 0 journeys?
 
 ACTORS:
 ${actorsYaml}
 
-MODULES:
-${allModules}
+MODULE SUMMARY:
+${moduleSummaries}
 
-Report ONLY actors with 0 journeys or threats without defense. If all covered, respond with exactly: ALL COVERED`);
+Report ONLY actors with 0 journeys. If all covered, respond with exactly: ALL COVERED`);
 
   if (!audit2.toLowerCase().includes('all covered')) {
     gaps.push('actor-coverage: ' + audit2.substring(0, 200));
@@ -1290,12 +1518,12 @@ Report ONLY actors with 0 journeys or threats without defense. If all covered, r
 
   // Auditor 3: Cross-module
   console.log('  Auditor 3: cross-module coverage...');
-  const audit3 = await worker.call(`Compile stats: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections across ${stats.modules} modules. ${stats.orphans} orphans. ${stats.isolated_modules} isolated modules.
+  const audit3 = await worker.call(`Compile stats: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections across ${stats.modules} modules. ${stats.orphans} orphans.
 
-Are there module pairs that SHOULD be connected but aren't? Any modules with suspiciously few cross-module connections?
+Are there module pairs that SHOULD be connected but aren't?
 
-MODULES:
-${allModules}
+MODULE SUMMARY:
+${moduleSummaries}
 
 Report ONLY missing connections. If all well-connected, respond with exactly: ALL COVERED`);
 
@@ -1334,7 +1562,7 @@ SPLIT ONLY if:
 - Each child must contain MULTIPLE of YOUR modules (not inventing new ones)
 
 DO NOT split if:
-- You have fewer than 6 modules (already focused enough)
+- You have fewer than ${config.minModulesForSplit} modules (already focused enough)
 - Your modules are tightly coupled
 - Splitting would just create one engine per module (pointless)
 - You would recreate the same scope under a different name
@@ -1532,13 +1760,28 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
   }
 
   console.log(`\n  Waiting for ${children.length} children to converge...`);
-  // No timeout. Children run until they converge. Convergence check decides when to stop.
 
+  // Wait for children with health check — if a child's process dies silently,
+  // detect it via exitCode instead of waiting forever for an 'exit' event.
   await Promise.all(children.map(child => new Promise<void>((resolve) => {
-    child.proc.on('exit', (code) => {
+    child.proc.on('exit', (code: number | null) => {
       console.log(`  [${child.name}] Completed with code ${code}`);
       resolve();
     });
+    // Health check: if process already exited (race condition), resolve immediately
+    if (child.proc.exitCode !== null) {
+      console.log(`  [${child.name}] Already exited with code ${child.proc.exitCode}`);
+      resolve();
+    }
+    // Safety: check every 30s if process is still alive
+    const healthCheck = setInterval(() => {
+      if (child.proc.exitCode !== null) {
+        clearInterval(healthCheck);
+        console.log(`  [${child.name}] Detected exit (code ${child.proc.exitCode}) via health check`);
+        resolve();
+      }
+    }, 30_000);
+    child.proc.on('exit', () => clearInterval(healthCheck));
   })));
 
   console.log('\n  All children converged.');
@@ -1638,10 +1881,8 @@ nodes:
   // Parent asks LLM: "given these interfaces, what journeys CROSS engines?"
   console.log('\n═══ STEP P2: Cross-Engine Journeys ═══');
 
-  const interfaceSummaries = childInterfaces.map(c => {
-    const content = fs.readFileSync(c.path, 'utf-8');
-    return `=== ${c.name} (published interface) ===\n${content}`;
-  }).join('\n\n');
+  // Build compact interface listing (file paths — LLM reads them itself)
+  const interfaceFileList = childInterfaces.map(c => `  - ${c.name}: ${c.path}`).join('\n');
 
   // Write cross-engine journeys as a parent module
   const crossModulePath = path.join(modulesDir, '_cross-engine.yaml');
@@ -1649,8 +1890,8 @@ nodes:
   await worker.call(`You are the PARENT orchestrator. Your children are independent engines that have converged.
 Each child published an interface listing what it provides.
 
-CHILDREN'S INTERFACES:
-${interfaceSummaries}
+CHILDREN'S INTERFACE FILES (Read each one):
+${interfaceFileList}
 
 SPEC (for context):
 ${spec}

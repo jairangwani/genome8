@@ -155,6 +155,11 @@ function collectNodes(modules: Map<string, ModuleFile>): { nodes: Record<string,
         issues.push({ severity: 'error', module: mod, node: name, message: `Duplicate: ${name} already in ${nodes[full].module}` });
         continue;
       }
+      // Validate node type is one of the 5 universal types
+      const VALID_TYPES = ['actor', 'process', 'artifact', 'interface', 'rule'];
+      if (!VALID_TYPES.includes(node.type)) {
+        issues.push({ severity: 'error', module: mod, node: name, message: `Invalid type "${node.type}" — must be one of: ${VALID_TYPES.join(', ')}` });
+      }
       nodes[full] = {
         module: mod, type: node.type, description: node.description,
         preceded_by: [], followed_by: [], in_journeys: [],
