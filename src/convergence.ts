@@ -222,7 +222,9 @@ async function run() {
       if (state.status === 'sleeping' || state.status === 'unstable') {
         const currentResult = compile(modulesDir);
         const currentHash = publishInterface(publishedDir, currentResult.index, path.basename(absProjectDir)).interface_.version_hash;
-        if (currentHash === state.interface_hash) {
+        const currentSpecHash = cryptoModule.createHash('sha256').update(spec).digest('hex');
+        const specUnchanged = !state.spec_hash || currentSpecHash === state.spec_hash;
+        if (currentHash === state.interface_hash && specUnchanged) {
           console.log(`Already converged (hash: ${currentHash.substring(7, 19)}). Entering watch loop directly.\n`);
           // Go directly to Step 7 — skip Steps 1-6 entirely
           // The watch loop handles reconvergence when dependencies change
