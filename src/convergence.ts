@@ -691,20 +691,65 @@ Write the file NOW using the Write tool.`);
         affectedModules = []; // Empty = skip all creation
       } else if (prevState.spec_hash) {
         console.log('  Spec CHANGED since last convergence. Identifying affected modules...');
+
+        // Load the previous spec if available (stored alongside state)
+        const prevSpecPath = path.join(genomeDir, '.prev-spec.md');
+        const prevSpec = fs.existsSync(prevSpecPath) ? fs.readFileSync(prevSpecPath, 'utf-8') : null;
+
         const affectedResponse = await worker.call(
-          'The project spec has changed. Which modules need updating?\n\n' +
-          'MODULES: ' + knownModuleNames.join(', ') + '\n\n' +
-          'PREVIOUS SPEC HASH: ' + prevState.spec_hash.substring(0, 12) + '\n' +
-          'CURRENT SPEC:\n' + spec + '\n\n' +
-          'Return ONLY the module names that are affected by the changes, one per line. ' +
-          'If a module is not affected, do NOT include it.'
+          `The project spec has changed. Which modules need updating?
+
+MODULES: ${knownModuleNames.join(', ')}
+
+${prevSpec ? `PREVIOUS SPEC:\n${prevSpec.substring(0, 3000)}\n\nCURRENT SPEC:\n${spec.substring(0, 3000)}` : `CURRENT SPEC:\n${spec.substring(0, 3000)}`}
+
+Reply with ONLY a JSON array of affected module names. Example: ["cli", "model", "storage"]
+If ALL modules are affected, reply: ["ALL"]
+Do NOT include any other text, just the JSON array.`
         );
-        affectedModules = affectedResponse.split('\n')
-          .map(l => l.replace(/^[-*\s]+/, '').trim().replace(/`/g, ''))
-          .filter(m => knownModuleNames.includes(m));
-        if (affectedModules.length === 0) affectedModules = null; // Couldn't parse → do all
-        console.log(`  Affected modules: ${affectedModules ? affectedModules.join(', ') : 'ALL (could not determine)'}`);
+
+        // Parse JSON array — much more reliable than line-by-line string matching
+        try {
+          const jsonMatch = affectedResponse.match(/\[.*\]/s);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]) as string[];
+            if (parsed.includes('ALL')) {
+              affectedModules = null; // Intentional ALL — not a parsing failure
+              console.log('  Affected modules: ALL (LLM determined all need updating)');
+            } else {
+              affectedModules = parsed.filter(m => knownModuleNames.includes(m));
+              if (affectedModules.length === 0) {
+                // LLM returned module names that don't match — retry once
+                console.log('  LLM returned unrecognized modules. Retrying...');
+                const retry = await worker.call(
+                  `The module names you returned don't match the project. Valid modules are EXACTLY: ${knownModuleNames.join(', ')}\n\nWhich of these are affected by the spec change? Reply with ONLY a JSON array. Example: ["cli", "model"]`
+                );
+                const retryMatch = retry.match(/\[.*\]/s);
+                if (retryMatch) {
+                  affectedModules = (JSON.parse(retryMatch[0]) as string[]).filter(m => knownModuleNames.includes(m));
+                }
+                if (!affectedModules || affectedModules.length === 0) {
+                  affectedModules = null; // Still can't determine — run all
+                  console.log('  Affected modules: ALL (retry failed)');
+                } else {
+                  console.log(`  Affected modules (retry): ${affectedModules.join(', ')}`);
+                }
+              } else {
+                console.log(`  Affected modules: ${affectedModules.join(', ')}`);
+              }
+            }
+          } else {
+            affectedModules = null;
+            console.log('  Affected modules: ALL (no JSON array in response)');
+          }
+        } catch {
+          affectedModules = null;
+          console.log('  Affected modules: ALL (JSON parse failed)');
+        }
       }
+
+      // Save current spec for next diff
+      fs.writeFileSync(path.join(genomeDir, '.prev-spec.md'), spec);
     } catch { /* no valid state, run full */ }
   }
 
@@ -1872,6 +1917,31 @@ function generateModuleExcerpt(moduleName: string, result: CompileResult): strin
   });
 }
 
+// Parse structured audit response — JSON preferred, falls back to text analysis
+function parseAuditResponse(response: string): { pass: boolean; detail: string } {
+  // Try JSON first
+  try {
+    const jsonMatch = response.match(/\{.*\}/s);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.status === 'pass') return { pass: true, detail: '' };
+      if (parsed.status === 'fail') {
+        const gapList = Array.isArray(parsed.gaps) ? parsed.gaps.join('; ') : String(parsed.gaps || '');
+        return { pass: false, detail: gapList.substring(0, 300) };
+      }
+    }
+  } catch { /* JSON parse failed, try text */ }
+
+  // Fallback: check for common pass indicators
+  const lower = response.toLowerCase();
+  if (lower.includes('all covered') || lower.includes('"pass"') || lower.includes('no gaps')) {
+    return { pass: true, detail: '' };
+  }
+
+  // Default: treat as failure with the response as detail
+  return { pass: false, detail: response.substring(0, 300) };
+}
+
 async function depthCheck(result: CompileResult, spec: string): Promise<{ converged: boolean; gaps: string[] }> {
   // Build a COMPACT module summary instead of sending full YAML (was 57KB, now ~5KB)
   // The compile index already has structured node/journey data — use that.
@@ -1899,11 +1969,11 @@ COMPILE STATS: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys
 MODULE SUMMARY:
 ${moduleSummaries}
 
-Report ONLY sections with thin coverage. If all well covered, respond with exactly: ALL COVERED`);
+Respond with JSON: {"status":"pass"} if all covered, or {"status":"fail","gaps":["section X has 1 journey","section Y has 0"]} if gaps exist.
+Reply with ONLY the JSON object.`);
 
-  if (!audit1.toLowerCase().includes('all covered')) {
-    gaps.push('spec-coverage: ' + audit1.substring(0, 200));
-  }
+  const audit1Result = parseAuditResponse(audit1);
+  if (!audit1Result.pass) gaps.push('spec-coverage: ' + audit1Result.detail);
 
   // Auditor 2: Actor coverage
   console.log('  Auditor 2: actor coverage...');
@@ -1917,11 +1987,11 @@ ${actorsYaml}
 MODULE SUMMARY:
 ${moduleSummaries}
 
-Report ONLY actors with 0 journeys. If all covered, respond with exactly: ALL COVERED`);
+Respond with JSON: {"status":"pass"} if all covered, or {"status":"fail","gaps":["Actor X has 0 journeys"]} if gaps exist.
+Reply with ONLY the JSON object.`);
 
-  if (!audit2.toLowerCase().includes('all covered')) {
-    gaps.push('actor-coverage: ' + audit2.substring(0, 200));
-  }
+  const audit2Result = parseAuditResponse(audit2);
+  if (!audit2Result.pass) gaps.push('actor-coverage: ' + audit2Result.detail);
 
   // Auditor 3: Cross-module
   console.log('  Auditor 3: cross-module coverage...');
@@ -1932,11 +2002,11 @@ Are there module pairs that SHOULD be connected but aren't?
 MODULE SUMMARY:
 ${moduleSummaries}
 
-Report ONLY missing connections. If all well-connected, respond with exactly: ALL COVERED`);
+Respond with JSON: {"status":"pass"} if all connected, or {"status":"fail","gaps":["moduleA and moduleB should connect"]} if gaps exist.
+Reply with ONLY the JSON object.`);
 
-  if (!audit3.toLowerCase().includes('all covered')) {
-    gaps.push('cross-module: ' + audit3.substring(0, 200));
-  }
+  const audit3Result = parseAuditResponse(audit3);
+  if (!audit3Result.pass) gaps.push('cross-module: ' + audit3Result.detail);
 
   // Auditor 4: Goal coverage (if _goals.yaml exists)
   const goalsFilePath = path.join(modulesDir, '_goals.yaml');
@@ -1954,11 +2024,11 @@ ${moduleSummaries}
 For EACH goal: how many journeys address it? Any goals with 0 journeys?
 A journey "addresses" a goal if it tests or demonstrates the capability the goal describes.
 
-Report ONLY goals with insufficient coverage. If all goals have journeys, respond with exactly: ALL COVERED`);
+Respond with JSON: {"status":"pass"} if all goals covered, or {"status":"fail","gaps":["GoalX has 0 journeys"]} if gaps exist.
+Reply with ONLY the JSON object.`);
 
-    if (!audit4.toLowerCase().includes('all covered')) {
-      gaps.push('goal-coverage: ' + audit4.substring(0, 200));
-    }
+    const audit4Result = parseAuditResponse(audit4);
+    if (!audit4Result.pass) gaps.push('goal-coverage: ' + audit4Result.detail);
   }
 
   return {
