@@ -74,7 +74,8 @@ Step 4d: Code-to-graph sync (reconcile existing code with graph)
 Step 5: Publish interface + write event file
 Step 6a: Code generation (Mode 1: new code from graph, Mode 2: update existing)
 Step 6b: Journey tests (generate, fill, run, feedback loop on failures)
-Step 7: Sleep. Watch spec.md + dependency events. Zero cost at rest.
+Step 7: Sleep. Watch spec.md + src/ files + dependency events. Zero cost at rest.
+        Wake on ANY change. Process ONLY the change. Sleep again.
 
 **On spec change (targeted):**
 → Wake → diff spec → identify affected modules → run Steps 4a-6b on ONLY those → publish if changed → sleep
@@ -130,12 +131,25 @@ Compiler says 0 errors → Auditor 1 checks spec coverage → Auditor 2 checks a
 ### CodeGeneration
 convergence.ts converged → codegen.ts generates TypeScript skeletons → LLMWorker fills implementations → testgen.ts generates test skeletons → LLMWorker fills assertions → run tests → if failures: LLMWorker fixes → re-run → done
 
+### SpecChangeWake
+Engine sleeping → fs.watch detects spec.md modified → hash diff confirms change → identify affected modules via LLM → run Steps 4a-6b on ONLY affected modules → compile → audit → update code → test → publish if interface changed → sleep
+
+### CodeChangeWake
+Engine sleeping → fs.watch detects src/ file modified → Step 4d reconcile ONLY the changed file → update graph if drift detected → compile → if errors fix them → publish if interface changed → sleep
+
+### DependencyWake
+Engine sleeping → fs.watch detects event file from dependency → read event → find which local modules reference that dependency → targeted reconvergence on ONLY those modules → compile → audit → publish if changed → sleep → ripple continues only if interface changed
+
+### SelfHealCycle
+Engine converged → self-audit reads own code + own goals → asks "what prevents each goal from being achieved?" → if blocker found → creates journey + test for it → fixes code → re-tests → re-verifies goals → only CONVERGED when all goals actually proven
+
 ## 6. Rules
 
 - **No hardcoded limits.** Data decides when to stop.
 - **CODE orchestrates, LLM creates.** LLM never decides WHEN to act.
 - **Never ask LLM open-ended questions in a loop.** Bounded creation + targeted fixes.
 - **Event-driven, not polling.** Zero cost when nothing changes.
+- **No batch mode.** No --once flag. Engine starts, bootstraps if needed, then watches forever. Every action after bootstrap is targeted to a specific change.
 - **Same box at every level.** convergence.ts is the same code at parent, child, grandchild.
 - **Shared actors.** Parent discovers, children inherit. No duplicates.
 - **External refs are warnings in children, errors in parent.** Parent validates after children converge.
