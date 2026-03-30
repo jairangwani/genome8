@@ -26,10 +26,20 @@ Journeys connect nodes into a living graph.
 Each box publishes what it provides. Other boxes reference these.
 Hash-based change detection. Event-driven ripple on change.
 
-### Convergence
+### Convergence — Event-Driven, Not Batch
+
+Every box is sleeping. Always. A box wakes ONLY when something it cares about changes:
+1. **Spec changed** → diff old vs new → identify affected modules → update only those → compile → audit → update code → test → sleep
+2. **Code changed** → reconcile changed file with graph → update one module → compile → sleep
+3. **Dependency published** → check which modules reference it → update only those → compile → sleep
+
+After ANY wake-up: did my interface change? If yes → publish → write event → dependents wake. If no → sleep. Ripple stops when no interface changes.
+
+There is NO batch mode. There is NO "run everything." The first run bootstraps (everything is new). Every subsequent action is targeted to the change that triggered it. Zero wasted work.
+
 Creation is bounded (modules × relevant lenses). Not an infinite loop.
-Convergence is CODE (compile: 0 errors, 0 orphans). Instant.
-Audit is targeted (3 auditors check specific coverage gaps).
+Compile convergence is CODE (0 errors). Instant.
+Audit checks coverage from 4 angles (spec, actors, cross-module, goals).
 
 ### Hierarchy
 Same convergence.ts at every level. Parent splits into children.
@@ -48,15 +58,32 @@ Generates ~200 lines of focused context per module.
 Shows: your nodes, your journeys, cross-module connections, actors, warnings.
 
 ### convergence.ts
-THE PRODUCT. The orchestrator.
+THE PRODUCT. The orchestrator. Lifecycle:
+
+**First run (bootstrap):**
+Step 0: Scaffolding (detect language, create config files)
 Step 1: Organization (LLM reads spec, writes org)
+Step 1b: Goal extraction (derive goals from spec as rule nodes)
 Step 2: Actor discovery (3 angles: activities, threats, lifecycle)
-Step 2b: Hierarchy decision (LLM-based, no hardcoded threshold)
+Step 2b: Hierarchy decision (LLM-based, split if needed)
 Step 3: Module creation (1 LLM call per module, compile between each)
-Step 4: Convergence (bounded creation → compile check → targeted audit)
+Step 4a: Creation passes (modules × relevant lenses, early termination)
+Step 4b: Compile convergence (0 errors)
+Step 4c: Audit (4 auditors: spec, actors, cross-module, goals)
+Step 4d: Code-to-graph sync (reconcile existing code with graph)
 Step 5: Publish interface + write event file
-Step 6: Code + test generation, LLM fills, run tests, fix failures
-Step 7: Event-driven sleep/wake (fs.watch, zero cost at rest)
+Step 6a: Code generation (Mode 1: new code from graph, Mode 2: update existing)
+Step 6b: Journey tests (generate, fill, run, feedback loop on failures)
+Step 7: Sleep. Watch spec.md + dependency events. Zero cost at rest.
+
+**On spec change (targeted):**
+→ Wake → diff spec → identify affected modules → run Steps 4a-6b on ONLY those → publish if changed → sleep
+
+**On code change (reconcile):**
+→ Wake → reconcile changed file → update graph → compile → sleep
+
+**On dependency event (ripple):**
+→ Wake → find affected modules → targeted reconvergence → publish if changed → sleep
 
 ### llm.ts
 LLMWorker class. Persistent Claude Code process via stream-json protocol.
