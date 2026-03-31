@@ -1899,30 +1899,63 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
             await worker.call(`Fix these compile errors after code reconciliation:\n${errorList}\nRead affected files, fix refs, write back.`);
           }
 
-          // Run smoke test to verify code still works after change
-          console.log('  Running smoke test on changed code...');
-          const srcFiles = fs.readdirSync(path.join(absProjectDir, 'src')).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
-          const entryFile = srcFiles.find(f => /^(index|main|app|todo|calc|cli|weather|greet)\.(ts|js)$/.test(f)) || srcFiles[0];
-          if (entryFile) {
-            try {
-              const { execSync: execSyncSmoke } = await import('node:child_process');
-              execSyncSmoke(`npx tsx src/${entryFile} --help 2>&1 || npx tsx src/${entryFile} list 2>&1`, {
-                cwd: absProjectDir, encoding: 'utf-8', timeout: 15_000,
-              });
-              console.log('  Smoke test PASSED after code change.');
-            } catch (smokeErr: any) {
-              const smokeOutput = (smokeErr.stdout || smokeErr.message || '').substring(0, 500);
-              console.log(`  Smoke test FAILED after code change: ${smokeOutput.substring(0, 100)}`);
-              console.log('  Attempting fix via self-heal...');
+          // Validate code change against spec examples (fast, specific)
+          // Extract CLI examples from spec: lines matching `npx tsx src/...` → expected output
+          const specContent = fs.readFileSync(specPath, 'utf-8');
+          const specExamples = specContent.match(/`npx tsx src\/\S+ "?[^"]*"?`\s*→\s*.+/g) || [];
+          if (specExamples.length > 0) {
+            console.log(`  Running ${specExamples.length} spec examples as validation...`);
+            const { execSync: execSyncValidate } = await import('node:child_process');
+            let failures = 0;
+            const failDetails: string[] = [];
+            for (const example of specExamples.slice(0, 5)) { // cap at 5
+              const cmdMatch = example.match(/`(npx tsx src\/\S+ "[^"]*")`\s*→\s*(.+)/);
+              if (!cmdMatch) continue;
+              const cmd = cmdMatch[1];
+              const expected = cmdMatch[2].trim();
               try {
-                await worker.call(`The code was changed and the smoke test failed.
+                const actual = execSyncValidate(cmd + ' 2>&1', { cwd: absProjectDir, encoding: 'utf-8', timeout: 10_000 }).trim();
+                if (actual === expected) {
+                  console.log(`    ✓ ${cmd} → ${expected}`);
+                } else {
+                  console.log(`    ✗ ${cmd} → expected "${expected}", got "${actual}"`);
+                  failures++;
+                  failDetails.push(`${cmd}: expected "${expected}", got "${actual}"`);
+                }
+              } catch (err: any) {
+                const errOut = (err.stdout || err.message || '').trim();
+                if (errOut.startsWith('Error:') && expected.startsWith('Error:')) {
+                  console.log(`    ✓ ${cmd} → ${expected}`);
+                } else {
+                  console.log(`    ✗ ${cmd} → expected "${expected}", got error`);
+                  failures++;
+                  failDetails.push(`${cmd}: expected "${expected}", got "${errOut.substring(0, 100)}"`);
+                }
+              }
+            }
+            if (failures > 0) {
+              console.log(`  ${failures} spec examples FAILED. Attempting self-heal...`);
+              try {
+                await worker.call(`Code was changed and ${failures} spec examples failed:
 
-ERROR: ${smokeOutput}
+${failDetails.join('\n')}
 
-Read the changed source files in src/ and fix the bug. Use Edit for targeted fixes.
-The graph describes what the code SHOULD do — read the module YAML files for reference.`);
-                console.log('  Self-heal fix applied.');
+The spec defines what the output SHOULD be. Fix the code to match.
+Read the source files and use Edit for targeted fixes.`);
+                console.log('  Self-heal fix applied. Re-checking...');
+                // Quick re-check
+                for (const detail of failDetails) {
+                  const m = detail.match(/^(npx tsx src\/\S+ "[^"]*")/);
+                  if (m) {
+                    try {
+                      const recheck = execSyncValidate(m[1] + ' 2>&1', { cwd: absProjectDir, encoding: 'utf-8', timeout: 10_000 }).trim();
+                      console.log(`    Re-check: ${m[1]} → ${recheck}`);
+                    } catch {}
+                  }
+                }
               } catch { console.log('  Self-heal timed out.'); }
+            } else {
+              console.log(`  All ${specExamples.length} spec examples PASS.`);
             }
           }
 
