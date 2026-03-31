@@ -1839,14 +1839,17 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
     console.log(`  Watching src: ${watchSrcDir}`);
     let codeChangeTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingCodeChanges = new Set<string>();
+    let codeChangeProcessing = false; // Lock to prevent concurrent handling
 
     const srcWatcher = fs.watch(watchSrcDir, { recursive: true }, (_eventType, filename) => {
       if (!filename || !/\.(ts|js|tsx|jsx)$/.test(filename)) return;
-      // Ignore build artifacts and test outputs
-      if (filename.includes('node_modules') || filename.includes('dist/')) return;
+      if (filename.includes('node_modules') || filename.includes('dist/') || filename.includes('test')) return;
+      if (codeChangeProcessing) return; // Skip if already processing
       pendingCodeChanges.add(filename);
       if (codeChangeTimer) clearTimeout(codeChangeTimer);
       codeChangeTimer = setTimeout(async () => {
+        if (codeChangeProcessing) return;
+        codeChangeProcessing = true;
         const changedFiles = [...pendingCodeChanges];
         pendingCodeChanges.clear();
 
@@ -1989,6 +1992,8 @@ Read the source files and use Edit for targeted fixes.`);
         } catch (err: any) {
           console.error(`  Code reconciliation error: ${err.message}`);
           fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString() }, null, 2));
+        } finally {
+          codeChangeProcessing = false; // Release lock
         }
       }, config.eventDebounceMs);
     });
