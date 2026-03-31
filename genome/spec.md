@@ -257,7 +257,32 @@ The engine must not require human intervention to fix its own bugs. This means:
 - No human adds missing features — the engine discovers them from goals
 - The spec is still human-only, but everything else is self-managed
 
-## 13. What Genome Must NOT Do
+## 13. Self-Testing: Genome Must Verify Its Own Behavior
+
+Journey tests verify CODE (functions return correct values). Self-testing verifies BEHAVIOR (the system responds correctly to events).
+
+### Integration Self-Tests (run during self-heal cycle)
+The engine must be able to test itself by:
+1. Creating a temporary test project with a small spec (e.g., greeting app)
+2. Running convergence on it → verify it produces working code
+3. Editing the test spec → verify watch mode wakes and updates correctly
+4. Editing test code → verify code-to-graph sync works
+5. Cleaning up the test project
+
+This proves: spec→code works, spec change→targeted update works, code change→sync works.
+
+### Why This Matters
+- Journey tests can pass while the ripple system is broken
+- The only way to verify behavior is to observe it happening
+- Each self-test is a mini end-to-end proof that the protocol works
+- If a self-test fails, the self-heal cycle has a concrete bug to fix
+
+### When To Run
+- After every self-heal cycle that modifies convergence.ts
+- The self-test uses a TEMPORARY project (created and deleted automatically)
+- Result: PASS (behavior works) or FAIL (specific behavior broken)
+
+## 14. What Genome Must NOT Do
 
 - Do not maintain separate documentation files. The graph IS the documentation.
 - Do not hardcode limits. Data decides when to stop. (maxZeroDelta, minModulesForSplit are configurable)
