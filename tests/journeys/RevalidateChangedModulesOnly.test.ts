@@ -36,7 +36,7 @@ describe("RevalidateChangedModulesOnly", () => {
   });
 
   it("step 5: compilation/YAMLErrorReporting checks the edited module for YAML syntax errors", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: checks the edited module for YAML syntax errors
     // TODO: agent fills assertion
   });

@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/types.ts
 // Implementation: test/staleness.test.ts
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 
 describe("ProveSolveContextProblem", () => {
@@ -53,7 +54,7 @@ describe("ProveSolveContextProblem", () => {
   });
 
   it("step 8: hierarchy/SpawnChildEngine scales to any depth by spawning child engines for independent subsystems", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: scales to any depth by spawning child engines for independent subsystems
     // TODO: agent fills assertion
   });

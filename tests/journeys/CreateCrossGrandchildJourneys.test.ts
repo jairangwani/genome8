@@ -5,7 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
+// Implementation: src/convergence.ts
 // Implementation: test/director.test.ts
 // Implementation: src/types.ts
 
@@ -29,13 +31,13 @@ describe("CreateCrossGrandchildJourneys", () => {
   });
 
   it("step 4: hierarchy/ValidateCrossEngineRefs verifies that external refs between grandchildren resolve to sibling grandchild interfaces", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: verifies that external refs between grandchildren resolve to sibling grandchild interfaces
     // TODO: agent fills assertion
   });
 
   it("step 5: hierarchy/CreateCrossEngineJourneys creates journeys at the child level connecting nodes across grandchild interfaces", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: creates journeys at the child level connecting nodes across grandchild interfaces
     // TODO: agent fills assertion
   });

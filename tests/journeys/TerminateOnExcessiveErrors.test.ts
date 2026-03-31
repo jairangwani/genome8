@@ -24,7 +24,7 @@ describe("TerminateOnExcessiveErrors", () => {
   });
 
   it("step 3: compilation/YAMLErrorReporting detects YAML syntax errors across multiple modules", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: detects YAML syntax errors across multiple modules
     // TODO: agent fills assertion
   });

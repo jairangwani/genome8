@@ -25,7 +25,7 @@ describe("HandlePartialParseFailure", () => {
   });
 
   it("step 3: compilation/YAMLErrorReporting catches a fatal parse error in one or more modules", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: catches a fatal parse error in one or more modules
     // TODO: agent fills assertion
   });

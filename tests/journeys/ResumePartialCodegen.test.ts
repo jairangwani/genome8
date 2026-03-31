@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/codegen.test.ts
+// Implementation: src/codegen.ts
 
 describe("ResumePartialCodegen", () => {
   it("step 1: convergence/ConvergenceState indicates codegen was in progress when the process was interrupted", () => {
@@ -68,7 +69,7 @@ describe("ResumePartialCodegen", () => {
   });
 
   it("step 11: codegen/WriteGeneratedFile writes the filled file to disk", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the filled file to disk
     // TODO: agent fills assertion
   });

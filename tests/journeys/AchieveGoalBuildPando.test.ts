@@ -41,7 +41,7 @@ describe("AchieveGoalBuildPando", () => {
   });
 
   it("step 6: hierarchy/SpawnChildEngine launches child convergence processes for each Pando subsystem", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches child convergence processes for each Pando subsystem
     // TODO: agent fills assertion
   });
@@ -53,7 +53,7 @@ describe("AchieveGoalBuildPando", () => {
   });
 
   it("step 8: hierarchy/CreateCrossEngineJourneys creates journeys connecting Pando subsystem interfaces at the parent level", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: creates journeys connecting Pando subsystem interfaces at the parent level
     // TODO: agent fills assertion
   });

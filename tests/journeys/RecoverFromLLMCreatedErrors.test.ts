@@ -30,7 +30,7 @@ describe("RecoverFromLLMCreatedErrors", () => {
   });
 
   it("step 4: compilation/YAMLErrorReporting detects YAML syntax errors or malformed structure in the LLM output", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: detects YAML syntax errors or malformed structure in the LLM output
     // TODO: agent fills assertion
   });
@@ -90,7 +90,7 @@ describe("RecoverFromLLMCreatedErrors", () => {
   });
 
   it("step 14: compilation/YAMLErrorReporting confirms no YAML errors remain in the corrected module", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: confirms no YAML errors remain in the corrected module
     // TODO: agent fills assertion
   });

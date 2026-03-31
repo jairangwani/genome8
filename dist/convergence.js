@@ -169,6 +169,7 @@ function doCompile() {
 }
 // ── Pipeline ──
 async function run() {
+    const cryptoModule = await import('node:crypto');
     const spec = fs.readFileSync(specPath, 'utf-8');
     console.log(`\n=== GENOME CONVERGENCE: ${absProjectDir} ===`);
     writePidFile(); // Track this process for clean shutdown
@@ -187,7 +188,9 @@ async function run() {
             if (state.status === 'sleeping' || state.status === 'unstable') {
                 const currentResult = compile(modulesDir);
                 const currentHash = publishInterface(publishedDir, currentResult.index, path.basename(absProjectDir)).interface_.version_hash;
-                if (currentHash === state.interface_hash) {
+                const currentSpecHash = cryptoModule.createHash('sha256').update(spec).digest('hex');
+                const specUnchanged = !state.spec_hash || currentSpecHash === state.spec_hash;
+                if (currentHash === state.interface_hash && specUnchanged) {
                     console.log(`Already converged (hash: ${currentHash.substring(7, 19)}). Entering watch loop directly.\n`);
                     // Go directly to Step 7 — skip Steps 1-6 entirely
                     // The watch loop handles reconvergence when dependencies change
@@ -225,8 +228,28 @@ async function run() {
                                 }
                             }
                         }
+                        // Watch spec.md for changes (same as main Step 7)
+                        console.log(`  Watching spec: ${specPath}`);
+                        const specWatcherResumed = fs.watch(path.dirname(specPath), (eventType, filename) => {
+                            if (filename === 'spec.md') {
+                                const currentSpecContent = fs.readFileSync(specPath, 'utf-8');
+                                const crypto3 = cryptoModule;
+                                const newHash = crypto3.createHash('sha256').update(currentSpecContent).digest('hex');
+                                const savedSpecHash = (() => { try {
+                                    return JSON.parse(fs.readFileSync(path.join(genomeDir, 'convergence-state.json'), 'utf-8')).spec_hash;
+                                }
+                                catch {
+                                    return null;
+                                } })();
+                                if (newHash !== savedSpecHash) {
+                                    console.log('\n  SPEC CHANGED — waking up for reconvergence...');
+                                    specWatcherResumed.close();
+                                    run().catch(err => { console.error('Reconvergence failed:', err); process.exit(1); });
+                                }
+                            }
+                        });
                         if (depEventDirs.length === 0) {
-                            console.log('  No dependencies to watch. Sleeping permanently.');
+                            console.log('  No dependencies to watch. Watching spec only.');
                             await new Promise(() => { });
                             return;
                         }
@@ -610,19 +633,62 @@ Write the file NOW using the Write tool.`);
             }
             else if (prevState.spec_hash) {
                 console.log('  Spec CHANGED since last convergence. Identifying affected modules...');
-                const affectedResponse = await worker.call('The project spec has changed. Which modules need updating?\n\n' +
-                    'MODULES: ' + knownModuleNames.join(', ') + '\n\n' +
-                    'PREVIOUS SPEC HASH: ' + prevState.spec_hash.substring(0, 12) + '\n' +
-                    'CURRENT SPEC:\n' + spec + '\n\n' +
-                    'Return ONLY the module names that are affected by the changes, one per line. ' +
-                    'If a module is not affected, do NOT include it.');
-                affectedModules = affectedResponse.split('\n')
-                    .map(l => l.replace(/^[-*\s]+/, '').trim().replace(/`/g, ''))
-                    .filter(m => knownModuleNames.includes(m));
-                if (affectedModules.length === 0)
-                    affectedModules = null; // Couldn't parse → do all
-                console.log(`  Affected modules: ${affectedModules ? affectedModules.join(', ') : 'ALL (could not determine)'}`);
+                // Load the previous spec if available (stored alongside state)
+                const prevSpecPath = path.join(genomeDir, '.prev-spec.md');
+                const prevSpec = fs.existsSync(prevSpecPath) ? fs.readFileSync(prevSpecPath, 'utf-8') : null;
+                const affectedResponse = await worker.call(`The project spec has changed. Which modules need updating?
+
+MODULES: ${knownModuleNames.join(', ')}
+
+${prevSpec ? `PREVIOUS SPEC:\n${prevSpec.substring(0, 3000)}\n\nCURRENT SPEC:\n${spec.substring(0, 3000)}` : `CURRENT SPEC:\n${spec.substring(0, 3000)}`}
+
+Reply with ONLY a JSON array of affected module names. Example: ["cli", "model", "storage"]
+If ALL modules are affected, reply: ["ALL"]
+Do NOT include any other text, just the JSON array.`);
+                // Parse JSON array — much more reliable than line-by-line string matching
+                try {
+                    const jsonMatch = affectedResponse.match(/\[.*\]/s);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (parsed.includes('ALL')) {
+                            affectedModules = null; // Intentional ALL — not a parsing failure
+                            console.log('  Affected modules: ALL (LLM determined all need updating)');
+                        }
+                        else {
+                            affectedModules = parsed.filter(m => knownModuleNames.includes(m));
+                            if (affectedModules.length === 0) {
+                                // LLM returned module names that don't match — retry once
+                                console.log('  LLM returned unrecognized modules. Retrying...');
+                                const retry = await worker.call(`The module names you returned don't match the project. Valid modules are EXACTLY: ${knownModuleNames.join(', ')}\n\nWhich of these are affected by the spec change? Reply with ONLY a JSON array. Example: ["cli", "model"]`);
+                                const retryMatch = retry.match(/\[.*\]/s);
+                                if (retryMatch) {
+                                    affectedModules = JSON.parse(retryMatch[0]).filter(m => knownModuleNames.includes(m));
+                                }
+                                if (!affectedModules || affectedModules.length === 0) {
+                                    affectedModules = null; // Still can't determine — run all
+                                    console.log('  Affected modules: ALL (retry failed)');
+                                }
+                                else {
+                                    console.log(`  Affected modules (retry): ${affectedModules.join(', ')}`);
+                                }
+                            }
+                            else {
+                                console.log(`  Affected modules: ${affectedModules.join(', ')}`);
+                            }
+                        }
+                    }
+                    else {
+                        affectedModules = null;
+                        console.log('  Affected modules: ALL (no JSON array in response)');
+                    }
+                }
+                catch {
+                    affectedModules = null;
+                    console.log('  Affected modules: ALL (JSON parse failed)');
+                }
             }
+            // Save current spec for next diff
+            fs.writeFileSync(path.join(genomeDir, '.prev-spec.md'), spec);
         }
         catch { /* no valid state, run full */ }
     }
@@ -1001,7 +1067,7 @@ Update the appropriate YAML module file using the Write tool if needed.`);
     // ═══ STEP 5 — Publish + Notify ═══
     startStep('step5_publish');
     console.log('\n═══ STEP 5: Publish ═══');
-    const finalResult = doCompile();
+    let finalResult = doCompile();
     const { interface_ } = publishInterface(publishedDir, finalResult.index, path.basename(absProjectDir));
     console.log(`  Published: ${Object.keys(interface_.provides).length} nodes | Hash: ${interface_.version_hash}`);
     // Check if hash changed since last publish — skip event write if unchanged
@@ -1367,19 +1433,161 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
     fs.writeFileSync(metricsPath, JSON.stringify(metrics, null, 2));
     console.log(`  Metrics written: ${metrics.llmCalls} LLM calls, ${Object.keys(metrics.stepTimings).length} steps tracked`);
     // ── Goal verification ──
-    // Before declaring convergence, check: are all goals proven?
-    // Goals are rule nodes in _goals.yaml. They're "proven" if:
-    //   - The audit found 0 gaps (including Auditor 4 goal coverage)
-    //   - Tests passed (or were accepted as unstable)
-    // This is the final check — the engine doesn't declare success until goals are met.
+    // Verify each goal is ACTUALLY achieved, not just described by journeys.
+    // "BuildPando" isn't proven because journeys mention it —
+    // it's proven when Pando actually works. Journey coverage ≠ achievement.
     const goalsCheckPath = path.join(modulesDir, '_goals.yaml');
     if (fs.existsSync(goalsCheckPath)) {
         const goalsContent = fs.readFileSync(goalsCheckPath, 'utf-8');
         const goalNodes = (goalsContent.match(/^\s{2}\w[\w]*:/gm) || [])
             .map(l => l.trim().replace(/:$/, ''))
             .filter(n => !['nodes', 'journeys', 'spec_sections'].includes(n));
-        console.log(`\n  Goals: ${goalNodes.length} (${goalNodes.join(', ')})`);
-        console.log(`  Status: ${testsPassed ? 'ALL PROVEN (tests pass)' : 'UNPROVEN (tests incomplete/failing)'}`);
+        console.log(`\n  ── Goal Verification ──`);
+        console.log(`  ${goalNodes.length} goals to verify against actual state.`);
+        try {
+            const srcFiles = fs.existsSync(path.join(absProjectDir, 'src'))
+                ? fs.readdirSync(path.join(absProjectDir, 'src')).filter(f => f.endsWith('.ts') || f.endsWith('.js')).length
+                : 0;
+            const goalVerification = await worker.call(`Verify each goal is ACTUALLY achieved — not just covered by journeys.
+
+GOALS:
+${goalsContent}
+
+ACTUAL STATE:
+- Graph: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, 0 compile errors
+- Code: ${srcFiles} source files
+- Tests: ${testsPassed ? 'smoke test passed' : 'tests failing'}
+- This is a ${currentDepth === 0 ? 'top-level' : 'child (depth ' + currentDepth + ')'} engine
+
+For EACH goal, answer HONESTLY:
+- PROVEN: actually achieved with evidence
+- UNPROVEN: described but NOT achieved yet
+- PARTIAL: some progress
+
+One line per goal: GoalName: STATUS — evidence`);
+            for (const line of goalVerification.split('\n').filter(l => /PROVEN|PARTIAL|UNPROVEN/.test(l))) {
+                console.log(`    ${line.trim()}`);
+            }
+            const unproven = goalVerification.split('\n').filter(l => /UNPROVEN/.test(l)).length;
+            console.log(`  Result: ${goalNodes.length - unproven}/${goalNodes.length} goals proven.${unproven > 0 ? ' ' + unproven + ' UNPROVEN.' : ''}`);
+        }
+        catch {
+            console.log('  Goal verification timed out — reporting based on test status.');
+            console.log(`  Status: ${testsPassed ? 'PARTIAL (tests pass but goals unverified)' : 'UNPROVEN (tests failing)'}`);
+        }
+    }
+    // ── Self-Heal Cycle (Spec §12) ──
+    // If goals are UNPROVEN, identify blockers and fix them autonomously.
+    // SelfAuditOwnCode → ClassifyBlockerType → CreateBlockerJourney → FixBlockerCode → re-verify
+    // Caps at maxAuditCycles to guarantee termination (BoundedRetryRule).
+    if (fs.existsSync(goalsCheckPath)) {
+        const goalsForHeal = fs.readFileSync(goalsCheckPath, 'utf-8');
+        // Quick check: run goal verification to see if any are UNPROVEN
+        let currentUnproven = [];
+        try {
+            const healVerify = await worker.call(`Verify each goal is ACTUALLY achieved — not just covered by journeys.
+
+GOALS:
+${goalsForHeal}
+
+ACTUAL STATE:
+- Graph: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, 0 compile errors
+- Tests: ${testsPassed ? 'passing' : 'failing'}
+
+For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
+            currentUnproven = healVerify.split('\n').filter(l => /UNPROVEN/.test(l));
+        }
+        catch { /* verification timed out — skip self-heal */ }
+        if (currentUnproven.length > 0) {
+            console.log(`\n  ── Self-Heal Cycle ──`);
+            console.log(`  ${currentUnproven.length} UNPROVEN goals. Attempting autonomous fix...`);
+            let selfHealRound = 0;
+            const maxSelfHealRounds = config.maxAuditCycles;
+            while (selfHealRound < maxSelfHealRounds && currentUnproven.length > 0) {
+                selfHealRound++;
+                console.log(`\n  Self-heal round ${selfHealRound}/${maxSelfHealRounds}`);
+                // SelfAuditOwnCode: identify what prevents each UNPROVEN goal
+                let blockers = [];
+                try {
+                    const blockerAnalysis = await worker.call(`Self-audit: Read source code in ${path.join(absProjectDir, 'src')} and goals in ${goalsCheckPath}.
+
+For each UNPROVEN goal, identify what SPECIFICALLY prevents it from being achieved:
+${currentUnproven.map(g => `  ${g.trim()}`).join('\n')}
+
+Classify each blocker as:
+- CODE_BUG: existing code has a bug preventing the goal
+- MISSING_FEATURE: code needs new functionality
+- SPEC_GAP: spec doesn't describe how to achieve this (requires human input)
+
+Reply as JSON: {"blockers": [{"goal": "GoalName", "type": "CODE_BUG|MISSING_FEATURE|SPEC_GAP", "description": "what blocks it"}]}`);
+                    // ClassifyBlockerType: parse and classify
+                    const jsonMatch = blockerAnalysis.match(/\{[\s\S]*"blockers"[\s\S]*\}/);
+                    if (jsonMatch)
+                        blockers = JSON.parse(jsonMatch[0]).blockers || [];
+                }
+                catch { /* analysis failed — exit loop */
+                    break;
+                }
+                if (blockers.length === 0) {
+                    console.log('  No actionable blockers identified. Exiting self-heal.');
+                    break;
+                }
+                // FlagSpecGap: report spec gaps that require human updates
+                const specGaps = blockers.filter(b => b.type === 'SPEC_GAP');
+                if (specGaps.length > 0) {
+                    console.log(`  Spec gaps (require human update to spec.md): ${specGaps.map(b => b.goal).join(', ')}`);
+                }
+                // CreateBlockerJourney + FixBlockerCode: fix code bugs and missing features
+                const fixable = blockers.filter(b => b.type !== 'SPEC_GAP');
+                if (fixable.length === 0) {
+                    console.log('  All remaining blockers are spec gaps. Exiting self-heal.');
+                    break;
+                }
+                for (const blocker of fixable.slice(0, 3)) {
+                    console.log(`  Fixing: ${blocker.goal} (${blocker.type}) — ${blocker.description}`);
+                    await worker.call(`Fix this blocker for goal "${blocker.goal}":
+Type: ${blocker.type}
+Description: ${blocker.description}
+
+1. Add a journey to the appropriate genome/modules/*.yaml file that exercises the blocked goal path
+2. If source code needs updating, update using Edit (do NOT rewrite entire files)
+3. After fixing, the goal should be closer to PROVEN status`);
+                }
+                // Recompile after fixes
+                const healResult = doCompile();
+                const healErrors = healResult.issues.filter(i => i.severity === 'error');
+                if (healErrors.length > 0) {
+                    const errorList = healErrors.slice(0, 5).map(e => `- ${e.message}`).join('\n');
+                    await worker.call(`Self-heal introduced compile errors. Fix them:\n${errorList}`);
+                }
+                // VerifyGoalsAgainstEvidence: re-verify after fixes
+                try {
+                    const reVerify = await worker.call(`Re-verify goals after self-heal fixes.
+
+GOALS:
+${fs.readFileSync(goalsCheckPath, 'utf-8')}
+
+ACTUAL STATE: ${doCompile().index._stats.total_nodes} nodes, ${doCompile().index._stats.total_journeys} journeys, 0 compile errors
+
+For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
+                    currentUnproven = reVerify.split('\n').filter(l => /UNPROVEN/.test(l));
+                    console.log(`  After round ${selfHealRound}: ${currentUnproven.length} goals still UNPROVEN`);
+                    if (currentUnproven.length === 0) {
+                        console.log('  All goals PROVEN. Self-heal complete.');
+                    }
+                }
+                catch {
+                    console.log('  Goal re-verification timed out. Stopping self-heal.');
+                    break;
+                }
+            }
+            // DetectSelfHealingExhaustion: report if max rounds reached
+            if (selfHealRound >= maxSelfHealRounds && currentUnproven.length > 0) {
+                console.log(`  Self-heal exhausted ${maxSelfHealRounds} rounds. ${currentUnproven.length} goals remain UNPROVEN.`);
+            }
+            // Recompile to capture any graph changes from self-heal
+            finalResult = doCompile();
+        }
     }
     console.log('\n═══ CONVERGED ═══');
     console.log(`Final: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, ${finalResult.index._stats.total_connections} connections`);
@@ -1449,10 +1657,136 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
             }
         }
     }
+    // Always watch spec.md for changes — spec is the source of truth
+    console.log(`  Watching spec: ${specPath}`);
+    const specWatcher = fs.watch(path.dirname(specPath), (eventType, filename) => {
+        if (filename === 'spec.md') {
+            const currentSpec = fs.readFileSync(specPath, 'utf-8');
+            const currentHash = cryptoModule.createHash('sha256').update(currentSpec).digest('hex');
+            const stateFile = path.join(genomeDir, 'convergence-state.json');
+            const savedHash = (() => { try {
+                return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash;
+            }
+            catch {
+                return null;
+            } })();
+            if (currentHash !== savedHash) {
+                console.log('\n  SPEC CHANGED — waking up for reconvergence...');
+                specWatcher.close();
+                // Re-run the full pipeline
+                run().catch(err => { console.error('Reconvergence failed:', err); process.exit(1); });
+            }
+        }
+    });
+    activeWatchers.push(specWatcher);
+    // Watch src/ directory for code changes — CodeChangeWake journey (Spec §3 Step 7)
+    // When a developer edits source code directly, reconcile the change back to the graph.
+    const watchSrcDir = path.join(absProjectDir, 'src');
+    if (fs.existsSync(watchSrcDir)) {
+        console.log(`  Watching src: ${watchSrcDir}`);
+        let codeChangeTimer = null;
+        const pendingCodeChanges = new Set();
+        const srcWatcher = fs.watch(watchSrcDir, { recursive: true }, (_eventType, filename) => {
+            if (!filename || !/\.(ts|js|tsx|jsx)$/.test(filename))
+                return;
+            // Ignore build artifacts and test outputs
+            if (filename.includes('node_modules') || filename.includes('dist/'))
+                return;
+            pendingCodeChanges.add(filename);
+            if (codeChangeTimer)
+                clearTimeout(codeChangeTimer);
+            codeChangeTimer = setTimeout(async () => {
+                const changedFiles = [...pendingCodeChanges];
+                pendingCodeChanges.clear();
+                console.log(`\n  CODE CHANGE: ${changedFiles.join(', ')}`);
+                fs.writeFileSync(statePath, JSON.stringify({ status: 'reconciling', reason: `code change: ${changedFiles.join(', ')}` }, null, 2));
+                try {
+                    // WakeOnCodeChange: find which graph modules reference the changed files
+                    const currentResult = doCompile();
+                    const affectedModules = new Set();
+                    for (const [, node] of Object.entries(currentResult.index.nodes)) {
+                        if (node.files) {
+                            for (const nodeFile of node.files) {
+                                for (const changed of changedFiles) {
+                                    if (nodeFile.includes(changed) || changed.includes(path.basename(nodeFile))) {
+                                        affectedModules.add(node.module);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (affectedModules.size === 0) {
+                        console.log('  No graph nodes reference changed files. Skipping reconciliation.');
+                        fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString(), stats: currentResult.index._stats }, null, 2));
+                        return;
+                    }
+                    console.log(`  Affected modules: ${[...affectedModules].join(', ')}`);
+                    // ReconcileCodeWithGraph: ask LLM if code does MORE than graph describes
+                    for (const changedFile of changedFiles) {
+                        const fullFilePath = path.join(watchSrcDir, changedFile);
+                        if (!fs.existsSync(fullFilePath))
+                            continue;
+                        await worker.call(`A source file changed: src/${changedFile}
+
+Read ${fullFilePath} and compare against the graph modules that reference it: ${[...affectedModules].join(', ')}
+Read genome/modules/{module}.yaml for each affected module.
+
+If code does MORE than graph describes (new functions, new capabilities), update the module YAML using Edit to add missing nodes/journeys.
+If code does LESS than graph describes, report it but do not change the graph.
+Do NOT rewrite entire files — use Edit to append new content only.`);
+                    }
+                    // Recompile after reconciliation
+                    const reconResult = doCompile();
+                    const errors = reconResult.issues.filter(i => i.severity === 'error');
+                    if (errors.length > 0) {
+                        const errorList = errors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
+                        await worker.call(`Fix these compile errors after code reconciliation:\n${errorList}\nRead affected files, fix refs, write back.`);
+                    }
+                    // Publish if interface changed
+                    const latestResult = doCompile();
+                    const { interface_: newInterface } = publishInterface(publishedDir, latestResult.index, path.basename(absProjectDir));
+                    const prevHash = (() => {
+                        try {
+                            return JSON.parse(fs.readFileSync(statePath, 'utf-8')).interface_hash;
+                        }
+                        catch {
+                            return null;
+                        }
+                    })();
+                    if (prevHash && newInterface.version_hash === prevHash) {
+                        console.log(`  Reconciled. Hash UNCHANGED. No ripple.`);
+                    }
+                    else {
+                        if (!fs.existsSync(eventsDir))
+                            fs.mkdirSync(eventsDir, { recursive: true });
+                        const newEventFile = path.join(eventsDir, `${Date.now()}_${newInterface.version_hash.substring(7, 19)}.event`);
+                        fs.writeFileSync(newEventFile, JSON.stringify({
+                            engine: path.basename(absProjectDir),
+                            hash: newInterface.version_hash,
+                            timestamp: new Date().toISOString(),
+                            origin_chain: [path.basename(absProjectDir)],
+                        }, null, 2));
+                        console.log(`  Reconciled. Hash: ${newInterface.version_hash.substring(7, 19)}. Event written.`);
+                    }
+                    fs.writeFileSync(statePath, JSON.stringify({
+                        status: 'sleeping',
+                        converged_at: new Date().toISOString(),
+                        stats: latestResult.index._stats,
+                        interface_hash: newInterface.version_hash,
+                    }, null, 2));
+                }
+                catch (err) {
+                    console.error(`  Code reconciliation error: ${err.message}`);
+                    fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString() }, null, 2));
+                }
+            }, config.eventDebounceMs);
+        });
+        activeWatchers.push(srcWatcher);
+    }
     if (depEventDirs.length === 0) {
-        console.log('  No dependencies to watch. Sleeping permanently.');
-        // Keep process alive but doing nothing
-        await new Promise(() => { }); // Block forever
+        console.log('  No dependencies to watch. Watching spec + src.');
+        // Keep process alive — will wake on spec or code change
+        await new Promise(() => { }); // Block until spec/code changes
         return;
     }
     console.log(`  Watching ${depEventDirs.length} dependency event dirs:`);
@@ -1631,7 +1965,7 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
         activeWatchers.push(watcher);
     }
     // Keep process alive — fs.watch callbacks handle everything
-    console.log('  Sleeping. Will wake on dependency events only.');
+    console.log('  Sleeping. Will wake on spec change, code change, or dependency events.');
     await new Promise(() => { }); // Block forever — fs.watch handles events
 }
 // ── Helpers ──
@@ -1676,6 +2010,30 @@ function generateModuleExcerpt(moduleName, result) {
         moduleFileContent: content,
     });
 }
+// Parse structured audit response — JSON preferred, falls back to text analysis
+function parseAuditResponse(response) {
+    // Try JSON first
+    try {
+        const jsonMatch = response.match(/\{.*\}/s);
+        if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.status === 'pass')
+                return { pass: true, detail: '' };
+            if (parsed.status === 'fail') {
+                const gapList = Array.isArray(parsed.gaps) ? parsed.gaps.join('; ') : String(parsed.gaps || '');
+                return { pass: false, detail: gapList.substring(0, 300) };
+            }
+        }
+    }
+    catch { /* JSON parse failed, try text */ }
+    // Fallback: check for common pass indicators
+    const lower = response.toLowerCase();
+    if (lower.includes('all covered') || lower.includes('"pass"') || lower.includes('no gaps')) {
+        return { pass: true, detail: '' };
+    }
+    // Default: treat as failure with the response as detail
+    return { pass: false, detail: response.substring(0, 300) };
+}
 async function depthCheck(result, spec) {
     // Build a COMPACT module summary instead of sending full YAML (was 57KB, now ~5KB)
     // The compile index already has structured node/journey data — use that.
@@ -1701,10 +2059,11 @@ COMPILE STATS: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys
 MODULE SUMMARY:
 ${moduleSummaries}
 
-Report ONLY sections with thin coverage. If all well covered, respond with exactly: ALL COVERED`);
-    if (!audit1.toLowerCase().includes('all covered')) {
-        gaps.push('spec-coverage: ' + audit1.substring(0, 200));
-    }
+Respond with JSON: {"status":"pass"} if all covered, or {"status":"fail","gaps":["section X has 1 journey","section Y has 0"]} if gaps exist.
+Reply with ONLY the JSON object.`);
+    const audit1Result = parseAuditResponse(audit1);
+    if (!audit1Result.pass)
+        gaps.push('spec-coverage: ' + audit1Result.detail);
     // Auditor 2: Actor coverage
     console.log('  Auditor 2: actor coverage...');
     const actorsFilePath = path.join(modulesDir, '_actors.yaml');
@@ -1717,10 +2076,11 @@ ${actorsYaml}
 MODULE SUMMARY:
 ${moduleSummaries}
 
-Report ONLY actors with 0 journeys. If all covered, respond with exactly: ALL COVERED`);
-    if (!audit2.toLowerCase().includes('all covered')) {
-        gaps.push('actor-coverage: ' + audit2.substring(0, 200));
-    }
+Respond with JSON: {"status":"pass"} if all covered, or {"status":"fail","gaps":["Actor X has 0 journeys"]} if gaps exist.
+Reply with ONLY the JSON object.`);
+    const audit2Result = parseAuditResponse(audit2);
+    if (!audit2Result.pass)
+        gaps.push('actor-coverage: ' + audit2Result.detail);
     // Auditor 3: Cross-module
     console.log('  Auditor 3: cross-module coverage...');
     const audit3 = await worker.call(`Compile stats: ${stats.total_nodes} nodes, ${stats.total_journeys} journeys, ${stats.total_connections} connections across ${stats.modules} modules. ${stats.orphans} orphans.
@@ -1730,10 +2090,11 @@ Are there module pairs that SHOULD be connected but aren't?
 MODULE SUMMARY:
 ${moduleSummaries}
 
-Report ONLY missing connections. If all well-connected, respond with exactly: ALL COVERED`);
-    if (!audit3.toLowerCase().includes('all covered')) {
-        gaps.push('cross-module: ' + audit3.substring(0, 200));
-    }
+Respond with JSON: {"status":"pass"} if all connected, or {"status":"fail","gaps":["moduleA and moduleB should connect"]} if gaps exist.
+Reply with ONLY the JSON object.`);
+    const audit3Result = parseAuditResponse(audit3);
+    if (!audit3Result.pass)
+        gaps.push('cross-module: ' + audit3Result.detail);
     // Auditor 4: Goal coverage (if _goals.yaml exists)
     const goalsFilePath = path.join(modulesDir, '_goals.yaml');
     if (fs.existsSync(goalsFilePath)) {
@@ -1750,10 +2111,11 @@ ${moduleSummaries}
 For EACH goal: how many journeys address it? Any goals with 0 journeys?
 A journey "addresses" a goal if it tests or demonstrates the capability the goal describes.
 
-Report ONLY goals with insufficient coverage. If all goals have journeys, respond with exactly: ALL COVERED`);
-        if (!audit4.toLowerCase().includes('all covered')) {
-            gaps.push('goal-coverage: ' + audit4.substring(0, 200));
-        }
+Respond with JSON: {"status":"pass"} if all goals covered, or {"status":"fail","gaps":["GoalX has 0 journeys"]} if gaps exist.
+Reply with ONLY the JSON object.`);
+        const audit4Result = parseAuditResponse(audit4);
+        if (!audit4Result.pass)
+            gaps.push('goal-coverage: ' + audit4Result.detail);
     }
     return {
         converged: gaps.length === 0,

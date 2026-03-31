@@ -17,7 +17,7 @@ describe("CompileFromInMemoryModules", () => {
   });
 
   it("step 2: compilation/YAMLErrorReporting surfaces _parseError entries from modules that failed parsing as compilation errors", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: surfaces _parseError entries from modules that failed parsing as compilation errors
     // TODO: agent fills assertion
   });

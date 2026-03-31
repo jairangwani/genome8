@@ -5,7 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 
 describe("HandleHighChildCountHierarchy", () => {
@@ -58,7 +60,7 @@ describe("HandleHighChildCountHierarchy", () => {
   });
 
   it("step 9: hierarchy/SpawnChildEngine launches the initial batch of children", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches the initial batch of children
     // TODO: agent fills assertion
   });
@@ -88,7 +90,7 @@ describe("HandleHighChildCountHierarchy", () => {
   });
 
   it("step 14: hierarchy/ValidateCrossEngineRefs validates cross-engine refs using the indexed lookup instead of linear scan", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: validates cross-engine refs using the indexed lookup instead of linear scan
     // TODO: agent fills assertion
   });

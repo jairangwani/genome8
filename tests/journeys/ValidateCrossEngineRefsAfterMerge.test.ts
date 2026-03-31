@@ -4,7 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/director.test.ts
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 
 describe("ValidateCrossEngineRefsAfterMerge", () => {
@@ -15,13 +17,13 @@ describe("ValidateCrossEngineRefsAfterMerge", () => {
   });
 
   it("step 2: hierarchy/CreateCrossEngineJourneys creates journeys connecting nodes across child engine boundaries", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: creates journeys connecting nodes across child engine boundaries
     // TODO: agent fills assertion
   });
 
   it("step 3: hierarchy/ValidateCrossEngineRefs checks that every cross-engine ref resolves to a published interface node", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: checks that every cross-engine ref resolves to a published interface node
     // TODO: agent fills assertion
   });

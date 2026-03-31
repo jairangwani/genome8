@@ -29,7 +29,7 @@ describe("CompileAfterModuleCreation", () => {
   });
 
   it("step 4: compilation/YAMLErrorReporting checks the new module for YAML syntax errors", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: checks the new module for YAML syntax errors
     // TODO: agent fills assertion
   });

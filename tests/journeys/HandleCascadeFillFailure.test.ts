@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("HandleCascadeFillFailure", () => {
   it("step 1: codegen/SelectNextModuleToFill picks a module whose dependency failed to fill", () => {
     // Node: codegen/SelectNextModuleToFill (process)
@@ -54,7 +56,7 @@ describe("HandleCascadeFillFailure", () => {
   });
 
   it("step 9: codegen/WriteGeneratedFile writes the independent module to disk", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the independent module to disk
     // TODO: agent fills assertion
   });

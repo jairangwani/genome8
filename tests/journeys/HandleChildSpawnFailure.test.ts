@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 // Implementation: test/compile.test.ts
 // Implementation: test/pando8.test.ts
@@ -18,7 +19,7 @@ describe("HandleChildSpawnFailure", () => {
   });
 
   it("step 2: hierarchy/SpawnChildEngine invokes the OS to create a new convergence.ts process for the child directory", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: invokes the OS to create a new convergence.ts process for the child directory
     // TODO: agent fills assertion
   });

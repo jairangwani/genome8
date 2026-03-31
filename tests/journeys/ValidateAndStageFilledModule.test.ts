@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("ValidateAndStageFilledModule", () => {
   it("step 1: codegen/FillImplementation has produced a filled source file from the LLM worker", () => {
     // Node: codegen/FillImplementation (process)
@@ -48,7 +50,7 @@ describe("ValidateAndStageFilledModule", () => {
   });
 
   it("step 8: codegen/WriteGeneratedFile writes the final approved file to the generated code output directory", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the final approved file to the generated code output directory
     // TODO: agent fills assertion
   });

@@ -15,7 +15,7 @@ nodes:
     description: builds a focused prompt for each auditor containing the compiled graph excerpt and the specific coverage angle to check
   CollectAuditFindings:
     type: process
-    description: gathers findings from all 3 auditors into a single list of coverage gaps with locations and descriptions
+    description: gathers findings from all 4 auditors into a single list of coverage gaps with locations and descriptions
   PrioritizeGaps:
     type: process
     description: ranks the collected gaps by severity so the most critical coverage issues are fixed first
@@ -33,7 +33,7 @@ nodes:
     description: re-runs the specific auditor that found the gap to confirm the fix actually closed it
   DeclareConverged:
     type: process
-    description: marks the graph as CONVERGED after all 3 auditors report zero gaps and compilation shows zero errors
+    description: marks the graph as CONVERGED after all 4 auditors report zero gaps and compilation shows zero errors
   SelectNextGapToFix:
     type: process
     description: picks the highest-priority unfixed gap from the prioritized list and advances the pointer to the next gap
@@ -75,7 +75,7 @@ nodes:
     description: after a fix modifies audit.yaml, re-runs the full audit pipeline from scratch to verify the self-fix did not invalidate audit's own integrity
   AuditFindingsList:
     type: artifact
-    description: the collected list of coverage gaps from all 3 auditors with gap type, location, and description
+    description: the collected list of coverage gaps from all 4 auditors with gap type, location, and description
   SpecCoverageReport:
     type: artifact
     description: auditor 1's report listing which spec sections are covered and which have no representation in the graph
@@ -88,9 +88,9 @@ nodes:
   TrackAuditRound:
     type: artifact
     description: records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking and termination decisions
-  ExactlyThreeAuditors:
+  ExactlyFourAuditors:
     type: rule
-    description: depth audit always uses exactly 3 auditors checking spec coverage, actor coverage, and cross-module coverage
+    description: depth audit always uses exactly 4 auditors checking spec coverage, actor coverage, cross-module coverage, and goal coverage
   TargetedFixesOnly:
     type: rule
     description: audit gaps are fixed with targeted edits to specific modules, never by re-running the full creation pipeline
@@ -103,6 +103,30 @@ nodes:
   DetectFixContentLoss:
     type: process
     description: compares pre-fix and post-fix node and journey counts in the target module to detect a fix that removed existing content, implementing spec section 9's destructive edit protection for the audit fix pipeline
+  CheckGoalCoverage:
+    type: process
+    description: auditor 4 checks that each goal rule node derived from spec §8 is connected to at least one journey that exercises the goal's achievement path, flagging goals with no proving journeys
+  GoalCoverageReport:
+    type: artifact
+    description: auditor 4's report listing which goal rule nodes are connected to journeys proving achievement and which goals are orphaned or only referenced without an achievement path
+  DeterministicGapOrdering:
+    type: rule
+    description: gaps with equal severity must be ordered by a deterministic tiebreaker such as module name then gap type so that fix order is reproducible across runs and the audit-fix cycle produces the same final graph regardless of timing
+  VerifyAuditFindingStability:
+    type: process
+    description: compares two audit finding sets produced from identical compiled graph inputs to detect LLM-induced non-determinism, flagging findings that appear in one run but not the other as unstable
+  PerGapFixAttemptLimit:
+    type: rule
+    description: caps the number of fix attempts for any single gap to prevent an unfixable gap from consuming all LLM calls within a round, marking the gap as unresolvable after the limit is reached
+  SkipUnresolvableGap:
+    type: process
+    description: marks a gap as unresolvable after it has exhausted its per-gap fix attempt limit and advances to the next gap in the prioritized list so the fix round can continue making progress on other gaps
+  DetectFixIntroducedDependency:
+    type: process
+    description: after a fix adds cross-module journey steps to a target module, extracts the new module references and compares them against the declared dependency graph in ORGANIZATION.md to detect undeclared dependencies that the fix introduced
+  SafeguardNodesAreImmutableDuringFix:
+    type: rule
+    description: the self-reference safety nodes (ScopeFixToAvoidAuditBreak, DetectSelfAuditTarget, ReauditAfterSelfFix, DetectFixContentLoss) must not be modified or removed by any audit fix — they can only be changed through spec-driven reconvergence, preventing a fix from disabling its own safety checks
 
 journeys:
   DepthAudit:
@@ -116,8 +140,8 @@ journeys:
         action: verifies the graph is error-free before starting audit
       - node: convergence/TargetedAudit
         action: triggers the depth audit with 3 auditors
-      - node: ExactlyThreeAuditors
-        action: enforces that all 3 coverage angles will be checked
+      - node: ExactlyFourAuditors
+        action: enforces that all 4 coverage angles will be checked
       - node: TrackAuditRound
         action: initializes the round counter to 1 for the first audit pass
       - node: GenerateAuditPrompt
@@ -761,3 +785,153 @@ journeys:
         action: generates TypeScript skeletons from the converged process nodes
       - node: codegen/FillImplementation
         action: dispatches LLM workers to fill the skeleton implementations
+
+  CheckGoalCoverageAgainstGoals:
+    steps:
+      - node: convergence/ExtractGoals
+        action: provides the authoritative set of goal rule nodes derived from spec §8
+      - node: graph/CompiledIndex
+        action: provides the compiled graph with all journeys across all modules
+      - node: GenerateAuditPrompt
+        action: builds the goal coverage prompt including the full goal list as ground truth
+      - node: _actors/Auditor
+        action: compares each goal rule node against journeys that exercise its achievement path
+      - node: CheckGoalCoverage
+        action: flags goals that have no journey proving achievement and goals referenced only in descriptions without concrete steps
+      - node: CheckGoalCoverage
+        action: distinguishes between goals with journey coverage (plan exists) and goals with actual proof (journey tests pass)
+      - node: GoalCoverageReport
+        action: records which goals are covered by journeys, which are orphaned, and which lack achievement proof
+      - node: CollectAuditFindings
+        action: adds goal coverage gaps to the findings list with the goal name and missing coverage type as context
+      - node: MergeAuditReports
+        action: integrates the goal coverage report alongside spec, actor, and cross-module reports into the unified findings format
+
+  VerifyAuditFindingsAreRepeatable:
+    steps:
+      - node: convergence/CompileCheck
+        action: confirms compilation passed with zero errors providing a stable input graph
+      - node: graph/CompiledIndex
+        action: provides the identical compiled graph for both audit runs
+      - node: GenerateAuditPrompt
+        action: builds audit prompts for all 4 auditors for the first run
+      - node: _actors/Auditor
+        action: auditor 1 checks spec coverage on the first run
+      - node: _actors/Auditor
+        action: auditor 2 checks actor coverage on the first run
+      - node: _actors/Auditor
+        action: auditor 3 checks cross-module coverage on the first run
+      - node: _actors/Auditor
+        action: auditor 4 checks goal coverage on the first run
+      - node: MergeAuditReports
+        action: combines the 4 first-run reports into a unified finding set
+      - node: CollectAuditFindings
+        action: stores the first-run findings as the baseline for comparison
+      - node: GenerateAuditPrompt
+        action: rebuilds identical audit prompts for all 4 auditors for the second run
+      - node: _actors/Auditor
+        action: auditor 1 re-checks spec coverage on the same graph
+      - node: _actors/Auditor
+        action: auditor 2 re-checks actor coverage on the same graph
+      - node: _actors/Auditor
+        action: auditor 3 re-checks cross-module coverage on the same graph
+      - node: _actors/Auditor
+        action: auditor 4 re-checks goal coverage on the same graph
+      - node: MergeAuditReports
+        action: combines the 4 second-run reports into a unified finding set
+      - node: CollectAuditFindings
+        action: stores the second-run findings for comparison
+      - node: VerifyAuditFindingStability
+        action: compares the first-run and second-run finding sets gap by gap
+      - node: VerifyAuditFindingStability
+        action: identifies findings that appear in one run but not the other as unstable
+      - node: VerifyAuditFindingStability
+        action: flags unstable findings so the fix pipeline can deprioritize or skip them to avoid chasing non-deterministic LLM output
+
+  VerifyGapPrioritizationIsStable:
+    steps:
+      - node: AuditFindingsList
+        action: provides the same collected gap list as input for both prioritization runs
+      - node: PrioritizeGaps
+        action: ranks the gaps by severity for the first run producing an ordered list
+      - node: DeterministicGapOrdering
+        action: applies the deterministic tiebreaker for equal-severity gaps in the first run
+      - node: PrioritizeGaps
+        action: ranks the same gaps by severity for the second run producing a second ordered list
+      - node: DeterministicGapOrdering
+        action: applies the same deterministic tiebreaker for equal-severity gaps in the second run
+      - node: VerifyAuditFindingStability
+        action: compares the two ordered lists position by position
+      - node: VerifyAuditFindingStability
+        action: confirms every gap appears at the same position in both lists proving the prioritization is deterministic
+      - node: VerifyAuditFindingStability
+        action: flags any ordering differences as a determinism violation in the prioritization algorithm
+
+  HandleUnfixableGap:
+    steps:
+      - node: AuditFindingsList
+        action: provides a gap that has been attempted multiple times without success
+      - node: SelectNextGapToFix
+        action: picks the gap from the prioritized list
+      - node: TrackAuditRound
+        action: provides the number of prior fix attempts recorded for this specific gap
+      - node: PerGapFixAttemptLimit
+        action: checks whether the gap's attempt count has reached the per-gap maximum
+      - node: PerGapFixAttemptLimit
+        action: confirms the limit is reached and the gap should not be retried
+      - node: SkipUnresolvableGap
+        action: marks the gap as unresolvable with the number of failed attempts and last failure reason
+      - node: SkipUnresolvableGap
+        action: removes the gap from the active fix queue so it will not be selected again this round
+      - node: AuditFindingsList
+        action: retains the gap with an unresolvable annotation distinguishing it from fixable gaps
+      - node: SelectNextGapToFix
+        action: advances to the next fixable gap in the prioritized list
+      - node: TrackAuditRound
+        action: records the skipped gap for progress analysis and final termination reporting
+
+  VerifyFixDoesNotIntroduceUndeclaredDependency:
+    steps:
+      - node: ApplyFix
+        action: has edited a target module to close a coverage gap by adding cross-module journey steps
+      - node: VerifyFixCompiles
+        action: confirms the fix compiles cleanly with all cross-module references resolving
+      - node: _actors/Compiler
+        action: validates the fix with zero errors
+      - node: DetectFixIntroducedDependency
+        action: extracts all cross-module references from the fixed module's journey steps
+      - node: DetectFixIntroducedDependency
+        action: compares the post-fix cross-module references against the pre-fix set to identify newly added references
+      - node: organization/DependencyGraph
+        action: provides the declared dependency edges from ORGANIZATION.md
+      - node: DetectFixIntroducedDependency
+        action: checks each newly added cross-module reference against the declared dependency graph
+      - node: DetectFixIntroducedDependency
+        action: flags any new reference whose target module is not listed as a declared dependency of the fixed module
+      - node: compilation/WarningReport
+        action: records undeclared dependencies introduced by the fix as warnings that could break future build order
+      - node: TrackAuditRound
+        action: records the undeclared dependency warning for the fix round report
+
+  PreventFixFromWeakeningSafeguards:
+    steps:
+      - node: AuditFindingsList
+        action: provides a gap that targets audit.yaml
+      - node: SelectNextGapToFix
+        action: picks the self-referential gap from the prioritized list
+      - node: DetectSelfAuditTarget
+        action: confirms the gap targets audit.yaml and flags it for extra safeguards
+      - node: ScopeFixToAvoidAuditBreak
+        action: checks the proposed fix scope against protected operational nodes
+      - node: SafeguardNodesAreImmutableDuringFix
+        action: checks whether the proposed fix would modify or remove any of the self-reference safety nodes
+      - node: SafeguardNodesAreImmutableDuringFix
+        action: detects that the fix targets ScopeFixToAvoidAuditBreak, DetectSelfAuditTarget, ReauditAfterSelfFix, or DetectFixContentLoss
+      - node: SafeguardNodesAreImmutableDuringFix
+        action: rejects the fix because modifying safeguard nodes during the fix cycle would disable safety checks for subsequent fixes
+      - node: RejectAndRevertFix
+        action: discards the proposed fix without applying it
+      - node: AuditFindingsList
+        action: retains the gap with an annotation that it requires spec-driven reconvergence to resolve
+      - node: TrackAuditRound
+        action: records that the fix was rejected due to safeguard immutability protection

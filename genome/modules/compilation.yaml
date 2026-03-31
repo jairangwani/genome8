@@ -3,7 +3,7 @@ spec_sections: [3]
 nodes:
   YAMLParsing:
     type: process
-    description: reads .yaml and .yml files from the modules directory, derives the module name from each filename, parses raw YAML into structured data, and normalizes missing top-level fields (spec_sections, nodes, journeys) with empty defaults so downstream consumers never see undefined
+    description: reads .yaml and .yml files from the modules directory, derives the module name from each filename, parses raw YAML into structured data, normalizes missing top-level fields (spec_sections, nodes, journeys) with empty defaults so downstream consumers never see undefined, and catches parse errors to surface them as tagged _parseError entries with empty defaults rather than crashing the compilation
     files: ["src/compile.ts"]
   DuplicateDetection:
     type: process
@@ -22,7 +22,8 @@ nodes:
     description: classifies unresolved refs as external sibling-engine references and emits warnings instead of errors
   YAMLErrorReporting:
     type: process
-    description: catches and reports YAML syntax errors with file name and line number for each malformed module
+    description: collects _parseError tags from malformed modules and promotes them to severity-error ValidationIssues with file name and line number so parse failures appear in the final compilation report
+    files: ["src/compile.ts"]
   ValidationAggregation:
     type: process
     description: collects all errors and warnings from all validation checks into a single compilation result
@@ -68,7 +69,7 @@ nodes:
     description: structured list of all warnings including external refs that parent will validate later
   CompileCLI:
     type: interface
-    description: command-line interface to run compile.ts and receive validation output
+    description: command-line entry point for the compile command that invokes compile() on the given modules directory and prints aggregate stats as JSON followed by categorized error and warning counts to stdout
     files: ["src/cli.ts"]
   ZeroErrorConvergence:
     type: rule

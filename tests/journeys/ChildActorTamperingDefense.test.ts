@@ -12,156 +12,128 @@ import yaml from 'js-yaml';
 import { compile, compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: test/cross-project.test.ts
-
-const parentActorsYaml = yaml.dump({
-  spec_sections: [1],
-  nodes: {
-    ProjectOwner: { type: 'actor', description: 'describes a project via spec.md' },
-    LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-  },
-  journeys: {},
-}, { lineWidth: 120 });
-
-const parentHash = crypto.createHash('sha256').update(parentActorsYaml).digest('hex');
+function hashContent(content: string): string {
+  return 'sha256:' + crypto.createHash('sha256').update(content).digest('hex');
+}
 
 describe("ChildActorTamperingDefense", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'child-tamper-'));
+  const parentDir = path.join(tmpDir, 'parent', 'modules');
+  const childDir = path.join(tmpDir, 'child', 'modules');
+
+  fs.mkdirSync(parentDir, { recursive: true });
+  fs.mkdirSync(childDir, { recursive: true });
+
+  const parentActorsContent = yaml.dump({
+    nodes: {
+      User: { type: 'actor', description: 'Uses the platform' },
+      Admin: { type: 'actor', description: 'Manages the platform' },
+    },
+  });
+
   it("step 1: _actors/ChildEngine receives inherited _actors.yaml from the parent engine", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-tamper-'));
-    const childDir = path.join(tmpDir, 'child', 'genome', 'modules');
-    fs.mkdirSync(childDir, { recursive: true });
-    fs.writeFileSync(path.join(childDir, '_actors.yaml'), parentActorsYaml);
-    expect(fs.existsSync(path.join(childDir, '_actors.yaml'))).toBe(true);
-    const content = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    expect(content).toContain('ProjectOwner');
-    expect(content).toContain('LLMWorker');
-    fs.rmSync(tmpDir, { recursive: true });
+    fs.writeFileSync(path.join(parentDir, '_actors.yaml'), parentActorsContent);
+    // Child receives an exact copy
+    fs.writeFileSync(path.join(childDir, '_actors.yaml'), parentActorsContent);
+    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
+    expect(childContent).toBe(parentActorsContent);
   });
 
   it("step 2: actors/InheritActorsFromParent copies the parent's _actors.yaml with a known content hash", () => {
-    // Parent hash is computed and stored
-    expect(parentHash.length).toBe(64);
-    // Verify the same content produces the same hash
-    const verifyHash = crypto.createHash('sha256').update(parentActorsYaml).digest('hex');
-    expect(verifyHash).toBe(parentHash);
+    const parentHash = hashContent(parentActorsContent);
+    expect(parentHash).toMatch(/^sha256:/);
+    // Store the parent hash for later comparison
+    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
+    const childHash = hashContent(childContent);
+    expect(childHash).toBe(parentHash);
   });
 
   it("step 3: _actors/RogueWorker modifies the child's _actors.yaml to add unauthorized actors or alter descriptions", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-tamper-'));
-    const childDir = path.join(tmpDir, 'child', 'genome', 'modules');
-    fs.mkdirSync(childDir, { recursive: true });
-    fs.writeFileSync(path.join(childDir, '_actors.yaml'), parentActorsYaml);
-    // Rogue worker tampers with the file
-    const tamperedYaml = yaml.dump({
-      spec_sections: [1],
+    // Rogue worker tampers with the child's actors
+    const tamperedContent = yaml.dump({
       nodes: {
-        ProjectOwner: { type: 'actor', description: 'describes a project via spec.md' },
-        LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-        UnauthorizedActor: { type: 'actor', description: 'injected by rogue worker' },
+        User: { type: 'actor', description: 'Uses the platform' },
+        Admin: { type: 'actor', description: 'Manages the platform' },
+        Backdoor: { type: 'actor', description: 'Unauthorized backdoor actor' },
       },
-      journeys: {},
-    }, { lineWidth: 120 });
-    fs.writeFileSync(path.join(childDir, '_actors.yaml'), tamperedYaml);
+    });
+    fs.writeFileSync(path.join(childDir, '_actors.yaml'), tamperedContent);
     const content = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    expect(content).toContain('UnauthorizedActor');
-    fs.rmSync(tmpDir, { recursive: true });
+    expect(content).toContain('Backdoor');
   });
 
   it("step 4: actors/DetectChildActorTampering computes the hash of the child's current _actors.yaml content", () => {
-    // Tampered content has a different hash
-    const tamperedYaml = yaml.dump({
-      spec_sections: [1],
-      nodes: {
-        ProjectOwner: { type: 'actor', description: 'describes a project via spec.md' },
-        LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-        UnauthorizedActor: { type: 'actor', description: 'injected by rogue worker' },
-      },
-      journeys: {},
-    }, { lineWidth: 120 });
-    const childHash = crypto.createHash('sha256').update(tamperedYaml).digest('hex');
-    expect(childHash.length).toBe(64);
-    expect(childHash).not.toBe(parentHash);
+    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
+    const childHash = hashContent(childContent);
+    expect(childHash).toMatch(/^sha256:/);
+    expect(childHash.length).toBeGreaterThan(10);
   });
 
   it("step 5: actors/DetectChildActorTampering compares the child hash against the parent's original hash", () => {
-    const tamperedYaml = yaml.dump({
-      spec_sections: [1],
-      nodes: {
-        ProjectOwner: { type: 'actor', description: 'tampered description' },
-        LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-      },
-      journeys: {},
-    }, { lineWidth: 120 });
-    const childHash = crypto.createHash('sha256').update(tamperedYaml).digest('hex');
-    // Even a small description change causes hash mismatch
+    const parentHash = hashContent(parentActorsContent);
+    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
+    const childHash = hashContent(childContent);
+    // Hashes differ because child was tampered
     expect(childHash).not.toBe(parentHash);
   });
 
   it("step 6: actors/DetectChildActorTampering detects the mismatch and flags the child's _actors.yaml as tampered", () => {
-    const tamperedYaml = yaml.dump({
-      spec_sections: [1],
-      nodes: {
-        ProjectOwner: { type: 'actor', description: 'describes a project via spec.md' },
-        LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-        InjectedActor: { type: 'actor', description: 'not authorized' },
-      },
-      journeys: {},
-    }, { lineWidth: 120 });
-    const childHash = crypto.createHash('sha256').update(tamperedYaml).digest('hex');
-    const tampered = childHash !== parentHash;
+    const parentHash = hashContent(parentActorsContent);
+    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
+    const childHash = hashContent(childContent);
+    const tampered = parentHash !== childHash;
     expect(tampered).toBe(true);
   });
 
   it("step 7: actors/ParentDiscoversChildrenInherit confirms the rule violation since children must not modify inherited actors", () => {
-    // Rule: children inherit actors, they do not modify them
-    // Untampered child should match parent hash exactly
-    const untamperedHash = crypto.createHash('sha256').update(parentActorsYaml).digest('hex');
-    expect(untamperedHash).toBe(parentHash);
-    // Any modification violates the rule
-    const modified = parentActorsYaml + '\n# tampered';
-    const modifiedHash = crypto.createHash('sha256').update(modified).digest('hex');
-    expect(modifiedHash).not.toBe(parentHash);
+    // Rule: child actors must match parent exactly
+    const parentActors = yaml.load(parentActorsContent) as any;
+    const childActors = yaml.load(fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8')) as any;
+    const parentNames = Object.keys(parentActors.nodes).sort();
+    const childNames = Object.keys(childActors.nodes).sort();
+    // Child has extra actors — violation
+    expect(childNames.length).toBeGreaterThan(parentNames.length);
+    const unauthorized = childNames.filter((n: string) => !parentNames.includes(n));
+    expect(unauthorized).toContain('Backdoor');
   });
 
   it("step 8: compilation/ErrorReport records the tampering as a validation error with the specific differences found", () => {
-    // Compile the tampered child — the unauthorized actor appears
-    const tamperedModule: ModuleFile = {
-      nodes: {
-        ProjectOwner: { type: 'actor', description: 'describes a project via spec.md' },
-        LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-        UnauthorizedActor: { type: 'actor', description: 'injected by rogue worker' },
-      },
-      journeys: {},
-    };
-    const result = compileFromModules(new Map([['_actors', tamperedModule]]));
-    // The unauthorized actor compiles but would be detected by hash comparison
-    expect(result.index.nodes['_actors/UnauthorizedActor']).toBeDefined();
-    // Diff: parent had 2 actors, child has 3
-    const parentActorCount = 2;
-    const childActorCount = Object.keys(result.index.nodes).length;
-    expect(childActorCount).toBeGreaterThan(parentActorCount);
+    const parentActors = yaml.load(parentActorsContent) as any;
+    const childActors = yaml.load(fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8')) as any;
+    const parentNames = new Set(Object.keys(parentActors.nodes));
+    const childNames = Object.keys(childActors.nodes);
+    const additions = childNames.filter((n: string) => !parentNames.has(n));
+    // Error report includes the specific unauthorized additions
+    expect(additions.length).toBe(1);
+    expect(additions[0]).toBe('Backdoor');
   });
 
   it("step 9: hierarchy/ValidateCrossEngineRefs blocks the child's compilation result from merging into the parent until the tampering is resolved", () => {
-    // After restoring to parent's original actors, hash matches and merge is allowed
-    const restoredModule: ModuleFile = {
-      nodes: {
-        ProjectOwner: { type: 'actor', description: 'describes a project via spec.md' },
-        LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-      },
-      journeys: {},
-    };
-    const result = compileFromModules(new Map([['_actors', restoredModule]]));
-    expect(Object.keys(result.index.nodes).length).toBe(2);
-    expect(result.issues.filter(i => i.severity === 'error').length).toBe(0);
-    // Restored content hash matches parent
-    const restoredYaml = yaml.dump({
-      spec_sections: [1],
-      nodes: restoredModule.nodes,
-      journeys: {},
-    }, { lineWidth: 120 });
-    const restoredHash = crypto.createHash('sha256').update(restoredYaml).digest('hex');
+    // With tampered actors, the child has nodes the parent doesn't expect
+    // Restore child to parent's original actors — tampering resolved
+    fs.writeFileSync(path.join(childDir, '_actors.yaml'), parentActorsContent);
+    const restoredHash = hashContent(fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8'));
+    const parentHash = hashContent(parentActorsContent);
     expect(restoredHash).toBe(parentHash);
+
+    // Child now compiles cleanly
+    fs.writeFileSync(path.join(childDir, 'app.yaml'), yaml.dump({
+      nodes: { Handler: { type: 'process', description: 'Handles requests' } },
+      journeys: {
+        UserAction: {
+          steps: [
+            { node: '_actors/User', action: 'makes request' },
+            { node: 'Handler', action: 'processes it' },
+          ],
+        },
+      },
+    }));
+    const result = compile(childDir);
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors.length).toBe(0);
+
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
 });

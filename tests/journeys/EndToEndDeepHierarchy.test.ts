@@ -5,9 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 // Implementation: test/publish.test.ts
 // Implementation: test/pando9-publish.test.ts
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: src/publish.ts
 
@@ -31,7 +33,7 @@ describe("EndToEndDeepHierarchy", () => {
   });
 
   it("step 4: hierarchy/SpawnChildEngine launches child engines at depth 1", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches child engines at depth 1
     // TODO: agent fills assertion
   });
@@ -61,7 +63,7 @@ describe("EndToEndDeepHierarchy", () => {
   });
 
   it("step 9: hierarchy/SpawnChildEngine launches grandchild engines at depth 2", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches grandchild engines at depth 2
     // TODO: agent fills assertion
   });
@@ -103,7 +105,7 @@ describe("EndToEndDeepHierarchy", () => {
   });
 
   it("step 16: hierarchy/ValidateCrossEngineRefs root resolves all cross-engine refs including propagated grandchild warnings", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: root resolves all cross-engine refs including propagated grandchild warnings
     // TODO: agent fills assertion
   });

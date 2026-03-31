@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 
 describe("RecursiveChildSplit", () => {
@@ -81,7 +82,7 @@ describe("RecursiveChildSplit", () => {
   });
 
   it("step 13: hierarchy/SpawnChildEngine launches convergence.ts for each grandchild with depth incremented again", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches convergence.ts for each grandchild with depth incremented again
     // TODO: agent fills assertion
   });

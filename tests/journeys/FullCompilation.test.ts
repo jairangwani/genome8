@@ -25,7 +25,7 @@ describe("FullCompilation", () => {
   });
 
   it("step 3: compilation/YAMLErrorReporting reports any YAML syntax errors found", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: reports any YAML syntax errors found
     // TODO: agent fills assertion
   });

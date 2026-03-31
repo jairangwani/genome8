@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 
 describe("SpawnChildrenWithConcurrencyLimit", () => {
@@ -27,7 +28,7 @@ describe("SpawnChildrenWithConcurrencyLimit", () => {
   });
 
   it("step 4: hierarchy/SpawnChildEngine launches the first batch of child engines up to the concurrency limit", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches the first batch of child engines up to the concurrency limit
     // TODO: agent fills assertion
   });
@@ -57,7 +58,7 @@ describe("SpawnChildrenWithConcurrencyLimit", () => {
   });
 
   it("step 9: hierarchy/SpawnChildEngine launches the next child engine into the freed slot", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches the next child engine into the freed slot
     // TODO: agent fills assertion
   });

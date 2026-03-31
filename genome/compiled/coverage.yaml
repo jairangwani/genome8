@@ -1,4 +1,4 @@
-_generated: '2026-03-27T14:46:41.032Z'
+_generated: '2026-03-31T08:03:03.706Z'
 modules:
   actors:
     nodes: 25
@@ -10,33 +10,33 @@ modules:
       - 4
       - 5
   audit:
-    nodes: 34
-    journeys: 24
-    connections: 218
-    cross_module_connections: 68
+    nodes: 42
+    journeys: 30
+    connections: 269
+    cross_module_connections: 76
     spec_sections:
       - 3
       - 5
   codegen:
-    nodes: 31
-    journeys: 19
-    connections: 213
-    cross_module_connections: 60
+    nodes: 35
+    journeys: 20
+    connections: 235
+    cross_module_connections: 68
     spec_sections:
       - 3
       - 5
   compilation:
     nodes: 41
     journeys: 35
-    connections: 355
-    cross_module_connections: 156
+    connections: 368
+    cross_module_connections: 169
     spec_sections:
       - 3
   convergence:
-    nodes: 97
-    journeys: 77
-    connections: 768
-    cross_module_connections: 348
+    nodes: 120
+    journeys: 98
+    connections: 955
+    cross_module_connections: 394
     spec_sections:
       - 1
       - 3
@@ -47,11 +47,13 @@ modules:
       - 9
       - 10
       - 11
+      - 12
+      - 13
   events:
     nodes: 52
     journeys: 42
-    connections: 363
-    cross_module_connections: 75
+    connections: 364
+    cross_module_connections: 76
     spec_sections:
       - 3
       - 5
@@ -64,17 +66,17 @@ modules:
     spec_sections:
       - 3
   graph:
-    nodes: 34
-    journeys: 27
-    connections: 361
-    cross_module_connections: 153
+    nodes: 38
+    journeys: 34
+    connections: 394
+    cross_module_connections: 166
     spec_sections:
       - 2
   hierarchy:
     nodes: 47
     journeys: 35
-    connections: 334
-    cross_module_connections: 101
+    connections: 339
+    cross_module_connections: 106
     spec_sections:
       - 2
       - 3
@@ -83,7 +85,7 @@ modules:
   llm:
     nodes: 71
     journeys: 46
-    connections: 452
+    connections: 454
     cross_module_connections: 94
     spec_sections:
       - 3
@@ -97,25 +99,25 @@ modules:
       - 5
   organization:
     nodes: 34
-    journeys: 24
-    connections: 235
-    cross_module_connections: 72
+    journeys: 26
+    connections: 242
+    cross_module_connections: 76
     spec_sections:
       - 3
       - 5
   publish:
     nodes: 57
     journeys: 41
-    connections: 403
-    cross_module_connections: 68
+    connections: 407
+    cross_module_connections: 72
     spec_sections:
       - 2
       - 3
   sync:
     nodes: 55
     journeys: 45
-    connections: 396
-    cross_module_connections: 79
+    connections: 399
+    cross_module_connections: 82
     spec_sections:
       - 3
       - 5
@@ -131,15 +133,15 @@ modules:
   _actors:
     nodes: 22
     journeys: 3
-    connections: 312
-    cross_module_connections: 277
+    connections: 364
+    cross_module_connections: 316
     spec_sections:
       - 1
   _goals:
     nodes: 5
     journeys: 5
-    connections: 10
-    cross_module_connections: 8
+    connections: 12
+    cross_module_connections: 10
     spec_sections:
       - all
 orphans:

@@ -40,7 +40,7 @@ describe("GenerateSkeletonsFromGraph", () => {
   });
 
   it("step 6: codegen/GenerateProcessSkeletons creates TypeScript class skeletons for all process nodes that have a files field", () => {
-    // Node: codegen/GenerateProcessSkeletons (process)
+    // Node: codegen/GenerateProcessSkeletons (process) — has code: src/codegen.ts
     // Action: creates TypeScript class skeletons for all process nodes that have a files field
     // TODO: agent fills assertion
   });
@@ -76,13 +76,13 @@ describe("GenerateSkeletonsFromGraph", () => {
   });
 
   it("step 12: codegen/EnsureOutputDirectory creates the parent directory tree if it does not yet exist", () => {
-    // Node: codegen/EnsureOutputDirectory (process)
+    // Node: codegen/EnsureOutputDirectory (process) — has code: src/codegen.ts
     // Action: creates the parent directory tree if it does not yet exist
     // TODO: agent fills assertion
   });
 
   it("step 13: codegen/WriteGeneratedFile writes each skeleton to disk at the declared file path", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes each skeleton to disk at the declared file path
     // TODO: agent fills assertion
   });

@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 
 describe("AchieveGoalBuildPandoValidatesProtocol", () => {
@@ -21,7 +22,7 @@ describe("AchieveGoalBuildPandoValidatesProtocol", () => {
   });
 
   it("step 3: hierarchy/ValidateCrossEngineRefs confirms all cross-subsystem references in Pando resolve to published interface nodes", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: confirms all cross-subsystem references in Pando resolve to published interface nodes
     // TODO: agent fills assertion
   });

@@ -33,7 +33,7 @@ describe("AuditPassTriggersCodegen", () => {
   });
 
   it("step 5: codegen/GenerateProcessSkeletons generates TypeScript skeletons from the converged process nodes", () => {
-    // Node: codegen/GenerateProcessSkeletons (process)
+    // Node: codegen/GenerateProcessSkeletons (process) — has code: src/codegen.ts
     // Action: generates TypeScript skeletons from the converged process nodes
     // TODO: agent fills assertion
   });

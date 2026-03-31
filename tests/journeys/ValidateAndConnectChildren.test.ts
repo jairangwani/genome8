@@ -5,10 +5,12 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: test/compile.test.ts
 // Implementation: test/pando8.test.ts
 // Implementation: test/pando9.test.ts
+// Implementation: src/convergence.ts
 // Implementation: test/director.test.ts
 // Implementation: src/types.ts
 
@@ -32,7 +34,7 @@ describe("ValidateAndConnectChildren", () => {
   });
 
   it("step 4: hierarchy/ValidateCrossEngineRefs checks every external ref warning from children against sibling interfaces", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: checks every external ref warning from children against sibling interfaces
     // TODO: agent fills assertion
   });
@@ -68,7 +70,7 @@ describe("ValidateAndConnectChildren", () => {
   });
 
   it("step 10: hierarchy/CreateCrossEngineJourneys creates parent-level journeys linking nodes across children's interfaces", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: creates parent-level journeys linking nodes across children's interfaces
     // TODO: agent fills assertion
   });

@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: src/types.ts
 // Implementation: src/publish.ts
@@ -31,7 +32,7 @@ describe("FlattenGrandchildInterfacesIntoChild", () => {
   });
 
   it("step 4: hierarchy/ValidateCrossEngineRefs checks external refs across grandchild sibling interfaces", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: checks external refs across grandchild sibling interfaces
     // TODO: agent fills assertion
   });

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/codegen.test.ts
+// Implementation: src/codegen.ts
 
 describe("FillSkeletonsWithLLM", () => {
   it("step 1: codegen/SkeletonFile provides the empty skeleton for a module", () => {
@@ -69,7 +70,7 @@ describe("FillSkeletonsWithLLM", () => {
   });
 
   it("step 11: codegen/WriteGeneratedFile writes the validated file to the generated code output directory", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the validated file to the generated code output directory
     // TODO: agent fills assertion
   });

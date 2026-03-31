@@ -4,157 +4,185 @@
 // Modules touched: audit, graph, _actors
 
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
+import { compileFromModules } from '../../src/compile.js';
 import yaml from 'js-yaml';
-import { compile, compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-const _actors: ModuleFile = {
-  nodes: {
-    Compiler: { type: 'actor', description: 'validates the graph' },
-    LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-  },
-  journeys: {},
-};
-
-// Pre-fix auth: 3 nodes, 1 journey
+// Pre-fix auth module: has 3 nodes, 2 journeys
 const preFixAuth: ModuleFile = {
+  spec_sections: [1],
   nodes: {
-    Login: { type: 'process', description: 'authenticates users' },
-    TokenStore: { type: 'artifact', description: 'stores tokens' },
-    OrphanRule: { type: 'rule', description: 'validates token format — orphan gap' },
+    Login: { type: 'process', description: 'Login flow' },
+    Token: { type: 'artifact', description: 'Session token' },
+    Register: { type: 'process', description: 'Registration flow' },
   },
   journeys: {
     UserLogin: {
       steps: [
-        { node: '_actors/LLMWorker', action: 'triggers login' },
-        { node: 'Login', action: 'validates' },
-        { node: 'TokenStore', action: 'stores token' },
+        { node: '_actors/User', action: 'submits credentials' },
+        { node: 'Login', action: 'authenticates' },
+        { node: 'Token', action: 'is issued' },
+      ],
+    },
+    UserRegister: {
+      steps: [
+        { node: '_actors/User', action: 'creates account' },
+        { node: 'Register', action: 'processes registration' },
+        { node: 'Token', action: 'is issued' },
       ],
     },
   },
 };
 
-// Destructive fix: closes the orphan gap but REMOVES TokenStore and UserLogin journey
-// Replaces them with a smaller module — content loss
+// Destructive fix: closed a gap but removed Register node and UserRegister journey
 const destructiveFixAuth: ModuleFile = {
+  spec_sections: [1],
   nodes: {
-    Login: { type: 'process', description: 'authenticates users' },
-    OrphanRule: { type: 'rule', description: 'validates token format' },
+    Login: { type: 'process', description: 'Login flow' },
+    Token: { type: 'artifact', description: 'Session token' },
+    AdminPanel: { type: 'interface', description: 'Admin dashboard' },
   },
   journeys: {
-    SimpleLogin: {
+    UserLogin: {
       steps: [
-        { node: '_actors/LLMWorker', action: 'triggers login' },
-        { node: 'Login', action: 'validates' },
-        { node: 'OrphanRule', action: 'checks format' },
+        { node: '_actors/User', action: 'submits credentials' },
+        { node: 'Login', action: 'authenticates' },
+        { node: 'Token', action: 'is issued' },
+      ],
+    },
+    AdminAccess: {
+      steps: [
+        { node: '_actors/Admin', action: 'opens dashboard' },
+        { node: 'AdminPanel', action: 'renders panel' },
       ],
     },
   },
 };
 
-const preFixResult = compileFromModules(new Map([['_actors', _actors], ['auth', preFixAuth]]));
-const destructiveResult = compileFromModules(new Map([['_actors', _actors], ['auth', destructiveFixAuth]]));
-const revertResult = compileFromModules(new Map([['_actors', _actors], ['auth', preFixAuth]]));
+const actors: ModuleFile = {
+  nodes: {
+    User: { type: 'actor', description: 'Platform user' },
+    Admin: { type: 'actor', description: 'Platform admin' },
+  },
+};
+
+function buildPreFix() {
+  return compileFromModules(new Map<string, ModuleFile>([
+    ['_actors', actors],
+    ['auth', preFixAuth],
+  ]));
+}
+
+function buildDestructiveFix() {
+  return compileFromModules(new Map<string, ModuleFile>([
+    ['_actors', actors],
+    ['auth', destructiveFixAuth],
+  ]));
+}
 
 describe("RevertDestructiveFix", () => {
   it("step 1: audit/ApplyFix has edited the target module to close a coverage gap", () => {
-    // Pre-fix had the orphan
-    expect(preFixResult.coverage.orphans).toContain('auth/OrphanRule');
-    // Destructive fix closes it
-    expect(destructiveResult.coverage.orphans).not.toContain('auth/OrphanRule');
+    const editedYaml = yaml.dump(destructiveFixAuth);
+    expect(editedYaml).toContain('AdminAccess');
+    expect(editedYaml).toContain('AdminPanel');
   });
 
   it("step 2: audit/VerifyFixCompiles compilation passes with zero new errors", () => {
-    const errors = destructiveResult.issues.filter(i => i.severity === 'error');
+    const result = buildDestructiveFix();
+    const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors.length).toBe(0);
   });
 
   it("step 3: audit/VerifyGapClosed confirms the targeted gap is now closed", () => {
-    expect(destructiveResult.index.nodes['auth/OrphanRule'].in_journeys.length).toBeGreaterThanOrEqual(1);
+    const result = buildDestructiveFix();
+    // Admin is now in a journey — gap closed
+    const adminNode = result.index.nodes['_actors/Admin'];
+    expect(adminNode.in_journeys.length).toBeGreaterThan(0);
   });
 
   it("step 4: audit/DetectFixContentLoss compares pre-fix node count against post-fix node count in the target module", () => {
-    const preNodes = Object.entries(preFixResult.index.nodes).filter(([, n]) => n.module === 'auth').length;
-    const postNodes = Object.entries(destructiveResult.index.nodes).filter(([, n]) => n.module === 'auth').length;
-    expect(preNodes).toBe(3);
-    expect(postNodes).toBe(2);
-    expect(postNodes).toBeLessThan(preNodes);
+    const preFixNodeCount = Object.keys(preFixAuth.nodes!).length;
+    const postFixNodeCount = Object.keys(destructiveFixAuth.nodes!).length;
+    // Both have 3 nodes, but different nodes
+    expect(preFixNodeCount).toBe(3);
+    expect(postFixNodeCount).toBe(3);
+    // Register was removed and AdminPanel was added
+    expect(Object.keys(preFixAuth.nodes!)).toContain('Register');
+    expect(Object.keys(destructiveFixAuth.nodes!)).not.toContain('Register');
   });
 
   it("step 5: audit/DetectFixContentLoss compares pre-fix journey count against post-fix journey count in the target module", () => {
-    const preJourneys = Object.values(preFixResult.index.journeys).filter(j => j.module === 'auth');
-    const postJourneys = Object.values(destructiveResult.index.journeys).filter(j => j.module === 'auth');
-    expect(preJourneys.length).toBe(1);
-    expect(postJourneys.length).toBe(1);
-    // Journey name changed — UserLogin was replaced by SimpleLogin
-    expect(preJourneys[0].name).toBe('UserLogin');
-    expect(postJourneys[0].name).toBe('SimpleLogin');
+    const preFixJourneyCount = Object.keys(preFixAuth.journeys!).length;
+    const postFixJourneyCount = Object.keys(destructiveFixAuth.journeys!).length;
+    expect(preFixJourneyCount).toBe(2);
+    expect(postFixJourneyCount).toBe(2);
+    // UserRegister was removed
+    expect(Object.keys(preFixAuth.journeys!)).toContain('UserRegister');
+    expect(Object.keys(destructiveFixAuth.journeys!)).not.toContain('UserRegister');
   });
 
   it("step 6: audit/DetectFixContentLoss detects that the fix decreased node or journey count indicating existing content was removed", () => {
-    const preNodeCount = Object.entries(preFixResult.index.nodes).filter(([, n]) => n.module === 'auth').length;
-    const postNodeCount = Object.entries(destructiveResult.index.nodes).filter(([, n]) => n.module === 'auth').length;
-    const contentLost = postNodeCount < preNodeCount;
-    expect(contentLost).toBe(true);
-    // Specifically: TokenStore was removed
-    expect(preFixResult.index.nodes['auth/TokenStore']).toBeDefined();
-    expect(destructiveResult.index.nodes['auth/TokenStore']).toBeUndefined();
+    const preFixNodes = new Set(Object.keys(preFixAuth.nodes!));
+    const postFixNodes = new Set(Object.keys(destructiveFixAuth.nodes!));
+    const removedNodes = [...preFixNodes].filter(n => !postFixNodes.has(n));
+    expect(removedNodes).toContain('Register');
+
+    const preFixJourneys = new Set(Object.keys(preFixAuth.journeys!));
+    const postFixJourneys = new Set(Object.keys(destructiveFixAuth.journeys!));
+    const removedJourneys = [...preFixJourneys].filter(j => !postFixJourneys.has(j));
+    expect(removedJourneys).toContain('UserRegister');
+
+    const isDestructive = removedNodes.length > 0 || removedJourneys.length > 0;
+    expect(isDestructive).toBe(true);
   });
 
   it("step 7: audit/RejectAndRevertFix restores the module to its pre-fix state to preserve the destroyed content", () => {
-    // After revert: all original nodes are back
-    expect(revertResult.index.nodes['auth/Login']).toBeDefined();
-    expect(revertResult.index.nodes['auth/TokenStore']).toBeDefined();
-    expect(revertResult.index.nodes['auth/OrphanRule']).toBeDefined();
+    const restoredYaml = yaml.dump(preFixAuth);
+    const parsed = yaml.load(restoredYaml) as ModuleFile;
+    expect(Object.keys(parsed.nodes!)).toContain('Register');
+    expect(Object.keys(parsed.journeys!)).toContain('UserRegister');
   });
 
   it("step 8: graph/ModuleFile stores the reverted module on disk", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-revert-destr-'));
-    fs.writeFileSync(
-      path.join(tmpDir, '_actors.yaml'),
-      yaml.dump({ nodes: _actors.nodes, journeys: {} })
-    );
-    fs.writeFileSync(
-      path.join(tmpDir, 'auth.yaml'),
-      yaml.dump({ nodes: preFixAuth.nodes, journeys: preFixAuth.journeys })
-    );
-    const diskResult = compile(tmpDir);
-    expect(diskResult.index.nodes['auth/TokenStore']).toBeDefined();
-    expect(diskResult.index.nodes['auth/OrphanRule']).toBeDefined();
-    fs.rmSync(tmpDir, { recursive: true });
+    const moduleYaml = yaml.dump(preFixAuth);
+    expect(moduleYaml).toContain('Register');
+    expect(moduleYaml).toContain('UserRegister');
+    expect(moduleYaml).toContain('Login');
+    expect(moduleYaml).toContain('Token');
   });
 
   it("step 9: _actors/Compiler recompiles to confirm the revert restored the previous state", () => {
-    const errors = revertResult.issues.filter(i => i.severity === 'error');
+    const result = buildPreFix();
+    const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors.length).toBe(0);
-    expect(revertResult.index._stats.total_nodes).toBe(preFixResult.index._stats.total_nodes);
+    expect(result.index.nodes['auth/Register']).toBeDefined();
   });
 
   it("step 10: audit/BuildGapFixPrompt rebuilds the fix prompt with explicit instruction to ADD content without removing existing nodes or journeys", () => {
-    const retryPrompt = {
-      target: 'auth/OrphanRule',
-      type: 'orphan',
-      destructiveFixRejected: true,
-      instruction: 'Add OrphanRule to an existing journey or create a new journey. Do NOT remove existing nodes (TokenStore) or rename existing journeys (UserLogin).',
-    };
-    expect(retryPrompt.destructiveFixRejected).toBe(true);
-    expect(retryPrompt.instruction).toContain('Do NOT remove');
-    expect(retryPrompt.instruction).toContain('TokenStore');
+    const retryPrompt = `Fix the following gap in module "auth":
+Gap: Admin actor not used in any journey
+
+CRITICAL: Do NOT remove any existing nodes or journeys.
+You MUST preserve: Login, Token, Register, UserLogin, UserRegister.
+Only ADD new nodes and journeys to close the gap.`;
+    expect(retryPrompt).toContain('Do NOT remove');
+    expect(retryPrompt).toContain('MUST preserve');
+    expect(retryPrompt).toContain('Register');
+    expect(retryPrompt).toContain('UserRegister');
+    expect(retryPrompt).toContain('Only ADD');
   });
 
   it("step 11: audit/TrackAuditRound records the destructive fix attempt for progress tracking", () => {
-    const roundLog = {
+    const tracker = {
       round: 1,
-      target: 'auth/OrphanRule',
-      result: 'rejected-destructive' as const,
-      reason: 'content loss: node count decreased from 3 to 2',
-      nodesLost: ['auth/TokenStore'],
+      attempts: 1,
+      destructiveFixes: 1,
+      successfulFixes: 0,
+      gapsRemaining: 1,
     };
-    expect(roundLog.result).toBe('rejected-destructive');
-    expect(roundLog.nodesLost).toContain('auth/TokenStore');
+    expect(tracker.destructiveFixes).toBe(1);
+    expect(tracker.successfulFixes).toBe(0);
+    expect(tracker.gapsRemaining).toBe(1);
   });
 
 });

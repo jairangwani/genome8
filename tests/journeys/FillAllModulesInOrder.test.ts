@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: test/codegen.test.ts
+// Implementation: src/codegen.ts
 
 describe("FillAllModulesInOrder", () => {
   it("step 1: organization/DependencyGraph provides the build order so dependencies are filled before dependents", () => {
@@ -45,7 +46,7 @@ describe("FillAllModulesInOrder", () => {
   });
 
   it("step 7: codegen/WriteGeneratedFile writes the first filled file to disk", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the first filled file to disk
     // TODO: agent fills assertion
   });
@@ -81,7 +82,7 @@ describe("FillAllModulesInOrder", () => {
   });
 
   it("step 13: codegen/WriteGeneratedFile writes each filled file to disk as it completes", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes each filled file to disk as it completes
     // TODO: agent fills assertion
   });

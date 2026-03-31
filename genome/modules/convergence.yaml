@@ -1,4 +1,4 @@
-spec_sections: [1, 3, 5, 6, 7, 8, 9, 10, 11]
+spec_sections: [1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13]
 
 nodes:
   ReadSpec:
@@ -184,6 +184,21 @@ nodes:
   FullGraphCheckAfterReconvergence:
     type: process
     description: runs a full compilation across all modules after targeted reconvergence completes to catch cross-module breakage from changes to stale modules before publishing
+  SelfAuditOwnCode:
+    type: process
+    description: reads the running source code and goal nodes to identify what is preventing each goal from being actually achieved, producing a list of blockers
+  ClassifyBlockerType:
+    type: process
+    description: classifies each self-audit blocker as a code bug, missing feature, or spec gap and routes it to the appropriate fix or notification path
+  FlagSpecGap:
+    type: process
+    description: records spec gaps found during self-audit that require human updates to spec.md and notifies the ProjectOwner
+  CreateBlockerJourney:
+    type: process
+    description: creates a new journey in the relevant module that exercises the specific blocked goal path so a test can be generated for it
+  VerifyGoalsAgainstEvidence:
+    type: process
+    description: re-evaluates each goal against real runtime evidence including test results, code behavior, and outputs to classify goals as PROVEN or UNPROVEN
   SkipPublishOnUnchangedHash:
     type: process
     description: compares the post-reconvergence interface hash against the previously published hash and skips publish when they match, preventing unnecessary wake cascades to downstream boxes
@@ -217,7 +232,7 @@ nodes:
     files: [src/cli.ts]
   LoadProjectConfig:
     type: process
-    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, and messageTimeoutMs
+    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, messageTimeoutMs, maxHierarchyDepth, maxAuditCycles, and eventDebounceMs
     files: [src/convergence.ts]
   ProjectConfig:
     type: artifact
@@ -232,7 +247,7 @@ nodes:
     files: [src/convergence.ts]
   SkipToWatchIfConverged:
     type: process
-    description: on startup checks convergence-state.json and compares the current interface hash against the stored hash, skipping the full pipeline and entering watch mode directly if already converged, bypassed when --once flag is set
+    description: on startup checks convergence-state.json, validates state structure against allowed statuses, compares both the current interface hash and spec hash against stored values, skipping the full pipeline and entering watch mode directly if already converged with unchanged spec, bypassed when --once flag is set
     files: [src/convergence.ts]
   SinglePassMode:
     type: rule
@@ -304,6 +319,60 @@ nodes:
   NoDriftBetweenLayers:
     type: rule
     description: spec, graph, code, and tests must never drift apart — the source of truth hierarchy and reconvergence enforce alignment at every level
+  ScaffoldProject:
+    type: process
+    description: detects the project language from spec hints or existing files, then auto-creates package.json and tsconfig.json so the user writes only spec.md
+  ExtractGoals:
+    type: process
+    description: reads spec §8 goals and derives rule nodes from each goal, writing them to _goals.yaml as the authoritative goal set for audit and self-healing verification
+  ReconcileCodeWithGraph:
+    type: process
+    description: compares existing source code files against graph nodes to detect drift where code has diverged from the graph, updating the relevant module to reflect the actual code behavior
+  WakeOnSpecChange:
+    type: process
+    description: detects spec.md modification via fs.watch, computes a hash diff against the stored spec hash, and identifies which modules are affected by the change via LLM analysis of the diff
+  WakeOnCodeChange:
+    type: process
+    description: detects src/ file modification via fs.watch and routes the changed file to code-to-graph reconciliation instead of the dependency-triggered reconvergence path
+  RetryGoalExtraction:
+    type: process
+    description: retries goal extraction when the LLM produces invalid or incomplete _goals.yaml by passing the validation errors as context for a corrected attempt
+  RetryCodegenPipeline:
+    type: process
+    description: retries the codegen step when skeleton generation or implementation filling fails at the orchestrator level by passing the failure details as context for a fresh attempt
+  RetryPublish:
+    type: process
+    description: retries the publish step when interface.yaml writing, changelog generation, or event file writing fails due to disk errors or hash computation failures
+  RetryReconciliation:
+    type: process
+    description: retries code-to-graph reconciliation when the graph update produces compilation errors by passing the error report as context for a corrected reconciliation attempt
+  VerifyCreationOrderIndependence:
+    type: process
+    description: compares the compiled graph produced by parallel module creation against the graph produced by sequential creation on the same module set to confirm order does not affect the result
+  VerifySelfAuditDeterminism:
+    type: process
+    description: runs self-audit twice on the same converged code and goals and compares the two blocker lists to detect non-deterministic LLM output in the self-healing pipeline
+  DetectSelfHealingExhaustion:
+    type: process
+    description: detects when the self-audit → fix → re-verify cycle has reached the configured maximum number of self-improvement rounds without all goals reaching PROVEN status
+  HandleStalledChildEngine:
+    type: process
+    description: detects when a child engine exits cleanly with STALLED status instead of CONVERGED and decides whether to retry the child, absorb its partial results, or escalate to the parent for manual review
+  ValidateDependencyGraphAccuracy:
+    type: process
+    description: after compilation, compares actual cross-module references extracted from journey steps against the declared dependency graph in ORGANIZATION.md to detect undeclared dependencies that break build order and unused declared dependencies that indicate unnecessary coupling
+  FlagRestartRequired:
+    type: process
+    description: records that the running pipeline code differs from the on-disk code after a direct code edit to a self-referential file, flagging that a process restart is needed before the pipeline can trust its own behavior
+  PrioritizeMixedWakeEvents:
+    type: process
+    description: when spec change, code change, and dependency events arrive simultaneously during the same debounce window, orders processing by source of truth hierarchy — spec first, then code reconciliation, then dependency reconvergence — to prevent lower-priority changes from being overwritten by higher-priority ones
+  SerializeConvergenceStateWrites:
+    type: rule
+    description: ensures only one worker updates ConvergenceState at a time during parallel module creation or parallel perspective enrichment by acquiring an exclusive write lock before modifying the state file
+  PreventDuplicateInstance:
+    type: process
+    description: on startup reads pids.json and checks whether the recorded process is still alive — if a convergence process is already running on this project directory, exits with an error instead of starting a second concurrent instance
 
 journeys:
   ProjectConvergence:
@@ -2339,3 +2408,662 @@ journeys:
         action: terminates creation for the module after 2 consecutive zero-delta passes
       - node: BoundedCreationLoop
         action: advances to the next module or exits creation if all modules are saturated
+
+  SelfAuditAfterConvergence:
+    steps:
+      - node: ConvergenceState
+        action: indicates the pipeline has reached post-audit convergence with zero errors and zero gaps
+      - node: SelfAuditOwnCode
+        action: reads the running source code files and the goals from _goals.yaml
+      - node: _actors/LLMWorker
+        action: analyzes what is preventing each goal from being ACTUALLY achieved based on the real code behavior
+      - node: SelfAuditOwnCode
+        action: produces a list of blockers — bugs in code, missing features, or spec gaps
+      - node: ClassifyBlockerType
+        action: classifies each blocker as a code bug, a missing feature, or a spec gap
+      - node: ClassifyBlockerType
+        action: routes code bugs and missing features to the automated fix path
+      - node: ClassifyBlockerType
+        action: routes spec gaps to the human notification path since only humans edit spec.md
+      - node: FlagSpecGap
+        action: records spec gaps that require human spec updates and flags them for the ProjectOwner
+      - node: _actors/ProjectOwner
+        action: receives notification of spec gaps found during self-audit for manual resolution
+      - node: ConvergenceState
+        action: records self-audit results including blocker list and classifications
+
+  SelfHealingFixLoop:
+    steps:
+      - node: ConvergenceState
+        action: provides the list of code bugs and missing features identified by self-audit
+      - node: CreateBlockerJourney
+        action: creates a new journey in the relevant module that exercises the blocked goal path
+      - node: _actors/LLMWorker
+        action: writes the journey steps covering the specific blocker scenario
+      - node: CompileCheck
+        action: validates the new journey compiles cleanly against the full graph
+      - node: _actors/Compiler
+        action: confirms zero errors after adding the blocker journey
+      - node: TriggerTestgen
+        action: generates a test skeleton from the new blocker journey
+      - node: _actors/LLMWorker
+        action: fills the test assertions targeting the specific blocker
+      - node: ExecuteTests
+        action: runs the new test which fails because the blocker still exists in the code
+      - node: FixTestFailures
+        action: delegates to LLM to fix the code so the blocker test passes
+      - node: _actors/LLMWorker
+        action: applies targeted code edits to resolve the blocker
+      - node: ExecuteTests
+        action: re-runs the blocker test to confirm the fix works
+      - node: BoundedRetryRule
+        action: caps self-healing fix attempts to prevent infinite self-repair loops
+      - node: ConvergenceState
+        action: records which blockers were fixed and which remain unresolved
+
+  SelfImprovementVerification:
+    steps:
+      - node: ConvergenceState
+        action: indicates self-healing fixes have been applied and tests pass
+      - node: VerifyGoalsAgainstEvidence
+        action: re-evaluates each goal against REAL runtime evidence not just journey coverage
+      - node: _actors/LLMWorker
+        action: inspects actual code behavior, test results, and runtime outputs to judge goal achievement
+      - node: VerifyGoalsAgainstEvidence
+        action: classifies each goal as PROVEN or UNPROVEN based on concrete evidence
+      - node: VerifyGoalsAgainstEvidence
+        action: identifies specific remaining blockers for any UNPROVEN goals
+      - node: DataDecidesWhenToStop
+        action: determines whether another self-healing cycle is needed based on unproven goal count
+      - node: BoundedRetryRule
+        action: enforces a maximum number of self-improvement cycles to guarantee termination
+      - node: NeverOpenEndedLoop
+        action: prevents the self-improvement loop from running indefinitely
+      - node: ConvergenceState
+        action: declares CONVERGED only when all goals are PROVEN or the cycle cap is reached with remaining goals flagged for human review
+
+  ScaffoldNewProject:
+    steps:
+      - node: _actors/ProjectOwner
+        action: starts convergence on a project directory containing only spec.md
+      - node: ConvergenceCLI
+        action: receives the start command and the project directory path
+      - node: LoadProjectConfig
+        action: reads genome/config.json if it exists or uses defaults for all pipeline parameters
+      - node: ScaffoldProject
+        action: scans the project directory for existing files to detect the project language
+      - node: ScaffoldProject
+        action: determines TypeScript as the target language from spec hints or defaults
+      - node: ScaffoldProject
+        action: creates package.json with project name, dependencies, and build scripts
+      - node: ScaffoldProject
+        action: creates tsconfig.json with compiler options matching the detected language configuration
+      - node: AutoScaffoldProjectFiles
+        action: enforces that the user writes only spec.md and all project config is auto-generated
+      - node: EnsureOutputDirectories
+        action: creates genome/modules/, genome/compiled/, and genome/published/ directories
+      - node: WritePidFile
+        action: writes genome/pids.json to register the convergence process for stop and ps commands
+      - node: ReadSpec
+        action: reads spec.md and proceeds to the organization step with scaffolding complete
+
+  ExtractGoalsFromSpec:
+    steps:
+      - node: ConvergenceState
+        action: indicates organization is complete and the spec has been read
+      - node: ReadSpec
+        action: provides the spec content including §8 goals section
+      - node: ExtractGoals
+        action: parses the goals section to identify each goal statement
+      - node: ExtractGoals
+        action: derives a rule node for each goal with description matching the goal intent
+      - node: _actors/LLMWorker
+        action: analyzes each goal to produce a rule node name and description suitable for the graph
+      - node: ExtractGoals
+        action: writes _goals.yaml with the derived goal rule nodes
+      - node: CompileCheck
+        action: validates that the goal rule nodes compile cleanly against the graph
+      - node: _actors/Compiler
+        action: confirms zero errors after adding goal nodes
+      - node: ConvergenceState
+        action: records that goal extraction is complete and _goals.yaml is written
+
+  SpecChangeWake:
+    steps:
+      - node: EnterSleepMode
+        action: is watching spec.md, src/ files, and dependency event files via fs.watch
+      - node: _actors/ProjectOwner
+        action: edits spec.md to add, remove, or modify requirements
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for spec.md modification
+      - node: WakeOnSpecChange
+        action: wakes from sleep and reads the updated spec.md
+      - node: WakeOnSpecChange
+        action: computes a hash of the new spec and compares against the stored spec hash
+      - node: WakeOnSpecChange
+        action: confirms the hash differs, ruling out spurious fs.watch events
+      - node: WakeOnSpecChange
+        action: diffs the old and new spec to identify which sections changed
+      - node: _actors/LLMWorker
+        action: analyzes the spec diff to identify which modules are affected by the changes
+      - node: sync/MarkModulesStale
+        action: marks only the affected modules as stale based on the LLM analysis
+      - node: TargetedReconvergence
+        action: runs Steps 4a-6b on only the stale modules
+      - node: _actors/LLMWorker
+        action: updates stale modules to reflect the spec changes
+      - node: CompileCheck
+        action: validates the updated modules compile cleanly
+      - node: _actors/Compiler
+        action: confirms zero errors after reconvergence
+      - node: TargetedAudit
+        action: audits the affected modules for coverage against the new spec sections
+      - node: _actors/Auditor
+        action: verifies the updated modules cover the changed spec content
+      - node: TriggerCodegen
+        action: regenerates code for the affected modules
+      - node: TriggerTestgen
+        action: regenerates tests for the affected journeys
+      - node: ExecuteTests
+        action: runs updated tests to confirm correctness
+      - node: TriggerPublish
+        action: publishes the updated interface if the graph changed
+      - node: SkipPublishOnUnchangedHash
+        action: skips publish if the interface hash is unchanged despite the spec update
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep with the updated spec hash stored
+
+  CodeChangeWake:
+    steps:
+      - node: EnterSleepMode
+        action: is watching spec.md, src/ files, and dependency event files via fs.watch
+      - node: _actors/HumanDeveloper
+        action: edits a source code file in src/ directly
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the modified src/ file
+      - node: WakeOnCodeChange
+        action: wakes from sleep and identifies the changed source file
+      - node: WakeOnCodeChange
+        action: reads the changed file to determine what was modified
+      - node: ReconcileCodeWithGraph
+        action: finds the graph module whose nodes correspond to the changed source file
+      - node: ReconcileCodeWithGraph
+        action: compares the code changes against the node descriptions and journey steps in that module
+      - node: ReconcileCodeWithGraph
+        action: detects drift where the code behavior no longer matches the graph description
+      - node: _actors/LLMWorker
+        action: updates the relevant module YAML to reflect the actual code behavior
+      - node: graph/ModuleFile
+        action: stores the updated module on disk
+      - node: CompileCheck
+        action: validates the reconciled module compiles cleanly against the full graph
+      - node: _actors/Compiler
+        action: confirms zero errors after code-to-graph reconciliation
+      - node: TriggerPublish
+        action: publishes the updated interface if the graph changed from reconciliation
+      - node: SkipPublishOnUnchangedHash
+        action: skips publish if the reconciliation confirmed the graph already matched the code
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep after reconciling the code change
+
+  RecoverFromGoalExtractionFailure:
+    steps:
+      - node: ExtractGoals
+        action: delegates to LLM to derive goal rule nodes from spec §8
+      - node: _actors/LLMWorker
+        action: produces a _goals.yaml that is malformed, missing goals from the spec, or contains invalid rule node definitions
+      - node: _goals/SolveContextProblem
+        action: attempts to load as a rule node but fails due to invalid format
+      - node: compilation/ErrorReport
+        action: records the specific validation failures in the goal extraction output
+      - node: BoundedRetryRule
+        action: checks that the retry count for goal extraction has not exceeded the cap
+      - node: RetryGoalExtraction
+        action: packages the validation errors and the spec §8 goals section as context for a corrected attempt
+      - node: _actors/LLMWorker
+        action: reads the validation errors and the original goals section to produce a corrected _goals.yaml
+      - node: ExtractGoals
+        action: validates the corrected _goals.yaml has a rule node for each spec goal
+      - node: CompileCheck
+        action: validates the corrected goal nodes compile cleanly against the graph
+      - node: _actors/Compiler
+        action: confirms zero errors after retried goal extraction
+      - node: ConvergenceState
+        action: records that goal extraction is complete after retry
+
+  RecoverFromCodegenPipelineFailure:
+    steps:
+      - node: TriggerCodegen
+        action: invokes codegen.ts to generate TypeScript skeletons from the converged graph
+      - node: codegen/ReadConvergedGraph
+        action: attempts to extract nodes from the compiled index
+      - node: codegen/GenerateProcessSkeletons
+        action: fails during skeleton generation due to malformed node definitions or file write errors
+      - node: compilation/ErrorReport
+        action: records the codegen failure with the specific error type and affected modules
+      - node: BoundedRetryRule
+        action: checks that the retry count for codegen has not exceeded the cap
+      - node: RetryCodegenPipeline
+        action: packages the failure details including which modules failed and why
+      - node: codegen/ReadConvergedGraph
+        action: re-reads the compiled index to ensure the graph state is current
+      - node: _actors/LLMWorker
+        action: retries skeleton generation or implementation filling for the failed modules with error context
+      - node: codegen/WriteGeneratedFile
+        action: writes the retried output to the generated code directory
+      - node: CompileCheck
+        action: validates the retried codegen output compiles cleanly
+      - node: _actors/Compiler
+        action: confirms the generated code has no syntax or reference errors
+      - node: ConvergenceState
+        action: records that codegen pipeline recovered after retry or records failure if retry cap reached
+
+  RecoverFromPublishFailure:
+    steps:
+      - node: TriggerPublish
+        action: invokes publish.ts to generate the box's public interface
+      - node: publish/ComputeInterfaceHash
+        action: computes the SHA256 hash over exported nodes and journeys
+      - node: publish/GenerateInterfaceYaml
+        action: fails to write interface.yaml due to a disk error, permission issue, or hash computation failure
+      - node: compilation/ErrorReport
+        action: records the publish failure with the specific error type and file path
+      - node: BoundedRetryRule
+        action: checks that the retry count for publish has not exceeded the cap
+      - node: RetryPublish
+        action: checks disk state to determine if a partial publish left corrupted files
+      - node: publish/RollbackPartialPublish
+        action: cleans up any partially written interface.yaml or changelog.yaml files
+      - node: TriggerPublish
+        action: re-invokes publish.ts with a clean starting state
+      - node: publish/GenerateInterfaceYaml
+        action: writes interface.yaml on the retry attempt
+      - node: publish/GenerateChangelogYaml
+        action: writes changelog.yaml on the retry attempt
+      - node: publish/WriteEventFile
+        action: writes the event file to notify dependents
+      - node: ConvergenceState
+        action: records that publish recovered after retry or records failure if retry cap reached blocking ripple propagation
+
+  RecoverFromReconciliationFailure:
+    steps:
+      - node: WakeOnCodeChange
+        action: detects a src/ file modification and routes to reconciliation
+      - node: ReconcileCodeWithGraph
+        action: compares the changed code against graph nodes and produces a module update
+      - node: _actors/LLMWorker
+        action: generates a graph update that introduces compilation errors
+      - node: graph/ModuleFile
+        action: stores the problematic reconciliation update on disk
+      - node: CompileCheck
+        action: validates the reconciled module against the full graph
+      - node: _actors/Compiler
+        action: reports compilation errors introduced by the reconciliation
+      - node: compilation/CompilationResult
+        action: provides non-zero error count from the reconciliation attempt
+      - node: compilation/ErrorReport
+        action: lists the specific errors caused by the reconciliation
+      - node: RollbackFailedFix
+        action: reverts the module to its pre-reconciliation state
+      - node: graph/ModuleFile
+        action: restores the original module content before reconciliation
+      - node: BoundedRetryRule
+        action: checks that the retry count for reconciliation has not exceeded the cap
+      - node: RetryReconciliation
+        action: packages the error report and the changed code file as context for a corrected reconciliation
+      - node: _actors/LLMWorker
+        action: reads the error report and code diff to produce a reconciliation that avoids the compilation errors
+      - node: graph/ModuleFile
+        action: stores the corrected reconciliation update
+      - node: CompileCheck
+        action: validates the retried reconciliation compiles cleanly
+      - node: _actors/Compiler
+        action: confirms zero errors from the corrected reconciliation
+      - node: ConvergenceState
+        action: records the reconciliation outcome and returns to sleep
+
+  VerifyCreationOrderIsIndependent:
+    steps:
+      - node: ConvergenceState
+        action: provides the full module list with dependency graph from ORGANIZATION.md
+      - node: organization/DependencyGraph
+        action: provides the dependency edges identifying modules at the same depth
+      - node: BoundedCreationLoop
+        action: creates all modules sequentially in build order as the baseline
+      - node: CompileCheck
+        action: compiles the sequentially created graph
+      - node: _actors/Compiler
+        action: validates the sequential baseline with zero errors
+      - node: graph/CompiledIndex
+        action: snapshots the sequentially created compiled graph as the reference
+      - node: VerifyCreationOrderIndependence
+        action: stores the sequential graph snapshot for comparison
+      - node: ParallelModuleCreation
+        action: creates the same modules using parallel batches grouped by dependency depth
+      - node: CompileCheck
+        action: compiles the parallel-created graph
+      - node: _actors/Compiler
+        action: validates the parallel creation with zero errors
+      - node: graph/CompiledIndex
+        action: snapshots the parallel-created compiled graph
+      - node: VerifyCreationOrderIndependence
+        action: compares the parallel snapshot against the sequential snapshot node by node
+      - node: VerifyCreationOrderIndependence
+        action: compares journey definitions and step sequences between the two snapshots
+      - node: VerifyCreationOrderIndependence
+        action: compares connection sets derived from journeys between the two snapshots
+      - node: VerifyCreationOrderIndependence
+        action: flags any structural differences as creation order dependence indicating parallel creation is unsafe for those modules
+      - node: compilation/ErrorReport
+        action: records any order-dependent differences with the specific modules and nodes that diverged
+      - node: ConvergenceState
+        action: records whether creation order independence check passed or failed
+
+  VerifySelfAuditIsRepeatable:
+    steps:
+      - node: ConvergenceState
+        action: indicates the pipeline has reached post-convergence with zero errors and zero audit gaps
+      - node: SelfAuditOwnCode
+        action: reads the running source code and goal nodes for the first self-audit run
+      - node: _actors/LLMWorker
+        action: analyzes what is preventing each goal from being achieved and returns a blocker list for the first run
+      - node: SelfAuditOwnCode
+        action: produces the first-run blocker list with classifications
+      - node: VerifySelfAuditDeterminism
+        action: stores the first-run blocker list for comparison
+      - node: SelfAuditOwnCode
+        action: reads the same source code and goal nodes for the second self-audit run
+      - node: _actors/LLMWorker
+        action: analyzes the same code and goals again and returns a blocker list for the second run
+      - node: SelfAuditOwnCode
+        action: produces the second-run blocker list with classifications
+      - node: VerifySelfAuditDeterminism
+        action: compares the second-run blocker list against the first-run blocker list
+      - node: VerifySelfAuditDeterminism
+        action: checks whether both runs identified the same set of blockers
+      - node: VerifySelfAuditDeterminism
+        action: checks whether both runs classified each blocker the same way (code bug, missing feature, spec gap)
+      - node: VerifySelfAuditDeterminism
+        action: flags any differences as non-deterministic self-audit behavior that could cause divergent self-healing paths
+      - node: compilation/ErrorReport
+        action: records any non-deterministic findings with the specific blockers that differed between runs
+      - node: ConvergenceState
+        action: records whether self-audit determinism check passed or failed
+
+  HandleSelfHealingCycleExhaustion:
+    steps:
+      - node: ConvergenceState
+        action: provides the current self-improvement cycle count and the list of UNPROVEN goals
+      - node: SelfAuditOwnCode
+        action: identifies blockers for the remaining UNPROVEN goals
+      - node: ClassifyBlockerType
+        action: classifies each remaining blocker as code bug, missing feature, or spec gap
+      - node: CreateBlockerJourney
+        action: creates a journey and test for the next blocker
+      - node: _actors/LLMWorker
+        action: attempts to fix the blocker
+      - node: ExecuteTests
+        action: runs the blocker test which still fails after the fix
+      - node: VerifyGoalsAgainstEvidence
+        action: re-evaluates goals and finds some remain UNPROVEN
+      - node: DetectSelfHealingExhaustion
+        action: increments the self-improvement cycle counter and checks against the configured maximum
+      - node: DetectSelfHealingExhaustion
+        action: determines that the maximum self-improvement rounds have been reached with goals still UNPROVEN
+      - node: NeverOpenEndedLoop
+        action: enforces that the self-healing cycle must terminate at the round limit
+      - node: VerifyGoalsAgainstEvidence
+        action: produces the final goal status report with PROVEN and UNPROVEN classifications
+      - node: compilation/ErrorReport
+        action: records the unresolved goals as errors with their blocker details and the number of fix attempts made
+      - node: FlagSpecGap
+        action: flags remaining UNPROVEN goals as requiring human investigation to determine if the spec is incomplete or the goal is unreachable
+      - node: _actors/ProjectOwner
+        action: receives notification that self-healing exhausted its cycle budget with specific goals still UNPROVEN
+      - node: ConvergenceState
+        action: transitions to CONVERGED-WITH-UNPROVEN-GOALS status, halting further self-healing cycles while allowing the box to enter sleep mode
+
+  HandleStalledChildEngineResult:
+    steps:
+      - node: SplitIntoChildEngines
+        action: has spawned multiple child engine processes for a hierarchy split
+      - node: hierarchy/WaitForAllChildren
+        action: detects that a child engine process exited with exit code 0 but its ConvergenceState shows STALLED status
+      - node: HandleStalledChildEngine
+        action: reads the stalled child's ConvergenceState to determine how far it progressed
+      - node: HandleStalledChildEngine
+        action: reads the stalled child's compilation/ErrorReport to identify what caused the stall
+      - node: HandleStalledChildEngine
+        action: checks whether the child produced any usable partial results including compiled modules and published interfaces
+      - node: BoundedRetryRule
+        action: checks that the retry count for this child engine has not exceeded the cap
+      - node: HandleStalledChildEngine
+        action: determines whether to retry the child with adjusted parameters or absorb partial results
+      - node: hierarchy/GenerateScopedSpec
+        action: provides the scoped spec for a retry attempt if retrying
+      - node: hierarchy/SpawnChildEngine
+        action: relaunches the child engine with its scoped spec if retry is chosen
+      - node: hierarchy/WaitForAllChildren
+        action: waits for the relaunched child to converge or stall again
+      - node: HandleStalledChildEngine
+        action: if retry cap is reached, absorbs the child's partial results and promotes its unresolved errors to the parent
+      - node: compilation/ErrorReport
+        action: records the stalled child as a parent-level error with the child name, stall reason, and which modules remain incomplete
+      - node: hierarchy/CollectChildInterfaces
+        action: collects whatever partial interface the stalled child published before stalling
+      - node: ConvergenceState
+        action: records the stalled child outcome and whether the hierarchy split can proceed with partial results
+
+  ValidateDeclaredDependenciesMatchActual:
+    steps:
+      - node: ConvergenceState
+        action: indicates all modules have been created and compilation passed with zero errors
+      - node: organization/DependencyGraph
+        action: provides the declared dependency edges from ORGANIZATION.md
+      - node: graph/CompiledIndex
+        action: provides the compiled graph with all cross-module references extracted from journey steps
+      - node: ValidateDependencyGraphAccuracy
+        action: extracts all actual cross-module references from journey steps across all modules
+      - node: ValidateDependencyGraphAccuracy
+        action: builds the actual dependency graph where module A depends on module B if any journey in A references a node in B
+      - node: ValidateDependencyGraphAccuracy
+        action: compares each actual dependency edge against the declared dependency graph
+      - node: ValidateDependencyGraphAccuracy
+        action: identifies undeclared dependencies where a module references another module not listed in its declared dependencies
+      - node: ValidateDependencyGraphAccuracy
+        action: identifies unused declared dependencies where a module lists a dependency it never actually references
+      - node: ValidateDependencyGraphAccuracy
+        action: checks whether undeclared dependencies would violate the build order used during module creation
+      - node: compilation/ErrorReport
+        action: records undeclared dependencies as errors since they indicate modules were created without access to their actual dependencies
+      - node: compilation/WarningReport
+        action: records unused declared dependencies as warnings since they indicate unnecessary coupling in the organization plan
+      - node: ConvergenceState
+        action: records dependency graph validation results and whether build order needs updating
+
+  SafeSelfHealingForSelf:
+    steps:
+      - node: ConvergenceState
+        action: provides the list of code bugs identified by self-audit for a self-referential project
+      - node: ClassifyBlockerType
+        action: identifies that the blocker is a code bug in a file that is part of the running pipeline
+      - node: DetectSelfModification
+        action: flags that the fix target is convergence.ts, compile.ts, or other running pipeline code
+      - node: NeverModifyRunningCode
+        action: enforces that the fix must be staged and tested before replacing the running code
+      - node: CreateBlockerJourney
+        action: creates a new journey exercising the blocked goal path
+      - node: _actors/LLMWorker
+        action: writes the journey steps covering the blocker scenario
+      - node: CompileCheck
+        action: validates the new journey compiles cleanly
+      - node: _actors/Compiler
+        action: confirms zero errors after adding the blocker journey
+      - node: TriggerTestgen
+        action: generates a test skeleton from the blocker journey
+      - node: _actors/LLMWorker
+        action: fills the test assertions targeting the blocker
+      - node: StageGeneratedCode
+        action: copies the current running code to the staging directory as the baseline for the fix
+      - node: StagingDirectory
+        action: holds the copy of the running code ready for modification
+      - node: FixTestFailures
+        action: delegates to LLM to fix the code in the staging directory so the blocker test passes
+      - node: _actors/LLMWorker
+        action: applies targeted code edits to the staged copy, not the running code
+      - node: ExecuteTests
+        action: runs all tests including the new blocker test against the staged code
+      - node: testgen/TestResultReport
+        action: stores test results from running against the staged fix
+      - node: BoundedRetryRule
+        action: caps self-healing fix attempts on the staged code
+      - node: SwapGeneratedCode
+        action: atomically replaces the running code with the staged fixed code after all tests pass
+      - node: ConvergenceState
+        action: records that self-healing fix was applied via staging and the new code is live
+
+  CodeChangeWakeOnSelf:
+    steps:
+      - node: EnterSleepMode
+        action: is watching spec.md, src/ files, and dependency event files via fs.watch
+      - node: _actors/HumanDeveloper
+        action: edits convergence.ts or another file that is part of the running pipeline
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the modified pipeline source file
+      - node: WakeOnCodeChange
+        action: wakes from sleep and identifies the changed source file
+      - node: DetectSelfModification
+        action: checks whether the changed file is part of the currently running pipeline code
+      - node: DetectSelfModification
+        action: confirms the changed file is convergence.ts, compile.ts, or similar — the running code no longer matches the on-disk code
+      - node: ConvergenceState
+        action: records that a self-referential code change was detected
+      - node: ReconcileCodeWithGraph
+        action: compares the new code against the graph to detect drift
+      - node: ReconcileCodeWithGraph
+        action: updates the relevant module YAML to reflect the new on-disk code behavior
+      - node: graph/ModuleFile
+        action: stores the updated module describing the new code
+      - node: CompileCheck
+        action: validates the reconciled module compiles cleanly
+      - node: _actors/Compiler
+        action: confirms zero errors after reconciliation
+      - node: FlagRestartRequired
+        action: records that the running process is executing old code while the graph now describes the new on-disk code
+      - node: FlagRestartRequired
+        action: writes a restart-required flag to ConvergenceState so the next startup knows to skip the fast path
+      - node: _actors/ProjectOwner
+        action: receives notification that a pipeline restart is needed to align running code with the updated graph
+      - node: TriggerPublish
+        action: publishes the updated interface reflecting the new code behavior
+      - node: EnterSleepMode
+        action: returns to sleep with the restart-required flag set, operating on old code until restarted
+
+  HandleMixedConcurrentWakes:
+    steps:
+      - node: EnterSleepMode
+        action: is watching spec.md, src/ files, and dependency event files via fs.watch
+      - node: _actors/ProjectOwner
+        action: edits spec.md while the box is sleeping
+      - node: _actors/HumanDeveloper
+        action: edits a src/ file at the same time as the spec change
+      - node: _actors/DependentBox
+        action: publishes a dependency event at the same time as the spec and code changes
+      - node: _actors/FileSystem
+        action: delivers three fs.watch events in rapid succession — spec, code, and dependency
+      - node: WakeOnEvent
+        action: wakes from sleep on the first event
+      - node: events/DebounceEvents
+        action: holds processing to collect all events within the debounce window
+      - node: PrioritizeMixedWakeEvents
+        action: classifies the collected events by type — spec change, code change, dependency event
+      - node: PrioritizeMixedWakeEvents
+        action: orders processing by source of truth hierarchy — spec first as highest authority
+      - node: SourceOfTruthHierarchy
+        action: confirms that spec changes take priority over code and dependency changes
+      - node: WakeOnSpecChange
+        action: processes the spec change first — diffs old vs new spec, identifies affected modules
+      - node: sync/FindAffectedModules
+        action: traces which modules are affected by the spec change
+      - node: TargetedReconvergence
+        action: reconverges only the spec-affected modules
+      - node: CompileCheck
+        action: validates the graph after spec-driven reconvergence
+      - node: _actors/Compiler
+        action: confirms zero errors after spec change processing
+      - node: PrioritizeMixedWakeEvents
+        action: advances to the next priority — code change reconciliation
+      - node: WakeOnCodeChange
+        action: processes the code change — reconciles the changed src/ file with the graph
+      - node: ReconcileCodeWithGraph
+        action: compares the changed code against the now-updated graph to detect any remaining drift
+      - node: CompileCheck
+        action: validates the graph after code reconciliation
+      - node: PrioritizeMixedWakeEvents
+        action: advances to the lowest priority — dependency event processing
+      - node: sync/FindAffectedModules
+        action: traces which modules are affected by the dependency change
+      - node: TargetedReconvergence
+        action: reconverges modules affected by the dependency change that were not already updated by spec or code processing
+      - node: CompileCheck
+        action: validates the graph after all three event types have been processed
+      - node: _actors/Compiler
+        action: confirms zero errors after processing all mixed wake events
+      - node: SkipPublishOnUnchangedHash
+        action: compares the final interface hash against the pre-wake hash
+      - node: TriggerPublish
+        action: publishes the updated interface if the hash changed
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep after processing all mixed concurrent events
+
+  PreventDuplicateConvergenceInstance:
+    steps:
+      - node: _actors/ProjectOwner
+        action: starts a second convergence process on the same project directory
+      - node: ConvergenceCLI
+        action: receives the start command
+      - node: PreventDuplicateInstance
+        action: reads pids.json from the project directory
+      - node: PreventDuplicateInstance
+        action: extracts the recorded process ID from pids.json
+      - node: PreventDuplicateInstance
+        action: checks whether the recorded process is still alive via OS process query
+      - node: PreventDuplicateInstance
+        action: confirms the existing process is alive and running convergence on this directory
+      - node: PreventDuplicateInstance
+        action: exits with an error message indicating another convergence instance is already running
+      - node: _actors/ProjectOwner
+        action: receives the duplicate instance error and knows to use the existing process
+
+  SerializeStateUpdatesInParallelCreation:
+    steps:
+      - node: ConvergenceState
+        action: provides the module list for parallel creation
+      - node: ParallelModuleCreation
+        action: dispatches independent modules to separate workers concurrently
+      - node: llm/SpawnWorkerProcess
+        action: spawns worker A for the first module in the parallel batch
+      - node: llm/SpawnWorkerProcess
+        action: spawns worker B for the second module in the parallel batch
+      - node: _actors/LLMWorker
+        action: worker A completes its module and prepares to update ConvergenceState
+      - node: _actors/LLMWorker
+        action: worker B completes its module at the same time and also prepares to update ConvergenceState
+      - node: SerializeConvergenceStateWrites
+        action: worker A acquires the exclusive write lock on ConvergenceState
+      - node: ConvergenceState
+        action: worker A writes its completion status to the state file
+      - node: SerializeConvergenceStateWrites
+        action: worker A releases the write lock
+      - node: SerializeConvergenceStateWrites
+        action: worker B acquires the write lock after worker A releases it
+      - node: ConvergenceState
+        action: worker B writes its completion status to the state file without overwriting worker A's update
+      - node: SerializeConvergenceStateWrites
+        action: worker B releases the write lock
+      - node: CompileCheck
+        action: invokes compile.ts after both workers have updated state and their modules are on disk
+      - node: _actors/Compiler
+        action: validates the batch of concurrently created modules
+      - node: ConvergenceState
+        action: records the batch as complete with both modules accounted for

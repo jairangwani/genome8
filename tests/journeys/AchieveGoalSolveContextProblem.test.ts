@@ -64,7 +64,7 @@ describe("AchieveGoalSolveContextProblem", () => {
   });
 
   it("step 10: hierarchy/SpawnChildEngine scales to any depth by spawning child engines — proving it works at any scale", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: scales to any depth by spawning child engines — proving it works at any scale
     // TODO: agent fills assertion
   });

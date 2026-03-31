@@ -3,93 +3,114 @@
 // Modules touched: actors, convergence
 
 import { describe, it, expect } from 'vitest';
-import yaml from 'js-yaml';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Simulate 3-angle results
-const activitiesActors = { ProjectOwner: { type: 'actor', description: 'writes spec.md' } };
-const threatsActors = { Attacker: { type: 'actor', description: 'tries to break things' } };
-const lifecycleActors = { NewUser: { type: 'actor', description: 'first-time visitor' } };
+// Three-angle actor lists for validation
+const activitiesActors = [
+  { name: 'User', description: 'Uses the platform' },
+  { name: 'Admin', description: 'Manages the platform' },
+];
+const threatsActors = [
+  { name: 'Attacker', description: 'Attempts exploitation' },
+];
+const lifecycleActors = [
+  { name: 'NewUser', description: 'First-time visitor' },
+];
+
+// All actors merged
+const allActors = [...activitiesActors, ...threatsActors, ...lifecycleActors];
+
+function buildActorsModule(actors: Array<{ name: string; description: string }>): ModuleFile {
+  const nodes: Record<string, any> = {};
+  for (const a of actors) {
+    nodes[a.name] = { type: 'actor', description: a.description };
+  }
+  return { nodes };
+}
 
 describe("ValidateActorsBeforeProceeding", () => {
   it("step 1: actors/ActivitiesActorList provides the activities-angle results for completeness checking", () => {
-    expect(Object.keys(activitiesActors).length).toBeGreaterThanOrEqual(1);
+    expect(activitiesActors.length).toBeGreaterThanOrEqual(1);
+    expect(activitiesActors[0].name).toBe('User');
+    expect(activitiesActors[0].description).toBeTruthy();
   });
 
   it("step 2: actors/ThreatsActorList provides the threats-angle results for completeness checking", () => {
-    expect(Object.keys(threatsActors).length).toBeGreaterThanOrEqual(1);
+    expect(threatsActors.length).toBeGreaterThanOrEqual(1);
+    expect(threatsActors[0].name).toBe('Attacker');
+    expect(threatsActors[0].description).toBeTruthy();
   });
 
   it("step 3: actors/LifecycleActorList provides the lifecycle-angle results for completeness checking", () => {
-    expect(Object.keys(lifecycleActors).length).toBeGreaterThanOrEqual(1);
+    expect(lifecycleActors.length).toBeGreaterThanOrEqual(1);
+    expect(lifecycleActors[0].name).toBe('NewUser');
+    expect(lifecycleActors[0].description).toBeTruthy();
   });
 
   it("step 4: actors/ValidateThreeAngleCompleteness checks that the activities angle produced at least one actor", () => {
-    expect(Object.keys(activitiesActors).length).toBeGreaterThanOrEqual(1);
+    const valid = activitiesActors.length >= 1;
+    expect(valid).toBe(true);
   });
 
   it("step 5: actors/ValidateThreeAngleCompleteness checks that the threats angle produced at least one actor", () => {
-    expect(Object.keys(threatsActors).length).toBeGreaterThanOrEqual(1);
+    const valid = threatsActors.length >= 1;
+    expect(valid).toBe(true);
   });
 
   it("step 6: actors/ValidateThreeAngleCompleteness checks that the lifecycle angle produced at least one actor", () => {
-    expect(Object.keys(lifecycleActors).length).toBeGreaterThanOrEqual(1);
+    const valid = lifecycleActors.length >= 1;
+    expect(valid).toBe(true);
   });
 
   it("step 7: actors/ThreeAngleDiscovery confirms all 3 angles are satisfied", () => {
-    const allAngles = [activitiesActors, threatsActors, lifecycleActors];
-    const allNonEmpty = allAngles.every(a => Object.keys(a).length >= 1);
-    expect(allNonEmpty).toBe(true);
-    expect(allAngles.length).toBe(3);
+    const angles = [activitiesActors, threatsActors, lifecycleActors];
+    expect(angles.length).toBe(3);
+    for (const angle of angles) {
+      expect(angle.length).toBeGreaterThanOrEqual(1);
+    }
   });
 
   it("step 8: actors/ActorsFile provides the written _actors.yaml for structural validation", () => {
-    // Merge all actors into a single file structure
-    const allNodes = { ...activitiesActors, ...threatsActors, ...lifecycleActors };
-    const yamlContent = yaml.dump({ spec_sections: [1], nodes: allNodes, journeys: {} });
-    const parsed = yaml.load(yamlContent) as any;
-    expect(parsed.nodes).toBeDefined();
-    expect(Object.keys(parsed.nodes).length).toBe(3);
+    const mod = buildActorsModule(allActors);
+    expect(Object.keys(mod.nodes).length).toBe(4);
+    for (const node of Object.values(mod.nodes)) {
+      expect(node.type).toBe('actor');
+    }
   });
 
   it("step 9: actors/ValidateActorYAMLStructure checks that every entry has type actor and a non-empty description", () => {
-    const allNodes = { ...activitiesActors, ...threatsActors, ...lifecycleActors };
-    for (const [name, node] of Object.entries(allNodes)) {
-      expect((node as any).type).toBe('actor');
-      expect((node as any).description.length).toBeGreaterThan(0);
+    const mod = buildActorsModule(allActors);
+    for (const [name, node] of Object.entries(mod.nodes)) {
+      expect(node.type).toBe('actor');
+      expect(node.description.length).toBeGreaterThan(0);
     }
   });
 
   it("step 10: actors/ValidateActorYAMLStructure flags any malformed entries for correction before compilation", () => {
-    // Test that compilation catches a non-actor type in _actors module
-    const malformedModule: ModuleFile = {
-      nodes: {
-        GoodActor: { type: 'actor', description: 'valid' },
-        BadEntry: { type: 'process', description: 'should be actor' }, // wrong type in _actors
-      },
-      journeys: {},
-    };
-    const result = compileFromModules(new Map([['_actors', malformedModule]]));
-    // The node compiles but its type is 'process' — structural validation would catch this
-    expect(result.index.nodes['_actors/BadEntry'].type).toBe('process');
-    // In _actors, we expect type: actor — a validator would flag this
-    expect(result.index.nodes['_actors/BadEntry'].type).not.toBe('actor');
+    // A module with a malformed actor (wrong type) should produce a compile error
+    const badModules = new Map<string, ModuleFile>([
+      ['_actors', {
+        nodes: {
+          GoodActor: { type: 'actor', description: 'Valid actor' },
+          BadActor: { type: 'banana' as any, description: 'Invalid type' },
+        },
+      }],
+    ]);
+    const result = compileFromModules(badModules);
+    const typeErrors = result.issues.filter(i => i.message.includes('Invalid type'));
+    expect(typeErrors.length).toBeGreaterThanOrEqual(1);
   });
 
   it("step 11: convergence/ValidateActorCompleteness receives the validation result and proceeds if all checks pass", () => {
-    const validModule: ModuleFile = {
-      nodes: {
-        ProjectOwner: { type: 'actor', description: 'writes spec.md' },
-        Attacker: { type: 'actor', description: 'tries to break things' },
-        NewUser: { type: 'actor', description: 'first-time visitor' },
-      },
-      journeys: {},
-    };
-    const result = compileFromModules(new Map([['_actors', validModule]]));
+    // Valid actors compile cleanly — convergence can proceed
+    const modules = new Map<string, ModuleFile>([
+      ['_actors', buildActorsModule(allActors)],
+    ]);
+    const result = compileFromModules(modules);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors.length).toBe(0);
-    // All 3 actors registered
-    expect(Object.keys(result.index.nodes).length).toBe(3);
+    expect(result.index._stats.total_nodes).toBe(4);
   });
+
 });

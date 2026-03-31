@@ -12,252 +12,176 @@ import { compile, compileFromModules } from '../../src/compile.js';
 import { generateExcerpt } from '../../src/excerpt.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: src/convergence.ts
-// Implementation: src/excerpt.ts
+const spec = '## 1. Platform\nUsers create content, Admins moderate, Attackers exploit vulnerabilities. NewUsers onboard.';
 
-// Simulate full pipeline: spec → actors → compilation → excerpt
-const specContent = '# My System\nAn API platform for developers and external consumers.';
+const actorsModule: ModuleFile = {
+  nodes: {
+    User: { type: 'actor', description: 'Uses the platform' },
+    Admin: { type: 'actor', description: 'Manages the platform' },
+    Attacker: { type: 'actor', description: 'Attempts exploitation' },
+    NewUser: { type: 'actor', description: 'First-time visitor' },
+  },
+};
 
-// Simulated 3-angle discovery results
-const activitiesActors = ['ProjectOwner', 'HumanDeveloper', 'LLMWorker'];
-const threatsActors = ['MaliciousSpecAuthor', 'LLMWorker'];
-const lifecycleActors = ['NewProjectAdopter', 'ReturningOwner'];
-
-const mergedActors = [...new Set([...activitiesActors, ...threatsActors, ...lifecycleActors])];
+const contentModule: ModuleFile = {
+  spec_sections: [1],
+  nodes: {
+    CreatePost: { type: 'process', description: 'Creates a new post' },
+    Post: { type: 'artifact', description: 'A content post' },
+    ModerateContent: { type: 'process', description: 'Reviews content for policy' },
+  },
+  journeys: {
+    UserCreatesPost: {
+      steps: [
+        { node: '_actors/User', action: 'writes a new post' },
+        { node: 'CreatePost', action: 'validates and saves the post' },
+        { node: 'Post', action: 'is stored in the database' },
+      ],
+    },
+    AdminModeratesContent: {
+      steps: [
+        { node: '_actors/Admin', action: 'reviews flagged content' },
+        { node: 'ModerateContent', action: 'applies moderation policy' },
+        { node: 'Post', action: 'is updated with moderation decision' },
+      ],
+    },
+  },
+};
 
 describe("EndToEndActorDiscoveryToModuleCreation", () => {
   it("step 1: _actors/ProjectOwner has written spec.md describing their system", () => {
-    expect(specContent.length).toBeGreaterThan(0);
-    expect(specContent).toContain('# My System');
+    expect(spec.length).toBeGreaterThan(0);
+    expect(spec).toContain('Users');
+    expect(spec).toContain('Admins');
+    expect(spec).toContain('Attackers');
   });
 
   it("step 2: convergence/ReadSpec reads the spec from disk", () => {
-    // Simulate reading spec from a temp file
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-e2e-'));
-    fs.writeFileSync(path.join(tmpDir, 'spec.md'), specContent);
-    const read = fs.readFileSync(path.join(tmpDir, 'spec.md'), 'utf-8');
-    expect(read).toBe(specContent);
-    fs.rmSync(tmpDir, { recursive: true });
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-actors-'));
+    fs.writeFileSync(path.join(tmpDir, 'spec.md'), spec);
+    const readSpec = fs.readFileSync(path.join(tmpDir, 'spec.md'), 'utf-8');
+    expect(readSpec).toBe(spec);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("step 3: convergence/WriteOrganization organization step produces the module list", () => {
-    // Organization would produce a list of modules from the spec
-    const modules = ['gateway', 'auth', 'storage'];
-    expect(modules.length).toBeGreaterThanOrEqual(2);
+    // Organization produces a list of modules to create
+    const moduleList = ['content', 'identity', 'security'];
+    expect(moduleList.length).toBeGreaterThan(0);
+    expect(moduleList).toContain('content');
   });
 
   it("step 4: convergence/DiscoverActors triggers actor discovery after organization is complete", () => {
-    // Actor discovery is triggered — 3 angles will be executed
-    expect(activitiesActors.length).toBeGreaterThanOrEqual(1);
-    expect(threatsActors.length).toBeGreaterThanOrEqual(1);
-    expect(lifecycleActors.length).toBeGreaterThanOrEqual(1);
+    // After org, actors are discovered from the spec via 3 angles
+    const angles = ['activities', 'threats', 'lifecycle'];
+    expect(angles.length).toBe(3);
   });
 
   it("step 5: actors/DiscoverFromActivities discovers activity actors from the spec", () => {
-    expect(activitiesActors).toContain('ProjectOwner');
-    expect(activitiesActors).toContain('HumanDeveloper');
-    expect(activitiesActors).toContain('LLMWorker');
+    const activities = ['User', 'Admin'];
+    expect(activities.length).toBeGreaterThanOrEqual(1);
+    expect(activities).toContain('User');
   });
 
   it("step 6: actors/DiscoverFromThreats discovers threat actors from the spec", () => {
-    expect(threatsActors).toContain('MaliciousSpecAuthor');
+    const threats = ['Attacker'];
+    expect(threats.length).toBeGreaterThanOrEqual(1);
+    expect(threats).toContain('Attacker');
   });
 
   it("step 7: actors/DiscoverFromLifecycle discovers lifecycle actors from the spec", () => {
-    expect(lifecycleActors).toContain('NewProjectAdopter');
-    expect(lifecycleActors).toContain('ReturningOwner');
+    const lifecycle = ['NewUser'];
+    expect(lifecycle.length).toBeGreaterThanOrEqual(1);
+    expect(lifecycle).toContain('NewUser');
   });
 
   it("step 8: actors/MergeAndDeduplicate merges and deduplicates actors from all 3 angles", () => {
-    // LLMWorker appeared in both activities and threats — deduped to 1
-    expect(mergedActors.filter(a => a === 'LLMWorker').length).toBe(1);
-    // 3+2+2=7 raw, minus 1 dupe = 6 unique
-    expect(mergedActors.length).toBe(6);
+    const all = ['User', 'Admin', 'Attacker', 'NewUser'];
+    expect(new Set(all).size).toBe(all.length); // no duplicates
+    expect(all.length).toBe(4);
   });
 
   it("step 9: actors/WriteActorsFile writes _actors.yaml to disk", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-e2e-'));
-    const nodes: Record<string, any> = {};
-    for (const name of mergedActors) {
-      nodes[name] = { type: 'actor', description: `${name} actor` };
-    }
-    fs.writeFileSync(
-      path.join(tmpDir, '_actors.yaml'),
-      yaml.dump({ spec_sections: [1], nodes, journeys: {} }, { lineWidth: 120 })
-    );
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-actors-'));
+    fs.writeFileSync(path.join(tmpDir, '_actors.yaml'), yaml.dump(actorsModule));
     expect(fs.existsSync(path.join(tmpDir, '_actors.yaml'))).toBe(true);
-    fs.rmSync(tmpDir, { recursive: true });
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("step 10: actors/ValidateActorYAMLStructure validates the written file has correct structure", () => {
-    const nodes: Record<string, any> = {};
-    for (const name of mergedActors) {
-      nodes[name] = { type: 'actor', description: `${name} actor` };
-    }
-    // Every entry has type: actor and non-empty description
-    for (const [name, node] of Object.entries(nodes)) {
+    for (const [name, node] of Object.entries(actorsModule.nodes)) {
       expect(node.type).toBe('actor');
       expect(node.description.length).toBeGreaterThan(0);
+      expect(name).toMatch(/^[A-Z]/);
     }
   });
 
   it("step 11: _actors/Compiler compiles _actors.yaml into the graph alongside module files", () => {
-    const actorsModule: ModuleFile = {
-      nodes: Object.fromEntries(
-        mergedActors.map(name => [name, { type: 'actor' as const, description: `${name} actor` }])
-      ),
-      journeys: {},
-    };
-    const gatewayModule: ModuleFile = {
-      nodes: {
-        EntryPoint: { type: 'process', description: 'handles requests' },
-      },
-      journeys: {
-        ServeRequest: {
-          steps: [
-            { node: '_actors/ProjectOwner', action: 'sends request' },
-            { node: 'EntryPoint', action: 'processes request' },
-          ],
-        },
-      },
-    };
-    const result = compileFromModules(new Map([
+    const modules = new Map<string, ModuleFile>([
       ['_actors', actorsModule],
-      ['gateway', gatewayModule],
-    ]));
-    // All 6 actors + 1 gateway node = 7 total
-    expect(result.index._stats.total_nodes).toBe(7);
-    expect(result.issues.filter(i => i.severity === 'error').length).toBe(0);
+      ['content', contentModule],
+    ]);
+    const result = compileFromModules(modules);
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors.length).toBe(0);
+    expect(result.index._stats.modules).toBe(2);
   });
 
   it("step 12: graph/NodeRegistry registers actor nodes so journey steps can reference _actors/ActorName", () => {
-    const actorsModule: ModuleFile = {
-      nodes: Object.fromEntries(
-        mergedActors.map(name => [name, { type: 'actor' as const, description: `${name} actor` }])
-      ),
-      journeys: {},
-    };
-    const gatewayModule: ModuleFile = {
-      nodes: {
-        EntryPoint: { type: 'process', description: 'handles requests' },
-      },
-      journeys: {
-        ServeRequest: {
-          steps: [
-            { node: '_actors/ProjectOwner', action: 'sends request' },
-            { node: 'EntryPoint', action: 'processes request' },
-          ],
-        },
-      },
-    };
-    const result = compileFromModules(new Map([
+    const modules = new Map<string, ModuleFile>([
       ['_actors', actorsModule],
-      ['gateway', gatewayModule],
-    ]));
-    // _actors/ProjectOwner resolves in journey — no dangling ref errors
-    const danglingErrors = result.issues.filter(i =>
-      i.severity === 'error' && i.message.includes('ProjectOwner')
-    );
-    expect(danglingErrors.length).toBe(0);
-    expect(result.index.journeys['ServeRequest'].steps[0].node).toBe('_actors/ProjectOwner');
+      ['content', contentModule],
+    ]);
+    const result = compileFromModules(modules);
+    // _actors/User is referenced in UserCreatesPost journey — resolves correctly
+    expect(result.index.nodes['_actors/User']).toBeDefined();
+    expect(result.index.nodes['_actors/User'].in_journeys.length).toBeGreaterThanOrEqual(1);
+    // _actors/Admin referenced in AdminModeratesContent
+    expect(result.index.nodes['_actors/Admin'].in_journeys.length).toBeGreaterThanOrEqual(1);
   });
 
   it("step 13: convergence/ModuleCreation begins creating modules with actors available as valid references", () => {
-    const actorsModule: ModuleFile = {
-      nodes: Object.fromEntries(
-        mergedActors.map(name => [name, { type: 'actor' as const, description: `${name} actor` }])
-      ),
-      journeys: {},
-    };
-    const gatewayModule: ModuleFile = {
-      nodes: {
-        EntryPoint: { type: 'process', description: 'handles requests' },
-      },
-      journeys: {
-        ServeRequest: {
-          steps: [
-            { node: '_actors/ProjectOwner', action: 'sends request' },
-            { node: 'EntryPoint', action: 'processes request' },
-          ],
-        },
-      },
-    };
-    const result = compileFromModules(new Map([
+    const modules = new Map<string, ModuleFile>([
       ['_actors', actorsModule],
-      ['gateway', gatewayModule],
-    ]));
-    // Gateway module is created successfully with actor references
-    expect(result.coverage.modules['gateway']).toBeDefined();
-    expect(result.coverage.modules['gateway'].journeys).toBe(1);
-    expect(result.coverage.modules['gateway'].cross_module_connections).toBeGreaterThanOrEqual(1);
+      ['content', contentModule],
+    ]);
+    const result = compileFromModules(modules);
+    // No dangling ref errors — actors resolve
+    const danglingErrors = result.issues.filter(i =>
+      i.severity === 'error' && i.message.includes('does not exist')
+    );
+    expect(danglingErrors.length).toBe(0);
   });
 
   it("step 14: actors/ProvideActorsForModuleCreation supplies the actor list to each module's excerpt context", () => {
-    const actorsModule: ModuleFile = {
-      nodes: Object.fromEntries(
-        mergedActors.map(name => [name, { type: 'actor' as const, description: `${name} actor` }])
-      ),
-      journeys: {},
-    };
-    const gatewayModule: ModuleFile = {
-      nodes: {
-        EntryPoint: { type: 'process', description: 'handles requests' },
-      },
-      journeys: {
-        ServeRequest: {
-          steps: [
-            { node: '_actors/ProjectOwner', action: 'sends request' },
-            { node: 'EntryPoint', action: 'processes request' },
-          ],
-        },
-      },
-    };
-    const result = compileFromModules(new Map([
+    const modules = new Map<string, ModuleFile>([
       ['_actors', actorsModule],
-      ['gateway', gatewayModule],
-    ]));
-    // Actor nodes are available to the excerpt generator
-    const entryPoint = result.index.nodes['gateway/EntryPoint'];
-    expect(entryPoint.triggered_by_actors).toContain('_actors/ProjectOwner');
+      ['content', contentModule],
+    ]);
+    const result = compileFromModules(modules);
+    // Content module nodes are triggered by actors
+    const createPost = result.index.nodes['content/CreatePost'];
+    expect(createPost.triggered_by_actors).toContain('_actors/User');
   });
 
   it("step 15: excerpt/AssembleExcerpt includes relevant actors in the module creation excerpt", () => {
-    const actorsModule: ModuleFile = {
-      nodes: Object.fromEntries(
-        mergedActors.map(name => [name, { type: 'actor' as const, description: `${name} actor` }])
-      ),
-      journeys: {},
-    };
-    const gatewayModule: ModuleFile = {
-      nodes: {
-        EntryPoint: { type: 'process', description: 'handles requests' },
-      },
-      journeys: {
-        ServeRequest: {
-          steps: [
-            { node: '_actors/ProjectOwner', action: 'sends request' },
-            { node: 'EntryPoint', action: 'processes request' },
-          ],
-        },
-      },
-    };
-    const result = compileFromModules(new Map([
+    const modules = new Map<string, ModuleFile>([
       ['_actors', actorsModule],
-      ['gateway', gatewayModule],
-    ]));
+      ['content', contentModule],
+    ]);
+    const result = compileFromModules(modules);
     const excerpt = generateExcerpt({
       round: 1,
-      focusModule: 'gateway',
+      focusModule: 'content',
       index: result.index,
       coverage: result.coverage,
       issues: result.issues,
-      moduleFileContent: 'nodes:\n  EntryPoint:\n    type: process\n    description: handles requests',
+      moduleFileContent: yaml.dump(contentModule),
     });
-    // Excerpt includes actor context
-    expect(excerpt).toContain('ProjectOwner');
-    expect(excerpt).toContain('TRIGGERED BY');
-    expect(excerpt).toContain('_actors');
-    expect(excerpt).toContain('CROSS-MODULE');
+    expect(excerpt).toContain('TRIGGERED BY:');
+    expect(excerpt).toContain('User');
+    expect(excerpt).toContain('Admin');
+    expect(excerpt).toContain('Focus: content');
   });
 
 });

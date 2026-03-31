@@ -4,7 +4,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: test/director.test.ts
 // Implementation: src/publish.ts
@@ -65,7 +67,7 @@ describe("EndToEndHierarchySplit", () => {
   });
 
   it("step 10: hierarchy/SpawnChildEngine launches convergence.ts for each child with incremented depth", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches convergence.ts for each child with incremented depth
     // TODO: agent fills assertion
   });
@@ -89,7 +91,7 @@ describe("EndToEndHierarchySplit", () => {
   });
 
   it("step 14: hierarchy/ValidateCrossEngineRefs validates cross-engine references across sibling interfaces", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: validates cross-engine references across sibling interfaces
     // TODO: agent fills assertion
   });
@@ -101,7 +103,7 @@ describe("EndToEndHierarchySplit", () => {
   });
 
   it("step 16: hierarchy/CreateCrossEngineJourneys creates parent-level journeys connecting child nodes", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: creates parent-level journeys connecting child nodes
     // TODO: agent fills assertion
   });

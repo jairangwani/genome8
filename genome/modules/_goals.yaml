@@ -53,6 +53,8 @@ journeys:
         action: publishes a standard interface that any dependent box can consume
       - node: convergence/ValidateSelfConsistency
         action: genome8 manages itself using its own protocol proving it is the product
+      - node: convergence/GenomeIsProtocolNotTool
+        action: enforces that the protocol is self-describing and applies to any system
 
   ProveBuildPando:
     steps:
@@ -91,6 +93,8 @@ journeys:
         action: auto-reverts fixes that introduce regressions
       - node: llm/ValidateWorkerOutput
         action: validates every LLM output before accepting it into the graph
+      - node: convergence/ProductionReadyNoShortcuts
+        action: enforces that every change is validated, tested, and protected against regressions
 
   ProveSelfSustaining:
     steps:
@@ -110,3 +114,5 @@ journeys:
         action: respawns crashed workers and resumes without human intervention
       - node: convergence/EnterSleepMode
         action: returns to sleep after autonomous reconvergence completing the self-sustaining cycle
+      - node: convergence/SelfSustainingWithoutHumans
+        action: enforces that the system monitors, heals, and reconverges without human intervention

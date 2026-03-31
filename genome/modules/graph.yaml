@@ -106,6 +106,18 @@ nodes:
   ModulesTouchedTracking:
     type: process
     description: tracks the set of distinct modules referenced by a journey's steps, stored as modules_touched on the compiled journey
+  ValidateNodeNameFormat:
+    type: process
+    description: checks that each node name is a valid PascalCase identifier without path separators, YAML special characters, or shell metacharacters that would break compilation, excerpt generation, or codegen output
+  ValidateJourneyNameFormat:
+    type: process
+    description: checks that each journey name is a valid PascalCase identifier without path separators, YAML special characters, or shell metacharacters that would break test file generation or connection provenance tracking
+  EnforceDescriptionSizeLimit:
+    type: process
+    description: rejects node and journey descriptions that exceed a configurable character threshold, preventing context window exhaustion when excerpts embed descriptions
+  DetectSelfLoopStep:
+    type: process
+    description: detects consecutive journey steps that reference the same node, rejecting self-loop edges that produce meaningless connections and waste computation
 
 journeys:
   DefineNode:
@@ -581,3 +593,94 @@ journeys:
         action: rejects the step because the node reference does not resolve to any defined node, actor, or cross-module target
       - node: _actors/Compiler
         action: reports a validation error identifying the unresolvable reference, its journey, and the step position
+
+  PropagateJourneyRename:
+    steps:
+      - node: JourneyRegistry
+        action: records the old-name-to-new-name mapping for the renamed journey
+      - node: ConnectionSet
+        action: updates provenance on all connections derived from the old journey name to reference the new name
+      - node: JourneyMembershipTracking
+        action: rewrites in_journeys entries on all nodes that participated in the old journey name
+      - node: ActorTriggerTracking
+        action: updates triggered_by_actors provenance that referenced the old journey name
+      - node: CompiledIndex
+        action: updated with all connection provenance and node membership consistently referencing the new journey name
+
+  PropagateJourneyRemoval:
+    steps:
+      - node: JourneyRegistry
+        action: removes the deleted journey from the collection of all journeys
+      - node: ConnectionSet
+        action: identifies connections whose sole provenance is the removed journey
+      - node: ConnectionDeduplication
+        action: purges connections that have no remaining provenance after the journey removal
+      - node: JourneyMembershipTracking
+        action: removes the deleted journey from in_journeys entries on all nodes that participated in it
+      - node: ActorTriggerTracking
+        action: recalculates triggered_by_actors for nodes that lost their only triggering journey
+      - node: NoIsolationRule
+        action: flags any nodes that no longer participate in any journey after the removal
+      - node: CompiledIndex
+        action: updated with the journey, its exclusive connections, and stale membership entries fully removed
+
+  IdempotentRemerge:
+    steps:
+      - node: CompiledIndex
+        action: provides the compiled graph that already contains the target module's nodes, journeys, and connections
+      - node: ModuleFile
+        action: provides the same module file with no changes since it was last merged
+      - node: IncrementalMerge
+        action: attempts to merge the unchanged module into the compiled index
+      - node: NodeRegistry
+        action: confirms node count and definitions are identical before and after the merge attempt
+      - node: JourneyRegistry
+        action: confirms journey count and definitions are identical before and after the merge attempt
+      - node: ConnectionSet
+        action: confirms edge count and provenance are identical before and after the merge attempt
+      - node: CompiledIndex
+        action: remains unchanged after re-merging an already-integrated module
+
+  RejectMalformedNodeName:
+    steps:
+      - node: _actors/YAMLTamperer
+        action: edits a module file to inject a node name containing path separators or YAML special characters
+      - node: NodeDefinition
+        action: parses the node entry and extracts the name field
+      - node: ValidateNodeNameFormat
+        action: rejects the name because it contains illegal characters that would break downstream processing
+      - node: _actors/Compiler
+        action: reports a validation error identifying the malformed node name and its module
+
+  RejectMalformedJourneyName:
+    steps:
+      - node: _actors/YAMLTamperer
+        action: edits a module file to inject a journey name containing path separators or shell metacharacters
+      - node: JourneyDefinition
+        action: parses the journey and extracts the name field
+      - node: ValidateJourneyNameFormat
+        action: rejects the name because it contains illegal characters that would break test file paths or provenance tracking
+      - node: _actors/Compiler
+        action: reports a validation error identifying the malformed journey name and its module
+
+  RejectOversizedDescription:
+    steps:
+      - node: _actors/RogueWorker
+        action: writes a module with node descriptions containing tens of thousands of characters to exhaust context windows
+      - node: NodeDefinition
+        action: parses the node entries and extracts description fields
+      - node: EnforceDescriptionSizeLimit
+        action: detects descriptions exceeding the configurable threshold and rejects the module
+      - node: _actors/Compiler
+        action: reports a validation error listing which nodes have oversized descriptions
+
+  RejectSelfLoopStep:
+    steps:
+      - node: _actors/YAMLTamperer
+        action: writes consecutive journey steps that reference the same node to create a self-loop edge
+      - node: JourneyDefinition
+        action: parses the journey and provides the ordered step list
+      - node: DetectSelfLoopStep
+        action: scans consecutive step pairs and detects the same node appearing as both source and target
+      - node: _actors/Compiler
+        action: reports a validation error identifying the self-loop step pair and its journey

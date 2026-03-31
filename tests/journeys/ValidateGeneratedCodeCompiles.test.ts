@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
 // Implementation: src/compile.ts
 // Implementation: test/compile.test.ts
 // Implementation: test/pando8.test.ts
@@ -12,7 +13,7 @@ import { describe, it, expect } from 'vitest';
 
 describe("ValidateGeneratedCodeCompiles", () => {
   it("step 1: codegen/WriteGeneratedFile writes the filled source file to disk", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the filled source file to disk
     // TODO: agent fills assertion
   });

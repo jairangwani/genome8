@@ -34,7 +34,7 @@ describe("FilterAndProtectDuringSkeletonWrite", () => {
   });
 
   it("step 5: codegen/GenerateProcessSkeletons generates a TypeScript skeleton for each process node that passes both filters", () => {
-    // Node: codegen/GenerateProcessSkeletons (process)
+    // Node: codegen/GenerateProcessSkeletons (process) — has code: src/codegen.ts
     // Action: generates a TypeScript skeleton for each process node that passes both filters
     // TODO: agent fills assertion
   });
@@ -52,13 +52,13 @@ describe("FilterAndProtectDuringSkeletonWrite", () => {
   });
 
   it("step 8: codegen/EnsureOutputDirectory creates the parent directory tree if it does not yet exist", () => {
-    // Node: codegen/EnsureOutputDirectory (process)
+    // Node: codegen/EnsureOutputDirectory (process) — has code: src/codegen.ts
     // Action: creates the parent directory tree if it does not yet exist
     // TODO: agent fills assertion
   });
 
   it("step 9: codegen/WriteGeneratedFile writes the skeleton to disk at the declared file path", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the skeleton to disk at the declared file path
     // TODO: agent fills assertion
   });

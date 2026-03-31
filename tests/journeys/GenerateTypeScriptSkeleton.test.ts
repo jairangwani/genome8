@@ -33,7 +33,7 @@ describe("GenerateTypeScriptSkeleton", () => {
   });
 
   it("step 5: codegen/GenerateProcessSkeletons creates the class declaration for the process node", () => {
-    // Node: codegen/GenerateProcessSkeletons (process)
+    // Node: codegen/GenerateProcessSkeletons (process) — has code: src/codegen.ts
     // Action: creates the class declaration for the process node
     // TODO: agent fills assertion
   });

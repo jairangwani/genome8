@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("HandleWriteFailure", () => {
   it("step 1: codegen/FilledSourceFile provides the validated filled content ready to write", () => {
     // Node: codegen/FilledSourceFile (artifact)
@@ -12,13 +14,13 @@ describe("HandleWriteFailure", () => {
   });
 
   it("step 2: codegen/WriteGeneratedFile attempts to write the file to disk and encounters a failure", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: attempts to write the file to disk and encounters a failure
     // TODO: agent fills assertion
   });
 
   it("step 3: codegen/WriteGeneratedFile detects the specific failure reason — disk full, permission denied, or path not found", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: detects the specific failure reason — disk full, permission denied, or path not found
     // TODO: agent fills assertion
   });
@@ -30,13 +32,13 @@ describe("HandleWriteFailure", () => {
   });
 
   it("step 5: codegen/WriteGeneratedFile retries the write after verifying the directory is accessible", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: retries the write after verifying the directory is accessible
     // TODO: agent fills assertion
   });
 
   it("step 6: codegen/WriteGeneratedFile confirms the file was successfully written on retry", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: confirms the file was successfully written on retry
     // TODO: agent fills assertion
   });

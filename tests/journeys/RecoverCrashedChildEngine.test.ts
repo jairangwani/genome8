@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 
 describe("RecoverCrashedChildEngine", () => {
@@ -14,7 +15,7 @@ describe("RecoverCrashedChildEngine", () => {
   });
 
   it("step 2: hierarchy/SpawnChildEngine one of the child engine processes crashes during its convergence pipeline", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: one of the child engine processes crashes during its convergence pipeline
     // TODO: agent fills assertion
   });
@@ -56,7 +57,7 @@ describe("RecoverCrashedChildEngine", () => {
   });
 
   it("step 9: hierarchy/SpawnChildEngine relaunches the child engine process with its scoped spec and recovered module state", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: relaunches the child engine process with its scoped spec and recovered module state
     // TODO: agent fills assertion
   });

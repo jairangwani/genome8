@@ -30,7 +30,7 @@ describe("CompileAfterAuditFix", () => {
   });
 
   it("step 4: compilation/YAMLErrorReporting checks for YAML errors in the edited module", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: checks for YAML errors in the edited module
     // TODO: agent fills assertion
   });

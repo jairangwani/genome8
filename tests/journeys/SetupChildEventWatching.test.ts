@@ -4,11 +4,12 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 
 describe("SetupChildEventWatching", () => {
   it("step 1: hierarchy/SpawnChildEngine launches child engine processes in their scoped directories", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches child engine processes in their scoped directories
     // TODO: agent fills assertion
   });

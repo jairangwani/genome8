@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 // Implementation: test/director.test.ts
 
@@ -28,7 +29,7 @@ describe("ProveBuildPando", () => {
   });
 
   it("step 4: hierarchy/SpawnChildEngine launches child engines for each Pando subsystem", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches child engines for each Pando subsystem
     // TODO: agent fills assertion
   });
@@ -40,7 +41,7 @@ describe("ProveBuildPando", () => {
   });
 
   it("step 6: hierarchy/CreateCrossEngineJourneys connects Pando subsystem interfaces through cross-engine journeys", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: connects Pando subsystem interfaces through cross-engine journeys
     // TODO: agent fills assertion
   });

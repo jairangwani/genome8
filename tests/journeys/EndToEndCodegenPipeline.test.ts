@@ -46,7 +46,7 @@ describe("EndToEndCodegenPipeline", () => {
   });
 
   it("step 7: codegen/GenerateProcessSkeletons creates TypeScript class skeletons for each process node", () => {
-    // Node: codegen/GenerateProcessSkeletons (process)
+    // Node: codegen/GenerateProcessSkeletons (process) — has code: src/codegen.ts
     // Action: creates TypeScript class skeletons for each process node
     // TODO: agent fills assertion
   });
@@ -58,13 +58,13 @@ describe("EndToEndCodegenPipeline", () => {
   });
 
   it("step 9: codegen/EnsureOutputDirectory creates parent directories as needed", () => {
-    // Node: codegen/EnsureOutputDirectory (process)
+    // Node: codegen/EnsureOutputDirectory (process) — has code: src/codegen.ts
     // Action: creates parent directories as needed
     // TODO: agent fills assertion
   });
 
   it("step 10: codegen/WriteGeneratedFile writes each skeleton file to disk", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes each skeleton file to disk
     // TODO: agent fills assertion
   });
@@ -112,7 +112,7 @@ describe("EndToEndCodegenPipeline", () => {
   });
 
   it("step 18: codegen/WriteGeneratedFile writes each final file to the output directory", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes each final file to the output directory
     // TODO: agent fills assertion
   });

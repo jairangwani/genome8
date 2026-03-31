@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: src/publish.ts
 
@@ -22,7 +23,7 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
   });
 
   it("step 3: hierarchy/ValidateCrossEngineRefs attempts to resolve grandchild external refs against other grandchild siblings", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: attempts to resolve grandchild external refs against other grandchild siblings
     // TODO: agent fills assertion
   });
@@ -58,7 +59,7 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
   });
 
   it("step 9: hierarchy/ValidateCrossEngineRefs attempts to resolve the propagated refs against sibling child interfaces", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: attempts to resolve the propagated refs against sibling child interfaces
     // TODO: agent fills assertion
   });

@@ -1159,7 +1159,7 @@ Update the appropriate YAML module file using the Write tool if needed.`);
   // ═══ STEP 5 — Publish + Notify ═══
   startStep('step5_publish');
   console.log('\n═══ STEP 5: Publish ═══');
-  const finalResult = doCompile();
+  let finalResult = doCompile();
   const { interface_ } = publishInterface(publishedDir, finalResult.index, path.basename(absProjectDir));
   console.log(`  Published: ${Object.keys(interface_.provides).length} nodes | Hash: ${interface_.version_hash}`);
 
@@ -1588,6 +1588,127 @@ One line per goal: GoalName: STATUS — evidence`);
     }
   }
 
+  // ── Self-Heal Cycle (Spec §12) ──
+  // If goals are UNPROVEN, identify blockers and fix them autonomously.
+  // SelfAuditOwnCode → ClassifyBlockerType → CreateBlockerJourney → FixBlockerCode → re-verify
+  // Caps at maxAuditCycles to guarantee termination (BoundedRetryRule).
+  if (fs.existsSync(goalsCheckPath)) {
+    const goalsForHeal = fs.readFileSync(goalsCheckPath, 'utf-8');
+    // Quick check: run goal verification to see if any are UNPROVEN
+    let currentUnproven: string[] = [];
+    try {
+      const healVerify = await worker.call(`Verify each goal is ACTUALLY achieved — not just covered by journeys.
+
+GOALS:
+${goalsForHeal}
+
+ACTUAL STATE:
+- Graph: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, 0 compile errors
+- Tests: ${testsPassed ? 'passing' : 'failing'}
+
+For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
+      currentUnproven = healVerify.split('\n').filter(l => /UNPROVEN/.test(l));
+    } catch { /* verification timed out — skip self-heal */ }
+
+    if (currentUnproven.length > 0) {
+      console.log(`\n  ── Self-Heal Cycle ──`);
+      console.log(`  ${currentUnproven.length} UNPROVEN goals. Attempting autonomous fix...`);
+
+      let selfHealRound = 0;
+      const maxSelfHealRounds = config.maxAuditCycles;
+
+      while (selfHealRound < maxSelfHealRounds && currentUnproven.length > 0) {
+        selfHealRound++;
+        console.log(`\n  Self-heal round ${selfHealRound}/${maxSelfHealRounds}`);
+
+        // SelfAuditOwnCode: identify what prevents each UNPROVEN goal
+        let blockers: Array<{goal: string; type: string; description: string}> = [];
+        try {
+          const blockerAnalysis = await worker.call(`Self-audit: Read source code in ${path.join(absProjectDir, 'src')} and goals in ${goalsCheckPath}.
+
+For each UNPROVEN goal, identify what SPECIFICALLY prevents it from being achieved:
+${currentUnproven.map(g => `  ${g.trim()}`).join('\n')}
+
+Classify each blocker as:
+- CODE_BUG: existing code has a bug preventing the goal
+- MISSING_FEATURE: code needs new functionality
+- SPEC_GAP: spec doesn't describe how to achieve this (requires human input)
+
+Reply as JSON: {"blockers": [{"goal": "GoalName", "type": "CODE_BUG|MISSING_FEATURE|SPEC_GAP", "description": "what blocks it"}]}`);
+
+          // ClassifyBlockerType: parse and classify
+          const jsonMatch = blockerAnalysis.match(/\{[\s\S]*"blockers"[\s\S]*\}/);
+          if (jsonMatch) blockers = JSON.parse(jsonMatch[0]).blockers || [];
+        } catch { /* analysis failed — exit loop */ break; }
+
+        if (blockers.length === 0) {
+          console.log('  No actionable blockers identified. Exiting self-heal.');
+          break;
+        }
+
+        // FlagSpecGap: report spec gaps that require human updates
+        const specGaps = blockers.filter(b => b.type === 'SPEC_GAP');
+        if (specGaps.length > 0) {
+          console.log(`  Spec gaps (require human update to spec.md): ${specGaps.map(b => b.goal).join(', ')}`);
+        }
+
+        // CreateBlockerJourney + FixBlockerCode: fix code bugs and missing features
+        const fixable = blockers.filter(b => b.type !== 'SPEC_GAP');
+        if (fixable.length === 0) {
+          console.log('  All remaining blockers are spec gaps. Exiting self-heal.');
+          break;
+        }
+
+        for (const blocker of fixable.slice(0, 3)) {
+          console.log(`  Fixing: ${blocker.goal} (${blocker.type}) — ${blocker.description}`);
+          await worker.call(`Fix this blocker for goal "${blocker.goal}":
+Type: ${blocker.type}
+Description: ${blocker.description}
+
+1. Add a journey to the appropriate genome/modules/*.yaml file that exercises the blocked goal path
+2. If source code needs updating, update using Edit (do NOT rewrite entire files)
+3. After fixing, the goal should be closer to PROVEN status`);
+        }
+
+        // Recompile after fixes
+        const healResult = doCompile();
+        const healErrors = healResult.issues.filter(i => i.severity === 'error');
+        if (healErrors.length > 0) {
+          const errorList = healErrors.slice(0, 5).map(e => `- ${e.message}`).join('\n');
+          await worker.call(`Self-heal introduced compile errors. Fix them:\n${errorList}`);
+        }
+
+        // VerifyGoalsAgainstEvidence: re-verify after fixes
+        try {
+          const reVerify = await worker.call(`Re-verify goals after self-heal fixes.
+
+GOALS:
+${fs.readFileSync(goalsCheckPath, 'utf-8')}
+
+ACTUAL STATE: ${doCompile().index._stats.total_nodes} nodes, ${doCompile().index._stats.total_journeys} journeys, 0 compile errors
+
+For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
+          currentUnproven = reVerify.split('\n').filter(l => /UNPROVEN/.test(l));
+          console.log(`  After round ${selfHealRound}: ${currentUnproven.length} goals still UNPROVEN`);
+          if (currentUnproven.length === 0) {
+            console.log('  All goals PROVEN. Self-heal complete.');
+          }
+        } catch {
+          console.log('  Goal re-verification timed out. Stopping self-heal.');
+          break;
+        }
+      }
+
+      // DetectSelfHealingExhaustion: report if max rounds reached
+      if (selfHealRound >= maxSelfHealRounds && currentUnproven.length > 0) {
+        console.log(`  Self-heal exhausted ${maxSelfHealRounds} rounds. ${currentUnproven.length} goals remain UNPROVEN.`);
+      }
+
+      // Recompile to capture any graph changes from self-heal
+      finalResult = doCompile();
+    }
+  }
+
   console.log('\n═══ CONVERGED ═══');
   console.log(`Final: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, ${finalResult.index._stats.total_connections} connections`);
 
@@ -1683,10 +1804,113 @@ One line per goal: GoalName: STATUS — evidence`);
   });
   activeWatchers.push(specWatcher);
 
+  // Watch src/ directory for code changes — CodeChangeWake journey (Spec §3 Step 7)
+  // When a developer edits source code directly, reconcile the change back to the graph.
+  const watchSrcDir = path.join(absProjectDir, 'src');
+  if (fs.existsSync(watchSrcDir)) {
+    console.log(`  Watching src: ${watchSrcDir}`);
+    let codeChangeTimer: ReturnType<typeof setTimeout> | null = null;
+    const pendingCodeChanges = new Set<string>();
+
+    const srcWatcher = fs.watch(watchSrcDir, { recursive: true }, (_eventType, filename) => {
+      if (!filename || !/\.(ts|js|tsx|jsx)$/.test(filename)) return;
+      // Ignore build artifacts and test outputs
+      if (filename.includes('node_modules') || filename.includes('dist/')) return;
+      pendingCodeChanges.add(filename);
+      if (codeChangeTimer) clearTimeout(codeChangeTimer);
+      codeChangeTimer = setTimeout(async () => {
+        const changedFiles = [...pendingCodeChanges];
+        pendingCodeChanges.clear();
+
+        console.log(`\n  CODE CHANGE: ${changedFiles.join(', ')}`);
+        fs.writeFileSync(statePath, JSON.stringify({ status: 'reconciling', reason: `code change: ${changedFiles.join(', ')}` }, null, 2));
+
+        try {
+          // WakeOnCodeChange: find which graph modules reference the changed files
+          const currentResult = doCompile();
+          const affectedModules = new Set<string>();
+          for (const [, node] of Object.entries(currentResult.index.nodes)) {
+            if (node.files) {
+              for (const nodeFile of node.files) {
+                for (const changed of changedFiles) {
+                  if (nodeFile.includes(changed) || changed.includes(path.basename(nodeFile))) {
+                    affectedModules.add(node.module);
+                  }
+                }
+              }
+            }
+          }
+
+          if (affectedModules.size === 0) {
+            console.log('  No graph nodes reference changed files. Skipping reconciliation.');
+            fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString(), stats: currentResult.index._stats }, null, 2));
+            return;
+          }
+
+          console.log(`  Affected modules: ${[...affectedModules].join(', ')}`);
+
+          // ReconcileCodeWithGraph: ask LLM if code does MORE than graph describes
+          for (const changedFile of changedFiles) {
+            const fullFilePath = path.join(watchSrcDir, changedFile);
+            if (!fs.existsSync(fullFilePath)) continue;
+            await worker.call(`A source file changed: src/${changedFile}
+
+Read ${fullFilePath} and compare against the graph modules that reference it: ${[...affectedModules].join(', ')}
+Read genome/modules/{module}.yaml for each affected module.
+
+If code does MORE than graph describes (new functions, new capabilities), update the module YAML using Edit to add missing nodes/journeys.
+If code does LESS than graph describes, report it but do not change the graph.
+Do NOT rewrite entire files — use Edit to append new content only.`);
+          }
+
+          // Recompile after reconciliation
+          const reconResult = doCompile();
+          const errors = reconResult.issues.filter(i => i.severity === 'error');
+          if (errors.length > 0) {
+            const errorList = errors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
+            await worker.call(`Fix these compile errors after code reconciliation:\n${errorList}\nRead affected files, fix refs, write back.`);
+          }
+
+          // Publish if interface changed
+          const latestResult = doCompile();
+          const { interface_: newInterface } = publishInterface(publishedDir, latestResult.index, path.basename(absProjectDir));
+          const prevHash = (() => {
+            try { return JSON.parse(fs.readFileSync(statePath, 'utf-8')).interface_hash; } catch { return null; }
+          })();
+
+          if (prevHash && newInterface.version_hash === prevHash) {
+            console.log(`  Reconciled. Hash UNCHANGED. No ripple.`);
+          } else {
+            if (!fs.existsSync(eventsDir)) fs.mkdirSync(eventsDir, { recursive: true });
+            const newEventFile = path.join(eventsDir, `${Date.now()}_${newInterface.version_hash.substring(7, 19)}.event`);
+            fs.writeFileSync(newEventFile, JSON.stringify({
+              engine: path.basename(absProjectDir),
+              hash: newInterface.version_hash,
+              timestamp: new Date().toISOString(),
+              origin_chain: [path.basename(absProjectDir)],
+            }, null, 2));
+            console.log(`  Reconciled. Hash: ${newInterface.version_hash.substring(7, 19)}. Event written.`);
+          }
+
+          fs.writeFileSync(statePath, JSON.stringify({
+            status: 'sleeping',
+            converged_at: new Date().toISOString(),
+            stats: latestResult.index._stats,
+            interface_hash: newInterface.version_hash,
+          }, null, 2));
+        } catch (err: any) {
+          console.error(`  Code reconciliation error: ${err.message}`);
+          fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString() }, null, 2));
+        }
+      }, config.eventDebounceMs);
+    });
+    activeWatchers.push(srcWatcher);
+  }
+
   if (depEventDirs.length === 0) {
-    console.log('  No dependencies to watch. Watching spec only.');
-    // Keep process alive — will wake on spec change
-    await new Promise(() => {}); // Block until spec changes
+    console.log('  No dependencies to watch. Watching spec + src.');
+    // Keep process alive — will wake on spec or code change
+    await new Promise(() => {}); // Block until spec/code changes
     return;
   }
 
@@ -1866,7 +2090,7 @@ One line per goal: GoalName: STATUS — evidence`);
   }
 
   // Keep process alive — fs.watch callbacks handle everything
-  console.log('  Sleeping. Will wake on dependency events only.');
+  console.log('  Sleeping. Will wake on spec change, code change, or dependency events.');
   await new Promise(() => {}); // Block forever — fs.watch handles events
 }
 

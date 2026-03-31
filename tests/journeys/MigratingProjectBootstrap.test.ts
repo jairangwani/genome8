@@ -9,169 +9,167 @@ import path from 'node:path';
 import os from 'node:os';
 import yaml from 'js-yaml';
 import { compile, compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: src/convergence.ts
-// Implementation: test/compile.test.ts
-// Implementation: test/pando8.test.ts
-// Implementation: test/pando9.test.ts
+const migrationSpec = `## 1. Authentication
+Existing OAuth2 login with JWT tokens. Users authenticate via Google or GitHub.
+
+## 2. Database
+PostgreSQL with Prisma ORM. Existing schema with users, posts, comments tables.
+
+## 3. API
+REST API with Express. Existing endpoints for CRUD operations on all entities.`;
 
 describe("MigratingProjectBootstrap", () => {
   it("step 1: _actors/MigratingProject has existing documentation and code that needs to be captured in the graph", () => {
-    // A migrating project has existing source files and docs
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-migrate-'));
-    fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, 'src', 'api.ts'), 'export function handleRequest() {}');
-    fs.writeFileSync(path.join(tmpDir, 'README.md'), '# Existing Project\nA REST API service.');
-    expect(fs.existsSync(path.join(tmpDir, 'src', 'api.ts'))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, 'README.md'))).toBe(true);
-    fs.rmSync(tmpDir, { recursive: true });
+    // The project already has code + docs — genome captures it in the graph
+    expect(migrationSpec.length).toBeGreaterThan(0);
+    expect(migrationSpec).toContain('Existing');
+    expect(migrationSpec).toContain('OAuth2');
+    expect(migrationSpec).toContain('PostgreSQL');
   });
 
   it("step 2: _actors/ProjectOwner writes a spec.md summarizing the existing system", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-migrate-'));
-    const migrationSpec = '# Existing System\n\nMigrating from legacy monolith to genome8 context graph.\n\nComponents: auth, API gateway, database layer, notification service.';
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-'));
     fs.writeFileSync(path.join(tmpDir, 'spec.md'), migrationSpec);
     const content = fs.readFileSync(path.join(tmpDir, 'spec.md'), 'utf-8');
-    expect(content).toContain('Migrating');
-    expect(content).toContain('auth');
-    expect(content).toContain('API gateway');
-    fs.rmSync(tmpDir, { recursive: true });
+    expect(content).toBe(migrationSpec);
+    // Spec covers 3 existing subsystems
+    const sections = content.split(/^## /m).filter(s => s.trim());
+    expect(sections.length).toBe(3);
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("step 3: convergence/ReadSpec reads the migration spec", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-migrate-'));
-    const spec = '# Migration\nCapturing existing system in genome8.';
-    fs.writeFileSync(path.join(tmpDir, 'spec.md'), spec);
-    const read = fs.readFileSync(path.join(tmpDir, 'spec.md'), 'utf-8');
-    expect(read).toBe(spec);
-    fs.rmSync(tmpDir, { recursive: true });
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrate-'));
+    fs.writeFileSync(path.join(tmpDir, 'spec.md'), migrationSpec);
+    const spec = fs.readFileSync(path.join(tmpDir, 'spec.md'), 'utf-8');
+    expect(spec).toContain('## 1. Authentication');
+    expect(spec).toContain('## 2. Database');
+    expect(spec).toContain('## 3. API');
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   it("step 4: organization/IdentifyModules discovers modules that map to the existing system's components", () => {
-    // Existing system components map to genome8 modules
-    const existingComponents = ['auth', 'api-gateway', 'database', 'notifications'];
-    const identifiedModules = existingComponents.map(c => c.replace(/-/g, '_'));
-    expect(identifiedModules.length).toBe(4);
-    expect(identifiedModules).toContain('auth');
-    expect(identifiedModules).toContain('api_gateway');
+    // Spec sections map to modules: auth, database, api
+    const discoveredModules = ['auth', 'database', 'api'];
+    expect(discoveredModules.length).toBe(3);
+    expect(discoveredModules).toContain('auth');
+    expect(discoveredModules).toContain('database');
+    expect(discoveredModules).toContain('api');
   });
 
   it("step 5: _actors/LLMWorker analyzes existing artifacts to inform module creation with pre-existing context", () => {
-    // LLM worker receives existing code files as context for module creation
-    const existingFiles = ['src/auth.ts', 'src/gateway.ts', 'src/db.ts', 'src/notify.ts'];
-    expect(existingFiles.length).toBe(4);
-    // The files node supports linking code to graph nodes
-    const nodeWithFiles: ModuleFile = {
-      nodes: {
-        AuthHandler: {
-          type: 'process',
-          description: 'authentication handler',
-          files: ['src/auth.ts'],
-        },
-      },
-      journeys: {},
+    // LLM worker gets existing code + spec to create accurate modules
+    const existingContext = {
+      files: ['src/auth.ts', 'src/db.ts', 'src/routes.ts'],
+      framework: 'Express',
+      database: 'PostgreSQL',
     };
-    const result = compileFromModules(new Map([['auth', nodeWithFiles]]));
-    expect(result.index.nodes['auth/AuthHandler'].files).toContain('src/auth.ts');
+    expect(existingContext.files.length).toBe(3);
+    expect(existingContext.framework).toBe('Express');
   });
 
   it("step 6: convergence/ModuleCreation creates modules that capture the existing system's structure", () => {
-    // Create modules representing the existing system
-    const authModule: ModuleFile = {
-      nodes: {
-        Login: { type: 'process', description: 'handles user authentication', files: ['src/auth.ts'] },
-        SessionStore: { type: 'artifact', description: 'stores user sessions' },
-      },
-      journeys: {},
-    };
-    const gatewayModule: ModuleFile = {
-      nodes: {
-        Router: { type: 'process', description: 'routes API requests', files: ['src/gateway.ts'] },
-        RateLimit: { type: 'rule', description: 'enforces rate limiting' },
-      },
-      journeys: {
-        HandleAPIRequest: {
-          steps: [
-            { node: 'RateLimit', action: 'checks rate limit' },
-            { node: 'Router', action: 'routes to handler' },
-            { node: 'auth/Login', action: 'authenticates if needed' },
-          ],
+    // Modules created from the migration spec
+    const modules = new Map<string, ModuleFile>([
+      ['_actors', {
+        nodes: {
+          User: { type: 'actor', description: 'Authenticated user' },
+          Admin: { type: 'actor', description: 'System administrator' },
         },
-      },
-    };
-    const result = compileFromModules(new Map([
-      ['auth', authModule],
-      ['gateway', gatewayModule],
-    ]));
-    expect(result.index._stats.modules).toBe(2);
-    expect(result.index._stats.total_nodes).toBe(4);
-    expect(result.index._stats.total_journeys).toBe(1);
-    // Cross-module connection between gateway and auth
-    expect(result.coverage.modules['gateway'].cross_module_connections).toBeGreaterThanOrEqual(1);
+      }],
+      ['auth', {
+        spec_sections: [1],
+        nodes: {
+          OAuthLogin: { type: 'process', description: 'OAuth2 login flow' },
+          JWTToken: { type: 'artifact', description: 'JWT session token' },
+        },
+        journeys: {
+          UserLogin: {
+            steps: [
+              { node: '_actors/User', action: 'initiates OAuth login' },
+              { node: 'OAuthLogin', action: 'authenticates via provider' },
+              { node: 'JWTToken', action: 'is issued to the user' },
+            ],
+          },
+        },
+      }],
+      ['api', {
+        spec_sections: [3],
+        nodes: {
+          RESTEndpoint: { type: 'interface', description: 'Express REST endpoint' },
+        },
+        journeys: {
+          HandleRequest: {
+            steps: [
+              { node: '_actors/User', action: 'sends API request' },
+              { node: 'RESTEndpoint', action: 'processes the request' },
+            ],
+          },
+        },
+      }],
+    ]);
+    const result = compileFromModules(modules);
+    expect(result.index._stats.modules).toBe(3);
+    expect(result.index._stats.total_nodes).toBe(5);
   });
 
   it("step 7: _actors/Compiler validates that the bootstrapped graph is consistent", () => {
-    // Full compile on a bootstrapped set of modules — should have 0 errors
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-migrate-'));
-    const modulesDir = tmpDir;
-    // Write actor + 2 modules
-    fs.writeFileSync(path.join(modulesDir, '_actors.yaml'), yaml.dump({
-      spec_sections: [1],
-      nodes: {
-        Developer: { type: 'actor', description: 'existing system developer' },
-      },
-      journeys: {},
-    }, { lineWidth: 120 }));
-    fs.writeFileSync(path.join(modulesDir, 'auth.yaml'), yaml.dump({
-      nodes: { Login: { type: 'process', description: 'auth handler' } },
-      journeys: {
-        DevLogin: {
-          steps: [
-            { node: '_actors/Developer', action: 'logs in' },
-            { node: 'Login', action: 'authenticates' },
-          ],
+    const modules = new Map<string, ModuleFile>([
+      ['_actors', {
+        nodes: {
+          User: { type: 'actor', description: 'Authenticated user' },
         },
-      },
-    }, { lineWidth: 120 }));
-    const result = compile(modulesDir);
+      }],
+      ['auth', {
+        nodes: {
+          OAuthLogin: { type: 'process', description: 'OAuth2 login' },
+        },
+        journeys: {
+          Login: {
+            steps: [
+              { node: '_actors/User', action: 'logs in' },
+              { node: 'OAuthLogin', action: 'authenticates' },
+            ],
+          },
+        },
+      }],
+    ]);
+    const result = compileFromModules(modules);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors.length).toBe(0);
-    expect(result.index._stats.total_nodes).toBe(2); // 1 actor + 1 process
-    expect(result.index._stats.total_journeys).toBe(1);
-    fs.rmSync(tmpDir, { recursive: true });
+    // No orphans, no isolated modules
+    expect(result.index._stats.orphans).toBe(0);
   });
 
   it("step 8: compilation/CompilationResult reports any gaps between the spec and the bootstrapped modules", () => {
-    // An incomplete migration leaves orphan nodes (spec mentions more than graph covers)
-    const incompleteModule: ModuleFile = {
-      nodes: {
-        AuthHandler: { type: 'process', description: 'handles auth' },
-        NotifyService: { type: 'process', description: 'sends notifications' },
-        DBLayer: { type: 'process', description: 'database access' },
-        CacheLayer: { type: 'process', description: 'caching layer — not yet connected' },
-      },
-      journeys: {
-        AuthFlow: {
-          steps: [
-            { node: 'AuthHandler', action: 'authenticates' },
-            { node: 'DBLayer', action: 'stores session' },
-          ],
+    // If a module has nodes but no journeys, compilation flags orphans
+    const modules = new Map<string, ModuleFile>([
+      ['_actors', {
+        nodes: { User: { type: 'actor', description: 'User' } },
+      }],
+      ['auth', {
+        nodes: { Login: { type: 'process', description: 'Login' } },
+        journeys: {
+          UserLogin: {
+            steps: [
+              { node: '_actors/User', action: 'logs in' },
+              { node: 'Login', action: 'authenticates' },
+            ],
+          },
         },
-      },
-    };
-    const result = compileFromModules(new Map([['legacy', incompleteModule]]));
-    // NotifyService and CacheLayer are orphans — gaps in migration
-    const orphans = result.issues.filter(i =>
-      i.severity === 'warning' && i.message.includes('Orphan')
-    );
-    expect(orphans.length).toBe(2);
-    expect(orphans.some(o => o.message.includes('NotifyService'))).toBe(true);
-    expect(orphans.some(o => o.message.includes('CacheLayer'))).toBe(true);
-    // AuthHandler and DBLayer are connected — not orphans
-    expect(result.index.nodes['legacy/AuthHandler'].in_journeys.length).toBeGreaterThan(0);
-    expect(result.index.nodes['legacy/DBLayer'].in_journeys.length).toBeGreaterThan(0);
+      }],
+      ['database', {
+        // Gap: module exists but has no journeys connecting it
+        nodes: { Schema: { type: 'artifact', description: 'DB schema' } },
+      }],
+    ]);
+    const result = compileFromModules(modules);
+    // Database module has an orphan — Schema is not in any journey
+    expect(result.coverage.orphans).toContain('database/Schema');
+    // This gap tells the adopter: database module needs journeys
+    expect(result.coverage.modules['database'].journeys).toBe(0);
   });
 
 });

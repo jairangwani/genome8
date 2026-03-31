@@ -22,7 +22,7 @@ describe("ParseAllModules", () => {
   });
 
   it("step 3: compilation/YAMLErrorReporting catches syntax errors in any malformed YAML file and records them as _parseError stubs", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: catches syntax errors in any malformed YAML file and records them as _parseError stubs
     // TODO: agent fills assertion
   });

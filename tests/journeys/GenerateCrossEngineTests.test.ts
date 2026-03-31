@@ -5,12 +5,13 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/director.test.ts
 // Implementation: src/testgen.ts
 
 describe("GenerateCrossEngineTests", () => {
   it("step 1: hierarchy/CreateCrossEngineJourneys defines journeys that span multiple child engine boundaries", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: defines journeys that span multiple child engine boundaries
     // TODO: agent fills assertion
   });

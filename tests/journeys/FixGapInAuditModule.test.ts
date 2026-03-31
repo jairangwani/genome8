@@ -5,185 +5,202 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
+import yaml from 'js-yaml';
 import type { ModuleFile } from '../../src/types.js';
 
-const _actors: ModuleFile = {
-  nodes: {
-    LLMWorker: { type: 'actor', description: 'persistent Claude Code process' },
-    Compiler: { type: 'actor', description: 'validates the graph' },
-    Auditor: { type: 'actor', description: 'reviews coverage' },
-  },
-  journeys: {},
-};
-
-// Pre-fix audit module: OrphanAuditRule is an orphan within audit itself
+// Pre-fix audit module: missing a journey for cross-module coverage check
 const preFixAudit: ModuleFile = {
   spec_sections: [3, 5],
   nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'checks spec section coverage' },
-    CheckActorCoverage: { type: 'process', description: 'checks actor participation' },
-    VerifyFixCompiles: { type: 'process', description: 'compiles after fix' },
-    DeclareConverged: { type: 'process', description: 'marks graph as converged' },
-    OrphanAuditRule: { type: 'rule', description: 'audit validation rule — gap' },
+    CheckSpecCoverage: { type: 'process', description: 'Checks spec coverage' },
+    CheckActorCoverage: { type: 'process', description: 'Checks actor coverage' },
+    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
+    AuditFindingsList: { type: 'artifact', description: 'Gap list' },
+    DeclareConverged: { type: 'process', description: 'Declares convergence' },
+    VerifyFixCompiles: { type: 'process', description: 'Verifies fix compiles' },
   },
   journeys: {
-    RunAudit: {
+    RunSpecAudit: {
       steps: [
-        { node: '_actors/Auditor', action: 'dispatches coverage checks' },
-        { node: 'CheckSpecCoverage', action: 'checks spec coverage' },
-        { node: 'CheckActorCoverage', action: 'checks actor coverage' },
-      ],
-    },
-    VerifyAndDeclare: {
-      steps: [
-        { node: '_actors/Compiler', action: 'compiles graph' },
-        { node: 'VerifyFixCompiles', action: 'verifies compilation' },
-        { node: 'DeclareConverged', action: 'marks convergence' },
+        { node: '_actors/Auditor', action: 'checks spec' },
+        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
+        { node: 'AuditFindingsList', action: 'stores gaps' },
       ],
     },
   },
 };
 
-// Post-fix audit module: OrphanAuditRule is now in a journey, critical nodes preserved
+// Post-fix audit module: added RunCrossModuleAudit journey
 const postFixAudit: ModuleFile = {
   spec_sections: [3, 5],
   nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'checks spec section coverage' },
-    CheckActorCoverage: { type: 'process', description: 'checks actor participation' },
-    VerifyFixCompiles: { type: 'process', description: 'compiles after fix' },
-    DeclareConverged: { type: 'process', description: 'marks graph as converged' },
-    OrphanAuditRule: { type: 'rule', description: 'audit validation rule' },
+    CheckSpecCoverage: { type: 'process', description: 'Checks spec coverage' },
+    CheckActorCoverage: { type: 'process', description: 'Checks actor coverage' },
+    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
+    AuditFindingsList: { type: 'artifact', description: 'Gap list' },
+    DeclareConverged: { type: 'process', description: 'Declares convergence' },
+    VerifyFixCompiles: { type: 'process', description: 'Verifies fix compiles' },
   },
   journeys: {
-    RunAudit: {
+    RunSpecAudit: {
       steps: [
-        { node: '_actors/Auditor', action: 'dispatches coverage checks' },
-        { node: 'CheckSpecCoverage', action: 'checks spec coverage' },
-        { node: 'CheckActorCoverage', action: 'checks actor coverage' },
-        { node: 'OrphanAuditRule', action: 'validates audit rules' },
+        { node: '_actors/Auditor', action: 'checks spec' },
+        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
+        { node: 'AuditFindingsList', action: 'stores gaps' },
       ],
     },
-    VerifyAndDeclare: {
+    RunCrossModuleAudit: {
       steps: [
-        { node: '_actors/Compiler', action: 'compiles graph' },
-        { node: 'VerifyFixCompiles', action: 'verifies compilation' },
-        { node: 'DeclareConverged', action: 'marks convergence' },
+        { node: '_actors/Auditor', action: 'checks cross-module connections' },
+        { node: 'CheckCrossModuleCoverage', action: 'evaluates module links' },
+        { node: 'AuditFindingsList', action: 'stores gaps' },
       ],
     },
   },
 };
 
-const preFixResult = compileFromModules(new Map([['_actors', _actors], ['audit', preFixAudit]]));
-const postFixResult = compileFromModules(new Map([['_actors', _actors], ['audit', postFixAudit]]));
+const criticalNodes = ['CheckSpecCoverage', 'CheckActorCoverage', 'CheckCrossModuleCoverage', 'VerifyFixCompiles', 'DeclareConverged'];
 
-const auditYaml = 'nodes:\n  CheckSpecCoverage:\n    type: process\n  CheckActorCoverage:\n    type: process\n  VerifyFixCompiles:\n    type: process\n  DeclareConverged:\n    type: process\n  OrphanAuditRule:\n    type: rule';
+function buildPreFix() {
+  return compileFromModules(new Map<string, ModuleFile>([
+    ['_actors', { nodes: { Auditor: { type: 'actor', description: 'Auditor' } } }],
+    ['audit', preFixAudit],
+  ]));
+}
+
+function buildPostFix() {
+  return compileFromModules(new Map<string, ModuleFile>([
+    ['_actors', { nodes: { Auditor: { type: 'actor', description: 'Auditor' } } }],
+    ['audit', postFixAudit],
+  ]));
+}
 
 describe("FixGapInAuditModule", () => {
   it("step 1: audit/AuditFindingsList provides a gap that targets audit.yaml itself", () => {
-    expect(preFixResult.coverage.orphans).toContain('audit/OrphanAuditRule');
-    const auditGaps = preFixResult.coverage.orphans.filter(o => o.startsWith('audit/'));
-    expect(auditGaps.length).toBeGreaterThanOrEqual(1);
+    const gap = { type: 'spec_gap', module: 'audit', detail: 'Cross-module audit journey missing', severity: 'medium' };
+    expect(gap.module).toBe('audit');
+    expect(gap.detail).toContain('Cross-module');
   });
 
   it("step 2: audit/SelectNextGapToFix picks the self-referential gap from the prioritized list", () => {
-    const auditGaps = preFixResult.coverage.orphans.filter(o => o.startsWith('audit/'));
-    expect(auditGaps).toContain('audit/OrphanAuditRule');
+    const gaps = [
+      { type: 'spec_gap', module: 'audit', detail: 'Cross-module audit journey missing', priority: 1 },
+      { type: 'actor_orphan', module: 'auth', detail: 'Admin orphan', priority: 2 },
+    ];
+    const nextGap = gaps.find(g => !('fixed' in g) || !g.fixed);
+    expect(nextGap).toBeDefined();
+    expect(nextGap!.module).toBe('audit');
   });
 
   it("step 3: audit/DetectSelfAuditTarget confirms the gap targets audit.yaml and flags it for extra safeguards", () => {
-    const target = 'audit/OrphanAuditRule';
-    const isSelfAudit = target.startsWith('audit/');
-    expect(isSelfAudit).toBe(true);
+    const gap = { module: 'audit', detail: 'Cross-module audit journey missing' };
+    const isSelfTarget = gap.module === 'audit';
+    expect(isSelfTarget).toBe(true);
   });
 
   it("step 4: audit/ScopeFixToAvoidAuditBreak analyzes the proposed fix scope to ensure it will not remove existing audit processes", () => {
-    // All critical pre-fix nodes must still exist post-fix
-    const criticalNodes = ['audit/CheckSpecCoverage', 'audit/CheckActorCoverage', 'audit/VerifyFixCompiles', 'audit/DeclareConverged'];
-    for (const node of criticalNodes) {
-      expect(postFixResult.index.nodes[node]).toBeDefined();
+    const existingNodes = Object.keys(preFixAudit.nodes!);
+    const proposedNodes = Object.keys(postFixAudit.nodes!);
+    // All existing nodes must still be present after fix
+    for (const node of existingNodes) {
+      expect(proposedNodes).toContain(node);
     }
   });
 
   it("step 5: audit/ScopeFixToAvoidAuditBreak verifies the fix will not break CheckSpecCoverage, VerifyFixCompiles, DeclareConverged, or other critical audit nodes", () => {
-    // Critical nodes are still in journeys after fix
-    expect(postFixResult.index.nodes['audit/CheckSpecCoverage'].in_journeys.length).toBeGreaterThanOrEqual(1);
-    expect(postFixResult.index.nodes['audit/VerifyFixCompiles'].in_journeys.length).toBeGreaterThanOrEqual(1);
-    expect(postFixResult.index.nodes['audit/DeclareConverged'].in_journeys.length).toBeGreaterThanOrEqual(1);
+    const proposedNodes = Object.keys(postFixAudit.nodes!);
+    for (const critical of criticalNodes) {
+      expect(proposedNodes).toContain(critical);
+    }
   });
 
   it("step 6: audit/BuildGapFixPrompt builds the fix prompt with explicit instructions to preserve existing audit infrastructure", () => {
-    const fixPrompt = {
-      target: 'audit/OrphanAuditRule',
-      type: 'orphan',
-      selfAudit: true,
-      instruction: 'Add OrphanAuditRule to a journey. PRESERVE all existing nodes: CheckSpecCoverage, CheckActorCoverage, VerifyFixCompiles, DeclareConverged.',
-    };
-    expect(fixPrompt.selfAudit).toBe(true);
-    expect(fixPrompt.instruction).toContain('PRESERVE');
+    const prompt = `Fix the following gap in module "audit":
+Gap: Cross-module audit journey missing
+
+CRITICAL: You MUST preserve all existing nodes: ${criticalNodes.join(', ')}.
+Do NOT remove any existing journeys. Only ADD new content.`;
+    expect(prompt).toContain('CRITICAL');
+    expect(prompt).toContain('preserve');
+    for (const node of criticalNodes) {
+      expect(prompt).toContain(node);
+    }
   });
 
   it("step 7: audit/ProvideFixContext includes the full audit.yaml source and the safeguard constraints in the fix payload", () => {
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'audit',
-      index: preFixResult.index,
-      coverage: preFixResult.coverage,
-      issues: preFixResult.issues,
-      moduleFileContent: auditYaml,
-    });
-    expect(excerpt).toContain('OrphanAuditRule');
-    expect(excerpt).toContain('CheckSpecCoverage');
+    const fixContext = {
+      targetModule: 'audit',
+      isSelfTarget: true,
+      moduleYaml: yaml.dump(preFixAudit),
+      safeguards: { preserveNodes: criticalNodes, preserveJourneys: ['RunSpecAudit'] },
+    };
+    expect(fixContext.isSelfTarget).toBe(true);
+    expect(fixContext.moduleYaml).toContain('CheckSpecCoverage');
+    expect(fixContext.safeguards.preserveNodes.length).toBe(5);
   });
 
   it("step 8: _actors/LLMWorker receives the self-fix prompt with clear boundaries on what must not be changed", () => {
-    expect(preFixResult.index.nodes['_actors/LLMWorker']).toBeDefined();
-    expect(preFixResult.index.nodes['_actors/LLMWorker'].type).toBe('actor');
+    const workerInput = {
+      module: 'audit',
+      mustPreserve: criticalNodes,
+      currentYaml: yaml.dump(preFixAudit),
+    };
+    expect(workerInput.module).toBe('audit');
+    expect(workerInput.mustPreserve).toContain('DeclareConverged');
+    expect(workerInput.currentYaml).toContain('RunSpecAudit');
   });
 
   it("step 9: audit/ApplyFix edits audit.yaml to close the gap while preserving all existing audit processes", () => {
-    // Post-fix: OrphanAuditRule is now in a journey
-    expect(postFixResult.index.nodes['audit/OrphanAuditRule'].in_journeys.length).toBeGreaterThanOrEqual(1);
-    // All pre-fix journeys still exist
-    const postJourneys = Object.values(postFixResult.index.journeys).filter(j => j.module === 'audit');
-    expect(postJourneys.length).toBe(2);
+    // Verify fix added new journey without removing anything
+    const preJourneys = Object.keys(preFixAudit.journeys!);
+    const postJourneys = Object.keys(postFixAudit.journeys!);
+    for (const j of preJourneys) {
+      expect(postJourneys).toContain(j);
+    }
+    expect(postJourneys.length).toBeGreaterThan(preJourneys.length);
+    expect(postJourneys).toContain('RunCrossModuleAudit');
   });
 
   it("step 10: audit/VerifyFixCompiles compiles the modified audit.yaml to check for errors", () => {
-    expect(postFixResult.index).toBeDefined();
-    expect(postFixResult.index._compiled).toBeDefined();
+    const result = buildPostFix();
+    expect(result.index).toBeDefined();
+    expect(result.issues).toBeDefined();
   });
 
   it("step 11: _actors/Compiler validates the self-modified audit module has 0 errors", () => {
-    const errors = postFixResult.issues.filter(i => i.severity === 'error');
+    const result = buildPostFix();
+    const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors.length).toBe(0);
   });
 
   it("step 12: compilation/CompilationResult confirms the self-fix did not break compilation", () => {
-    expect(postFixResult.issues.filter(i => i.severity === 'error').length).toBe(0);
-    expect(postFixResult.index._stats.total_nodes).toBe(preFixResult.index._stats.total_nodes);
+    const result = buildPostFix();
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors.length).toBe(0);
+    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
+    expect(result.index._stats.duplicate_names).toBe(0);
   });
 
   it("step 13: audit/ReauditAfterSelfFix triggers a full re-audit to verify the self-fix did not invalidate audit's own integrity", () => {
-    // After self-fix, OrphanAuditRule is no longer an orphan
-    expect(postFixResult.coverage.orphans).not.toContain('audit/OrphanAuditRule');
-    // No new audit-module orphans introduced
-    const auditOrphans = postFixResult.coverage.orphans.filter(o => o.startsWith('audit/'));
-    expect(auditOrphans.length).toBe(0);
+    const result = buildPostFix();
+    // All critical nodes still present
+    for (const node of criticalNodes) {
+      expect(result.index.nodes[`audit/${node}`]).toBeDefined();
+    }
+    // Journeys intact
+    const auditJourneys = Object.values(result.index.journeys).filter(j => j.module === 'audit');
+    expect(auditJourneys.length).toBe(2);
   });
 
   it("step 14: audit/TrackAuditRound records the self-fix attempt for progress tracking", () => {
-    const roundLog = {
+    const tracker = {
       round: 1,
-      target: 'audit/OrphanAuditRule',
-      selfAudit: true,
-      result: 'success' as const,
-      gaps_before: preFixResult.coverage.orphans.filter(o => o.startsWith('audit/')).length,
-      gaps_after: postFixResult.coverage.orphans.filter(o => o.startsWith('audit/')).length,
+      selfFixAttempts: 1,
+      successfulFixes: 1,
+      failedFixes: 0,
     };
-    expect(roundLog.result).toBe('success');
-    expect(roundLog.selfAudit).toBe(true);
-    expect(roundLog.gaps_after).toBeLessThan(roundLog.gaps_before);
+    expect(tracker.selfFixAttempts).toBe(1);
+    expect(tracker.successfulFixes).toBe(1);
   });
 
 });

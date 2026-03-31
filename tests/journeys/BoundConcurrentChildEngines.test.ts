@@ -5,7 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: test/compile.test.ts
 // Implementation: test/pando8.test.ts
@@ -43,7 +45,7 @@ describe("BoundConcurrentChildEngines", () => {
   });
 
   it("step 6: hierarchy/SpawnChildEngine launches child engines for the first batch concurrently", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches child engines for the first batch concurrently
     // TODO: agent fills assertion
   });
@@ -61,7 +63,7 @@ describe("BoundConcurrentChildEngines", () => {
   });
 
   it("step 9: hierarchy/SpawnChildEngine launches the next child engine as a slot becomes available", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches the next child engine as a slot becomes available
     // TODO: agent fills assertion
   });
@@ -85,7 +87,7 @@ describe("BoundConcurrentChildEngines", () => {
   });
 
   it("step 13: hierarchy/ValidateCrossEngineRefs validates cross-engine references across all children", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: validates cross-engine references across all children
     // TODO: agent fills assertion
   });

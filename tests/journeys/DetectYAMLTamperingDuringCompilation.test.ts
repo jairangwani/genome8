@@ -21,7 +21,7 @@ describe("DetectYAMLTamperingDuringCompilation", () => {
   });
 
   it("step 3: compilation/YAMLErrorReporting reports parse errors with file path and line number for the tampered content", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: reports parse errors with file path and line number for the tampered content
     // TODO: agent fills assertion
   });

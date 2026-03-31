@@ -613,3 +613,23 @@ journeys:
         action: prepares to receive journeys scoped to the identified modules
       - node: graph/CompiledIndex
         action: structures the compiled index with one section per identified module
+
+  ProvideSpecSectionsForAudit:
+    steps:
+      - node: OrganizationFile
+        action: provides the completed organization with spec section data
+      - node: SpecSectionIndex
+        action: supplies the indexed list of all numbered spec sections parsed from spec.md
+      - node: ModuleSpecSectionMap
+        action: supplies which modules claim which spec sections for coverage validation
+      - node: audit/CheckSpecCoverage
+        action: receives the section index and module-section map to verify every section is covered by module journeys
+
+  ProvideDependencyGraphForAudit:
+    steps:
+      - node: OrganizationFile
+        action: provides the completed organization with dependency data
+      - node: DependencyGraph
+        action: supplies the declared dependency edges from ORGANIZATION.md
+      - node: audit/DetectFixIntroducedDependency
+        action: receives the dependency graph to validate that audit fixes do not introduce undeclared cross-module references

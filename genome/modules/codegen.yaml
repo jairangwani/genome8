@@ -8,12 +8,14 @@ nodes:
   GenerateProcessSkeletons:
     type: process
     description: creates a TypeScript class skeleton for each process node with a JSDoc header, optional config interface, and journey-derived method stubs
+    files: ["src/codegen.ts"]
   FillImplementation:
     type: process
     description: delegates to LLM to fill the empty function bodies and class methods in a skeleton file with working code
   WriteGeneratedFile:
     type: process
-    description: writes the filled TypeScript file to disk in the generated code output directory
+    description: writes a generated TypeScript file to disk — either an unfilled skeleton during skeleton generation or a filled implementation during LLM fill — at the path declared in the node's files field
+    files: ["src/codegen.ts"]
   ValidateFilledSyntax:
     type: process
     description: runs a TypeScript syntax and type check on the filled source file to catch LLM-generated errors before staging
@@ -66,6 +68,7 @@ nodes:
   EnsureOutputDirectory:
     type: process
     description: creates the output directory tree for a skeleton file if it does not already exist on disk before writing
+    files: ["src/codegen.ts"]
   CodeComesFromNodes:
     type: rule
     description: every generated function, class, or interface maps directly to a node in the graph — no code exists without a node
@@ -101,6 +104,18 @@ nodes:
     type: artifact
     description: the exported CodegenResult interface returned by generateCodeSkeletons containing a generated list of bare file paths and a skipped list of reason-annotated diagnostic strings explaining why each node or file was excluded
     files: ["src/codegen.ts"]
+  DetectCodeNeedsUpdate:
+    type: process
+    description: compares the current graph node metadata against the existing source file to determine if the code has drifted from the graph and needs an edit-based update rather than a fresh skeleton
+  GenerateUpdateContext:
+    type: process
+    description: assembles the diff between the previous graph state and the current graph state for a node, producing targeted edit instructions that describe what changed in the node's description, connections, or journey participation
+  ApplyEditToExistingCode:
+    type: process
+    description: sends the update context to the LLM worker with instructions to use Edit on the existing source file rather than regenerating it, preserving working code while updating only the parts that changed
+  Mode2UpdateExisting:
+    type: rule
+    description: when a source file already exists for a node, codegen must update it via Edit rather than regenerating from scratch because full rewrites mask bugs
 
 journeys:
   GenerateSkeletonsFromGraph:
@@ -609,3 +624,34 @@ journeys:
         action: confirms the filled module has valid syntax and no compilation errors
       - node: RetryFillWithErrorFeedback
         action: if errors found, feeds the compilation errors back to the LLM for correction
+
+  UpdateExistingCodeFromGraph:
+    steps:
+      - node: convergence/TriggerCodegen
+        action: invokes codegen after graph changes during reconvergence
+      - node: graph/CompiledIndex
+        action: provides the updated converged graph with changed nodes
+      - node: ReadConvergedGraph
+        action: extracts all nodes organized by module from the updated graph
+      - node: NeverOverwriteExisting
+        action: detects that source files already exist for the changed nodes
+      - node: Mode2UpdateExisting
+        action: enforces that existing files must be updated via Edit not regenerated
+      - node: DetectCodeNeedsUpdate
+        action: compares each existing source file against its updated graph node metadata
+      - node: DetectCodeNeedsUpdate
+        action: identifies nodes where description, connections, or journey participation changed
+      - node: GenerateUpdateContext
+        action: assembles the diff between previous and current graph state for each changed node
+      - node: ProvideCodegenExcerpt
+        action: generates focused context for the update showing what changed and what to preserve
+      - node: _actors/LLMWorker
+        action: receives the update context and existing file path with instructions to Edit not rewrite
+      - node: ApplyEditToExistingCode
+        action: LLM applies targeted edits to the existing source file preserving working code
+      - node: ValidateFilledSyntax
+        action: validates that the edited file still has valid syntax
+      - node: _actors/Compiler
+        action: runs compilation to verify the edited code introduces no errors
+      - node: StageFilledModule
+        action: stages the successfully updated module in the codegen result

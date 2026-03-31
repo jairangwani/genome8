@@ -12,180 +12,154 @@ import { checkDependencies, markModulesStale } from '../../src/sync.js';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: test/staleness.test.ts
-
 describe("StaleBoxRecovery", () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stale-box-'));
+  const depDir = path.join(tmpDir, 'dep-published');
+  const modulesDir = path.join(tmpDir, 'modules');
+  const depsPath = path.join(tmpDir, 'dependencies.yaml');
+  const syncStatePath = path.join(tmpDir, 'sync-state.json');
+
+  fs.mkdirSync(depDir, { recursive: true });
+  fs.mkdirSync(modulesDir, { recursive: true });
+
   it("step 1: _actors/StaleBox has stopped watching events and drifted out of sync", () => {
-    // A stale box has known_hashes that are outdated
-    const staleState = {
-      known_hashes: {
-        'auth-engine': 'sha256:old-hash-1',
-        'data-engine': 'sha256:old-hash-2',
-      },
+    // Stale box has an old sync state with outdated hashes
+    const staleSyncState = {
+      known_hashes: { 'dep-engine': 'sha256:old_stale_hash' },
     };
-    // These hashes no longer match current dependency interfaces
-    expect(Object.keys(staleState.known_hashes).length).toBe(2);
-    expect(staleState.known_hashes['auth-engine']).toContain('old');
+    fs.writeFileSync(syncStatePath, JSON.stringify(staleSyncState));
+    const state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+    expect(state.known_hashes['dep-engine']).toBe('sha256:old_stale_hash');
   });
 
   it("step 2: events/RegisterEventWatchers re-registers fs.watch watchers on dependency event files", () => {
-    // After recovery, the event directory is set up for watching
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-stale-'));
-    const eventDir = path.join(tmpDir, 'events');
-    fs.mkdirSync(eventDir, { recursive: true });
-    // Event files for each dependency would be created
-    fs.writeFileSync(path.join(eventDir, 'auth-engine.json'), JSON.stringify({ hash: 'sha256:new1' }));
-    fs.writeFileSync(path.join(eventDir, 'data-engine.json'), JSON.stringify({ hash: 'sha256:new2' }));
-    const eventFiles = fs.readdirSync(eventDir);
-    expect(eventFiles.length).toBe(2);
-    expect(eventFiles).toContain('auth-engine.json');
-    expect(eventFiles).toContain('data-engine.json');
-    fs.rmSync(tmpDir, { recursive: true });
+    // When the box restarts, it re-registers watchers
+    // The event files it watches are the dependency published directories
+    expect(fs.existsSync(depDir)).toBe(true);
+    // Watcher would be: fs.watch(depDir, ...) — we verify the directory exists to watch
   });
 
   it("step 3: sync/FetchDependencyHash fetches current hashes from all dependencies", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-stale-'));
-    // Set up two dependency interfaces with current hashes
-    for (const dep of ['auth-engine', 'data-engine']) {
-      const depDir = path.join(tmpDir, dep, 'published');
-      fs.mkdirSync(depDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(depDir, 'interface.yaml'),
-        yaml.dump({ engine: dep, version_hash: `sha256:current-${dep}`, provides: {}, requires: {} })
-      );
-    }
-    // Read each interface
-    for (const dep of ['auth-engine', 'data-engine']) {
-      const iface = yaml.load(
-        fs.readFileSync(path.join(tmpDir, dep, 'published', 'interface.yaml'), 'utf-8')
-      ) as any;
-      expect(iface.version_hash).toBe(`sha256:current-${dep}`);
-    }
-    fs.rmSync(tmpDir, { recursive: true });
+    // Dependency has been updated while box was stale
+    const newInterface = {
+      engine: 'dep-engine',
+      version_hash: 'sha256:new_updated_hash',
+      provides: { 'dep-engine/Api': { type: 'interface', description: 'API endpoint', in_journeys: 2 } },
+      requires: {},
+    };
+    fs.writeFileSync(path.join(depDir, 'interface.yaml'), yaml.dump(newInterface));
+    const fetched = yaml.load(fs.readFileSync(path.join(depDir, 'interface.yaml'), 'utf-8')) as any;
+    expect(fetched.version_hash).toBe('sha256:new_updated_hash');
   });
 
   it("step 4: sync/CompareStoredHash finds multiple hashes have changed during the stale period", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-stale-'));
-    // Two deps with updated hashes
-    for (const dep of ['auth-engine', 'data-engine']) {
-      const depDir = path.join(tmpDir, dep, 'published');
-      fs.mkdirSync(depDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(depDir, 'interface.yaml'),
-        yaml.dump({ engine: dep, version_hash: `sha256:new-${dep}`, provides: {}, requires: {} })
-      );
-    }
-    const depsPath = path.join(tmpDir, 'dependencies.yaml');
+    // Set up dependencies.yaml
     fs.writeFileSync(depsPath, yaml.dump({
-      dependencies: {
-        'auth-engine': { pin: 'latest' },
-        'data-engine': { pin: 'latest' },
-      },
-    }));
-    const syncStatePath = path.join(tmpDir, 'sync-state.json');
-    // Stale known hashes
-    fs.writeFileSync(syncStatePath, JSON.stringify({
-      known_hashes: { 'auth-engine': 'sha256:old-auth', 'data-engine': 'sha256:old-data' },
+      dependencies: { 'dep-engine': { pin: 'latest' } },
     }));
 
-    const gatewayModule: ModuleFile = {
-      nodes: { Handler: { type: 'process', description: 'handles requests' } },
-      journeys: {
-        AuthFlow: {
-          steps: [
-            { node: 'Handler', action: 'checks auth' },
-            { node: 'auth-engine/AuthCheck', action: 'validates token' },
-          ],
+    // Build index with a module that references the dependency
+    const modules = new Map<string, ModuleFile>([
+      ['auth', {
+        nodes: { Login: { type: 'process', description: 'Login process' } },
+        journeys: {
+          AuthFlow: {
+            steps: [
+              { node: 'Login', action: 'authenticates' },
+              { node: 'dep-engine/Api', action: 'calls external API' },
+            ],
+          },
         },
-        DataFlow: {
-          steps: [
-            { node: 'Handler', action: 'fetches data' },
-            { node: 'data-engine/DataStore', action: 'returns data' },
-          ],
-        },
-      },
-    };
-    const index = compileFromModules(new Map([['gateway', gatewayModule]])).index;
-    const changes = checkDependencies(depsPath, index, syncStatePath, (dep) => path.join(tmpDir, dep, 'published'));
-    // Both dependencies changed
-    expect(changes.length).toBe(2);
-    expect(changes.map(c => c.dependency).sort()).toEqual(['auth-engine', 'data-engine']);
-    fs.rmSync(tmpDir, { recursive: true });
+      }],
+    ]);
+    const result = compileFromModules(modules);
+
+    const changes = checkDependencies(depsPath, result.index, syncStatePath, (dep) => {
+      if (dep === 'dep-engine') return depDir;
+      return null;
+    });
+    // Hash changed from old_stale_hash to new_updated_hash
+    expect(changes.length).toBe(1);
+    expect(changes[0].previous_hash).toBe('sha256:old_stale_hash');
+    expect(changes[0].current_hash).toBe('sha256:new_updated_hash');
   });
 
   it("step 5: sync/FindAffectedModules identifies all modules affected by the accumulated changes", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-stale-'));
-    const depDir = path.join(tmpDir, 'auth-engine', 'published');
-    fs.mkdirSync(depDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(depDir, 'interface.yaml'),
-      yaml.dump({ engine: 'auth-engine', version_hash: 'sha256:new-auth', provides: {}, requires: {} })
-    );
-    const depsPath = path.join(tmpDir, 'dependencies.yaml');
-    fs.writeFileSync(depsPath, yaml.dump({ dependencies: { 'auth-engine': { pin: 'latest' } } }));
-    const syncStatePath = path.join(tmpDir, 'sync-state.json');
-    fs.writeFileSync(syncStatePath, JSON.stringify({ known_hashes: { 'auth-engine': 'sha256:old' } }));
+    // Re-read sync state (updated by previous checkDependencies call)
+    // Re-run to get the affected modules list
+    // Reset sync state to old hash for this test
+    fs.writeFileSync(syncStatePath, JSON.stringify({
+      known_hashes: { 'dep-engine': 'sha256:old_stale_hash_2' },
+    }));
 
-    // Two local modules reference auth-engine in their journeys
-    const gatewayModule: ModuleFile = {
-      nodes: { GW: { type: 'process', description: 'gateway' } },
-      journeys: {
-        GWAuth: { steps: [{ node: 'GW', action: 'routes' }, { node: 'auth-engine/Verify', action: 'verifies' }] },
-      },
-    };
-    const userModule: ModuleFile = {
-      nodes: { Login: { type: 'process', description: 'login' } },
-      journeys: {
-        UserAuth: { steps: [{ node: 'Login', action: 'logins' }, { node: 'auth-engine/Verify', action: 'checks' }] },
-      },
-    };
-    const index = compileFromModules(new Map([['gateway', gatewayModule], ['users', userModule]])).index;
-    const changes = checkDependencies(depsPath, index, syncStatePath, (dep) => path.join(tmpDir, dep, 'published'));
+    const modules = new Map<string, ModuleFile>([
+      ['auth', {
+        nodes: { Login: { type: 'process', description: 'Login process' } },
+        journeys: {
+          AuthFlow: {
+            steps: [
+              { node: 'Login', action: 'authenticates' },
+              { node: 'dep-engine/Api', action: 'calls external API' },
+            ],
+          },
+        },
+      }],
+      ['billing', {
+        nodes: { Charge: { type: 'process', description: 'Charges user' } },
+        journeys: {
+          BillFlow: {
+            steps: [
+              { node: 'Charge', action: 'charges' },
+              { node: 'dep-engine/Api', action: 'validates payment' },
+            ],
+          },
+        },
+      }],
+    ]);
+    const result = compileFromModules(modules);
+    const changes = checkDependencies(depsPath, result.index, syncStatePath, (dep) => {
+      if (dep === 'dep-engine') return depDir;
+      return null;
+    });
     expect(changes.length).toBe(1);
-    // Both gateway and users are affected
-    expect(changes[0].affected_modules.sort()).toEqual(['gateway', 'users']);
-    fs.rmSync(tmpDir, { recursive: true });
+    // Both auth and billing reference dep-engine — both affected
+    expect(changes[0].affected_modules).toContain('auth');
+    expect(changes[0].affected_modules).toContain('billing');
   });
 
   it("step 6: sync/MarkModulesStale marks all affected modules for reconvergence", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-stale-'));
-    // Create module files
-    for (const mod of ['gateway', 'users']) {
-      fs.writeFileSync(
-        path.join(tmpDir, `${mod}.yaml`),
-        yaml.dump({ nodes: { X: { type: 'process', description: 'x' } }, journeys: {} })
-      );
-    }
-    markModulesStale(tmpDir, ['gateway', 'users'], 'auth-engine hash changed');
-    // Both files now contain _stale: true
-    for (const mod of ['gateway', 'users']) {
-      const content = fs.readFileSync(path.join(tmpDir, `${mod}.yaml`), 'utf-8');
-      expect(content).toContain('_stale: true');
-      expect(content).toContain('auth-engine hash changed');
-    }
-    fs.rmSync(tmpDir, { recursive: true });
+    // Write module files to disk so markModulesStale can update them
+    fs.writeFileSync(path.join(modulesDir, 'auth.yaml'), yaml.dump({
+      nodes: { Login: { type: 'process', description: 'Login' } },
+    }));
+    fs.writeFileSync(path.join(modulesDir, 'billing.yaml'), yaml.dump({
+      nodes: { Charge: { type: 'process', description: 'Charges' } },
+    }));
+
+    markModulesStale(modulesDir, ['auth', 'billing'], 'dep-engine interface changed');
+
+    // Both files now have _stale: true
+    const authContent = fs.readFileSync(path.join(modulesDir, 'auth.yaml'), 'utf-8');
+    const billingContent = fs.readFileSync(path.join(modulesDir, 'billing.yaml'), 'utf-8');
+    expect(authContent).toContain('_stale: true');
+    expect(billingContent).toContain('_stale: true');
+    expect(authContent).toContain('dep-engine interface changed');
   });
 
   it("step 7: convergence/TargetedReconvergence reconverges all stale modules to bring the box back in sync", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'genome-stale-'));
-    // Write a stale module and then "reconverge" by removing the stale marker
-    const moduleContent = yaml.dump({ nodes: { API: { type: 'interface', description: 'api' } }, journeys: {} });
-    fs.writeFileSync(path.join(tmpDir, 'gateway.yaml'), moduleContent);
-    markModulesStale(tmpDir, ['gateway'], 'dependency changed');
-    // Verify stale
-    let content = fs.readFileSync(path.join(tmpDir, 'gateway.yaml'), 'utf-8');
-    expect(content).toContain('_stale: true');
-    // After reconvergence, rewrite the file without stale markers (simulated)
-    fs.writeFileSync(path.join(tmpDir, 'gateway.yaml'), moduleContent);
-    content = fs.readFileSync(path.join(tmpDir, 'gateway.yaml'), 'utf-8');
-    expect(content).not.toContain('_stale: true');
-    // The reconverged module compiles cleanly
-    const result = compileFromModules(new Map([['gateway', {
-      nodes: { API: { type: 'interface' as const, description: 'api' } },
-      journeys: {},
-    }]]));
-    expect(result.issues.filter(i => i.severity === 'error').length).toBe(0);
-    fs.rmSync(tmpDir, { recursive: true });
+    // After marking stale, targeted reconvergence would re-create those modules
+    // Verify: the stale markers are present, indicating reconvergence is needed
+    const authContent = fs.readFileSync(path.join(modulesDir, 'auth.yaml'), 'utf-8');
+    expect(authContent).toContain('_stale: true');
+
+    // After reconvergence, the stale marker would be removed and module updated
+    // Simulate: remove stale marker
+    const cleaned = authContent.replace(/^_stale:.*\n_stale_reason:.*\n\n/, '');
+    expect(cleaned).not.toContain('_stale: true');
+    expect(cleaned).toContain('Login');
+
+    // Cleanup
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
 });

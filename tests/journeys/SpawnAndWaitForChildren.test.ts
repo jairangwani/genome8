@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
 // Implementation: test/publish.test.ts
 // Implementation: test/pando9-publish.test.ts
@@ -35,7 +36,7 @@ describe("SpawnAndWaitForChildren", () => {
   });
 
   it("step 5: hierarchy/SpawnChildEngine launches a convergence.ts subprocess for the first child directory with incremented depth parameter", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches a convergence.ts subprocess for the first child directory with incremented depth parameter
     // TODO: agent fills assertion
   });
@@ -47,7 +48,7 @@ describe("SpawnAndWaitForChildren", () => {
   });
 
   it("step 7: hierarchy/SpawnChildEngine launches convergence.ts for each additional child directory with the same incremented depth", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches convergence.ts for each additional child directory with the same incremented depth
     // TODO: agent fills assertion
   });

@@ -55,7 +55,7 @@ describe("CodeGenerationPipeline", () => {
   });
 
   it("step 8: codegen/WriteGeneratedFile writes filled files to the generated code output directory", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes filled files to the generated code output directory
     // TODO: agent fills assertion
   });

@@ -5,7 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/multi-engine.test.ts
+// Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 // Implementation: test/director.test.ts
 // Implementation: test/compile.test.ts
@@ -62,13 +64,13 @@ describe("HierarchySplitPipeline", () => {
   });
 
   it("step 9: hierarchy/SpawnChildEngine launches an independent convergence pipeline for the first child engine", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches an independent convergence pipeline for the first child engine
     // TODO: agent fills assertion
   });
 
   it("step 10: hierarchy/SpawnChildEngine launches an independent convergence pipeline for the second child engine", () => {
-    // Node: hierarchy/SpawnChildEngine (process) — has code: test/multi-engine.test.ts
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches an independent convergence pipeline for the second child engine
     // TODO: agent fills assertion
   });
@@ -92,13 +94,13 @@ describe("HierarchySplitPipeline", () => {
   });
 
   it("step 14: hierarchy/ValidateCrossEngineRefs checks that cross-engine references between children resolve correctly", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: test/cross-project.test.ts
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: checks that cross-engine references between children resolve correctly
     // TODO: agent fills assertion
   });
 
   it("step 15: hierarchy/CreateCrossEngineJourneys builds journeys that span child engine boundaries in the parent graph", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: builds journeys that span child engine boundaries in the parent graph
     // TODO: agent fills assertion
   });

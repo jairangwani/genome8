@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
 // Implementation: test/director.test.ts
 // Implementation: src/codegen.ts
 
@@ -15,7 +16,7 @@ describe("GenerateCrossEngineCode", () => {
   });
 
   it("step 2: hierarchy/CreateCrossEngineJourneys defines the journeys that bridge child engine boundaries", () => {
-    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: test/director.test.ts
+    // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: defines the journeys that bridge child engine boundaries
     // TODO: agent fills assertion
   });
@@ -27,13 +28,13 @@ describe("GenerateCrossEngineCode", () => {
   });
 
   it("step 4: codegen/GenerateProcessSkeletons generates TypeScript skeletons for cross-engine bridge nodes", () => {
-    // Node: codegen/GenerateProcessSkeletons (process)
+    // Node: codegen/GenerateProcessSkeletons (process) — has code: src/codegen.ts
     // Action: generates TypeScript skeletons for cross-engine bridge nodes
     // TODO: agent fills assertion
   });
 
   it("step 5: codegen/WriteGeneratedFile writes the cross-engine skeleton files to disk", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes the cross-engine skeleton files to disk
     // TODO: agent fills assertion
   });
