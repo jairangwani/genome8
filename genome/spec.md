@@ -80,8 +80,8 @@ Step 7: Sleep. Watch spec.md + src/ files + dependency events. Zero cost at rest
 **On spec change (targeted):**
 → Wake → diff spec → identify affected modules → run Steps 4a-6b on ONLY those → publish if changed → sleep
 
-**On code change (reconcile):**
-→ Wake → reconcile changed file → update graph → compile → sleep
+**On code change (reconcile + validate):**
+→ Wake → reconcile changed file → update graph → compile → run journey tests → if tests fail → self-heal (diagnose + fix) → sleep
 
 **On dependency event (ripple):**
 → Wake → find affected modules → targeted reconvergence → publish if changed → sleep
