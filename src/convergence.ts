@@ -224,7 +224,8 @@ async function run() {
         const currentResult = compile(modulesDir);
         const currentHash = publishInterface(publishedDir, currentResult.index, path.basename(absProjectDir)).interface_.version_hash;
         const currentSpecHash = cryptoModule.createHash('sha256').update(spec).digest('hex');
-        const specUnchanged = !state.spec_hash || currentSpecHash === state.spec_hash;
+        // If no spec_hash stored → spec state unknown → must run pipeline to check
+        const specUnchanged = state.spec_hash ? (currentSpecHash === state.spec_hash) : false;
         if (currentHash === state.interface_hash && specUnchanged) {
           console.log(`Already converged (hash: ${currentHash.substring(7, 19)}). Entering watch loop directly.\n`);
           // Go directly to Step 7 — skip Steps 1-6 entirely
