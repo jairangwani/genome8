@@ -353,6 +353,29 @@ export class LLMWorker {
   isAlive(): boolean {
     return this.worker !== null && this.worker.process.exitCode === null;
   }
+
+  /**
+   * Health check: verify worker is alive and not stuck.
+   * Returns 'healthy', 'dead', or 'busy' (message in flight).
+   * Enables HealthCheckBeforeTaskDispatch journey.
+   */
+  healthCheck(): 'healthy' | 'dead' | 'busy' {
+    if (!this.worker || this.worker.process.exitCode !== null) return 'dead';
+    if (this.worker.responseResolve) return 'busy';
+    return 'healthy';
+  }
+
+  /**
+   * Get worker stats for diagnostics.
+   */
+  getStats(): { pid: number | undefined; charsSent: number; initialized: boolean } | null {
+    if (!this.worker) return null;
+    return {
+      pid: this.worker.process.pid,
+      charsSent: this.worker.charsSent,
+      initialized: this.worker.initialized,
+    };
+  }
 }
 
 // ── Worker Output Validation ──

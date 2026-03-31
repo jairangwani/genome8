@@ -323,3 +323,64 @@ export function narrowChangelog(
     changes: narrowedChanges,
   };
 }
+
+/**
+ * Clear a stale sync lock on startup.
+ * If the lock is older than maxAge (default 5 min), release it.
+ * Returns true if a stale lock was cleared.
+ */
+export function clearStaleSyncLock(syncStatePath: string, maxAge = 5 * 60 * 1000): boolean {
+  if (!fs.existsSync(syncStatePath)) return false;
+  try {
+    const state: SyncState = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+    if (!state.sync_in_progress) return false;
+    const age = state.sync_started_at
+      ? Date.now() - new Date(state.sync_started_at).getTime()
+      : Infinity;
+    if (age >= maxAge) {
+      state.sync_in_progress = false;
+      fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+      return true;
+    }
+    return false;
+  } catch { return false; }
+}
+
+/**
+ * Detect gaps in event sequence numbers for a dependency.
+ * Returns the missing sequence numbers between last processed and current.
+ * Enables ScanForMissedEventsOnWake and DetectAndRecoverMissedEventSequence.
+ */
+export function detectMissedEvents(
+  syncState: SyncState,
+  dependency: string,
+  currentSequence: number
+): number[] {
+  const lastProcessed = syncState.last_processed_sequence?.[dependency] ?? 0;
+  if (currentSequence <= lastProcessed + 1) return []; // No gap
+  const missed: number[] = [];
+  for (let i = lastProcessed + 1; i < currentSequence; i++) {
+    missed.push(i);
+  }
+  return missed;
+}
+
+/**
+ * Update the last processed sequence number for a dependency.
+ * Called after successfully processing an event.
+ */
+export function updateProcessedSequence(
+  syncStatePath: string,
+  dependency: string,
+  sequenceNumber: number
+): void {
+  let state: SyncState = { known_hashes: {} };
+  if (fs.existsSync(syncStatePath)) {
+    try {
+      state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+    } catch { /* fresh start */ }
+  }
+  if (!state.last_processed_sequence) state.last_processed_sequence = {};
+  state.last_processed_sequence[dependency] = sequenceNumber;
+  fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+}

@@ -28,7 +28,7 @@ import { platform } from 'node:os';
 import { compile } from './compile.js';
 import { generateExcerpt } from './excerpt.js';
 import { publishInterface } from './publish.js';
-import { checkDependencies, markModulesStale } from './sync.js';
+import { checkDependencies, markModulesStale, clearStaleSyncLock } from './sync.js';
 import { generateTests } from './testgen.js';
 import { generateCodeSkeletons } from './codegen.js';
 import { LLMWorker } from './llm.js';
@@ -206,6 +206,12 @@ async function run() {
   const cryptoModule = await import('node:crypto');
   const spec = fs.readFileSync(specPath, 'utf-8');
   console.log(`\n=== GENOME CONVERGENCE: ${absProjectDir} ===`);
+  cleanupOrphanPids(); // Clean stale PIDs from previous crashed processes
+  // Clear stale sync locks from previous crashed sync operations
+  const syncStatePath0 = path.join(genomeDir, 'sync-state.json');
+  if (clearStaleSyncLock(syncStatePath0)) {
+    console.log('  Cleared stale sync lock from previous crash.');
+  }
   writePidFile(); // Track this process for clean shutdown
   console.log(`Spec: ${spec.length} chars, ${spec.split('\n').length} lines\n`);
 
@@ -1804,6 +1810,26 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
       }
     }
   });
+  specWatcher.on('error', (err) => {
+    console.error(`  ⚠️ Spec watcher error: ${err.message}. Recreating watcher...`);
+    try {
+      specWatcher.close();
+      const replacement = fs.watch(path.dirname(specPath), (eventType, filename) => {
+        if (filename === 'spec.md') {
+          const currentSpec = fs.readFileSync(specPath, 'utf-8');
+          const currentHash = cryptoModule.createHash('sha256').update(currentSpec).digest('hex');
+          const stateFile = path.join(genomeDir, 'convergence-state.json');
+          const savedHash = (() => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash; } catch { return null; } })();
+          if (currentHash !== savedHash) {
+            console.log('\n  SPEC CHANGED — waking up for reconvergence...');
+            replacement.close();
+            run().catch(err => { console.error('Reconvergence failed:', err); process.exit(1); });
+          }
+        }
+      });
+      activeWatchers.push(replacement);
+    } catch (e: any) { console.error(`  Failed to recreate spec watcher: ${e.message}`); }
+  });
   activeWatchers.push(specWatcher);
 
   // Watch src/ directory for code changes — CodeChangeWake journey (Spec §3 Step 7)
@@ -1873,6 +1899,33 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
             await worker.call(`Fix these compile errors after code reconciliation:\n${errorList}\nRead affected files, fix refs, write back.`);
           }
 
+          // Run smoke test to verify code still works after change
+          console.log('  Running smoke test on changed code...');
+          const srcFiles = fs.readdirSync(path.join(absProjectDir, 'src')).filter(f => f.endsWith('.ts') || f.endsWith('.js'));
+          const entryFile = srcFiles.find(f => /^(index|main|app|todo|calc|cli|weather|greet)\.(ts|js)$/.test(f)) || srcFiles[0];
+          if (entryFile) {
+            try {
+              const { execSync: execSyncSmoke } = await import('node:child_process');
+              execSyncSmoke(`npx tsx src/${entryFile} --help 2>&1 || npx tsx src/${entryFile} list 2>&1`, {
+                cwd: absProjectDir, encoding: 'utf-8', timeout: 15_000,
+              });
+              console.log('  Smoke test PASSED after code change.');
+            } catch (smokeErr: any) {
+              const smokeOutput = (smokeErr.stdout || smokeErr.message || '').substring(0, 500);
+              console.log(`  Smoke test FAILED after code change: ${smokeOutput.substring(0, 100)}`);
+              console.log('  Attempting fix via self-heal...');
+              try {
+                await worker.call(`The code was changed and the smoke test failed.
+
+ERROR: ${smokeOutput}
+
+Read the changed source files in src/ and fix the bug. Use Edit for targeted fixes.
+The graph describes what the code SHOULD do — read the module YAML files for reference.`);
+                console.log('  Self-heal fix applied.');
+              } catch { console.log('  Self-heal timed out.'); }
+            }
+          }
+
           // Publish if interface changed
           const latestResult = doCompile();
           const { interface_: newInterface } = publishInterface(publishedDir, latestResult.index, path.basename(absProjectDir));
@@ -1905,6 +1958,9 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
           fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString() }, null, 2));
         }
       }, config.eventDebounceMs);
+    });
+    srcWatcher.on('error', (err) => {
+      console.error(`  ⚠️ Src watcher error: ${err.message}. Code change detection may be impaired.`);
     });
     activeWatchers.push(srcWatcher);
   }
@@ -2087,6 +2143,9 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
         // 'rename' fires when a new file is created — debounce rapid events
         debouncedHandleEvent(dep.name, filename);
       }
+    });
+    watcher.on('error', (err) => {
+      console.error(`  ⚠️ Dependency watcher error (${dep.name}): ${err.message}`);
     });
     activeWatchers.push(watcher);
   }
@@ -2696,6 +2755,51 @@ Write the file using the Write tool NOW.`);
 const childProcesses: Array<{ name: string; pid: number; proc: any }> = [];
 const activeWatchers: fs.FSWatcher[] = []; // Track fs.watch instances for clean teardown
 const pidFilePath = path.join(genomeDir, 'pids.json');
+
+/**
+ * Check if a process with the given PID is still alive.
+ */
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0); // Signal 0 = existence check (works on Windows + Unix in Node.js)
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Clean up stale PID file from a previous crashed convergence process.
+ * If the recorded PID is dead, remove the PID file so we can start fresh.
+ */
+function cleanupOrphanPids() {
+  if (!fs.existsSync(pidFilePath)) return;
+  try {
+    const existing = JSON.parse(fs.readFileSync(pidFilePath, 'utf-8'));
+    if (existing.self && !isProcessAlive(existing.self)) {
+      console.log(`  Cleaning up stale PID file (previous pid: ${existing.self} is dead).`);
+      // Kill any orphan children that might still be running
+      for (const child of existing.children || []) {
+        if (child.pid && isProcessAlive(child.pid)) {
+          console.log(`  Killing orphan child: ${child.name} (pid: ${child.pid})`);
+          try {
+            if (platform() === 'win32') {
+              execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: 'pipe', windowsHide: true });
+            } else {
+              process.kill(child.pid, 'SIGTERM');
+            }
+          } catch { /* already dead */ }
+        }
+      }
+      fs.unlinkSync(pidFilePath);
+    } else if (existing.self && isProcessAlive(existing.self) && existing.self !== process.pid) {
+      console.log(`  WARNING: Another convergence process (pid: ${existing.self}) is already running.`);
+    }
+  } catch {
+    // Corrupted PID file — remove it
+    try { fs.unlinkSync(pidFilePath); } catch { /* ok */ }
+  }
+}
 
 function writePidFile() {
   const pids = {
