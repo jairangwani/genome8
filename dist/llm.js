@@ -317,4 +317,55 @@ export class LLMWorker {
         return this.worker !== null && this.worker.process.exitCode === null;
     }
 }
+// ── Worker Output Validation ──
+import fs from 'node:fs';
+import path from 'node:path';
+/**
+ * Validate that expected output files from a worker task exist and are non-empty.
+ */
+export function validateWorkerOutput(expectedFiles, projectDir) {
+    const valid = [];
+    const missing = [];
+    const empty = [];
+    for (const file of expectedFiles) {
+        const absPath = path.resolve(projectDir, file);
+        if (!fs.existsSync(absPath)) {
+            missing.push(file);
+        }
+        else {
+            const stat = fs.statSync(absPath);
+            if (stat.size === 0) {
+                empty.push(file);
+            }
+            else {
+                valid.push(file);
+            }
+        }
+    }
+    return { valid, missing, empty };
+}
+/**
+ * Scan expected output paths for any files the worker wrote before crashing.
+ * Returns paths of files that exist (partial work that may be recoverable).
+ */
+export function drainPartialOutput(expectedPaths, projectDir) {
+    const found = [];
+    for (const file of expectedPaths) {
+        const absPath = path.resolve(projectDir, file);
+        if (fs.existsSync(absPath) && fs.statSync(absPath).size > 0) {
+            found.push(file);
+        }
+    }
+    return found;
+}
+// ── Path Scoping (defense in depth) ──
+/**
+ * Check if a file path is within the allowed directory.
+ * Defense-in-depth against path traversal — Claude Code also has its own checks.
+ */
+export function isPathWithinScope(filePath, allowedDir) {
+    const resolved = path.resolve(filePath);
+    const allowed = path.resolve(allowedDir);
+    return resolved.startsWith(allowed + path.sep) || resolved === allowed;
+}
 //# sourceMappingURL=llm.js.map

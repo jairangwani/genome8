@@ -136,4 +136,108 @@ export function markModulesStale(modulesDir, modules, reason) {
         fs.writeFileSync(filePath, updated);
     }
 }
+export function parseEventPayload(eventFilePath) {
+    try {
+        const raw = fs.readFileSync(eventFilePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (!parsed.interface_hash || typeof parsed.sequence_number !== 'number') {
+            return null;
+        }
+        return {
+            interface_hash: parsed.interface_hash,
+            changelog_summary: parsed.changelog_summary ?? [],
+            origin_chain: parsed.origin_chain ?? [],
+            sequence_number: parsed.sequence_number,
+            dependency: parsed.dependency ?? '',
+        };
+    }
+    catch {
+        return null;
+    }
+}
+/**
+ * Check if an event's sequence number is newer than the last processed sequence.
+ * Returns true if the event should be processed, false if it should be discarded.
+ */
+export function checkEventSequence(syncState, dependency, incomingSequence) {
+    const lastProcessed = syncState.last_processed_sequence?.[dependency] ?? -1;
+    return incomingSequence > lastProcessed;
+}
+/**
+ * Detect oscillation in a ripple origin chain.
+ * Returns true if this box's ID appears in the chain (A→B→A cycle).
+ */
+export function detectOscillation(originChain, boxId) {
+    return originChain.includes(boxId);
+}
+/**
+ * Validate dependency configuration: check that each dependency's
+ * directory exists and interface.yaml is present.
+ */
+export function validateDependencyConfig(deps, resolveDependencyPath) {
+    const errors = [];
+    for (const depName of Object.keys(deps)) {
+        const depPath = resolveDependencyPath(depName);
+        if (!depPath) {
+            errors.push({ dependency: depName, error: 'dependency directory not found' });
+            continue;
+        }
+        const interfacePath = path.join(depPath, 'interface.yaml');
+        if (!fs.existsSync(interfacePath)) {
+            errors.push({ dependency: depName, error: 'interface.yaml not found' });
+        }
+    }
+    return errors;
+}
+/**
+ * Filter affected modules by comparing their cross-module references
+ * against a changelog's changed nodes. Only modules that reference
+ * actually-changed nodes remain in the affected set.
+ */
+export function filterUnrelatedChanges(affectedModules, changelog, index) {
+    if (!changelog || !changelog.changes.length) {
+        return affectedModules; // No changelog to filter with
+    }
+    // Build set of changed node names from changelog
+    const changedNodes = new Set(changelog.changes.map(c => c.node));
+    return affectedModules.filter(mod => {
+        // Check if any node in this module references a changed dependency node
+        for (const [, node] of Object.entries(index.nodes)) {
+            if (node.module !== mod)
+                continue;
+            for (const ref of node.cross_module_connections) {
+                if (changedNodes.has(ref) || changedNodes.has(ref.split('/')[1])) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    });
+}
+/**
+ * Append this box's ID to the ripple origin chain for downstream propagation.
+ */
+export function appendToOriginChain(existingChain, boxId) {
+    return [...existingChain, boxId];
+}
+/**
+ * Narrow outgoing changelog to include only changes that affected this box.
+ * Removes entries for nodes not referenced by any local module.
+ */
+export function narrowChangelog(changelog, index) {
+    // Build set of all external nodes referenced locally
+    const referencedNodes = new Set();
+    for (const node of Object.values(index.nodes)) {
+        for (const ref of node.cross_module_connections) {
+            referencedNodes.add(ref);
+            referencedNodes.add(ref.split('/')[1]); // bare name too
+        }
+    }
+    const narrowedChanges = changelog.changes.filter(c => referencedNodes.has(c.node) || referencedNodes.has(c.node.split('/')[1]));
+    return {
+        previous_hash: changelog.previous_hash,
+        current_hash: changelog.current_hash,
+        changes: narrowedChanges,
+    };
+}
 //# sourceMappingURL=sync.js.map

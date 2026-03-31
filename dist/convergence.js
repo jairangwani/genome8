@@ -21,6 +21,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import yaml from 'js-yaml';
 import { execSync } from 'node:child_process';
 import { platform } from 'node:os';
 import { compile } from './compile.js';
@@ -2550,6 +2551,112 @@ function cleanupAll() {
         fs.unlinkSync(pidFilePath);
     }
     catch { /* doesn't exist */ }
+}
+// ── Pipeline Safety Utilities ──
+/**
+ * Validate convergence state file integrity.
+ * Checks required fields, valid phase values, and consistent module lists.
+ */
+function validateConvergenceState(statePath) {
+    const errors = [];
+    if (!fs.existsSync(statePath))
+        return { valid: false, errors: ['State file does not exist'] };
+    let state;
+    try {
+        state = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+    }
+    catch {
+        return { valid: false, errors: ['State file is not valid JSON'] };
+    }
+    const VALID_STATUSES = ['sleeping', 'unstable', 'reconverging', 'running'];
+    if (!state.status || !VALID_STATUSES.includes(state.status)) {
+        errors.push(`Invalid status: ${state.status}`);
+    }
+    if (state.stats && typeof state.stats !== 'object') {
+        errors.push('stats field is not an object');
+    }
+    if (state.interface_hash && typeof state.interface_hash !== 'string') {
+        errors.push('interface_hash is not a string');
+    }
+    return { valid: errors.length === 0, errors };
+}
+/**
+ * Recover convergence state from disk artifacts when state file is
+ * missing or corrupted. Scans module files, compilation results,
+ * and published interfaces to reconstruct state.
+ */
+function recoverConvergenceState(genomeDir, modulesDir) {
+    const state = {
+        status: 'unstable',
+        recovered: true,
+        recovered_at: new Date().toISOString(),
+    };
+    // Check if modules exist
+    if (fs.existsSync(modulesDir)) {
+        const modules = fs.readdirSync(modulesDir).filter(f => /\.ya?ml$/.test(f));
+        state.modules_on_disk = modules.map(f => f.replace(/\.ya?ml$/, ''));
+    }
+    // Check published interface
+    const publishedDir = path.join(genomeDir, '..', 'published');
+    const interfacePath = path.join(publishedDir, 'interface.yaml');
+    if (fs.existsSync(interfacePath)) {
+        try {
+            const iface = yaml.load(fs.readFileSync(interfacePath, 'utf-8'));
+            state.interface_hash = iface.version_hash;
+        }
+        catch { /* corrupted */ }
+    }
+    // Check compiled index
+    const compiledPath = path.join(genomeDir, '..', 'compiled', 'index.yaml');
+    if (fs.existsSync(compiledPath)) {
+        try {
+            const compiled = yaml.load(fs.readFileSync(compiledPath, 'utf-8'));
+            state.stats = compiled._stats;
+        }
+        catch { /* corrupted */ }
+    }
+    return state;
+}
+/**
+ * Detect pipeline stall: no measurable forward progress across consecutive cycles.
+ * Compares stats from two successive compilations.
+ */
+function detectPipelineStall(prevStats, currStats, stallCount, maxStallCycles) {
+    if (!prevStats)
+        return { stalled: false, stallCount: 0 };
+    const noProgress = currStats.total_nodes === prevStats.total_nodes &&
+        currStats.total_journeys === prevStats.total_journeys &&
+        currStats.total_connections === prevStats.total_connections;
+    const newStallCount = noProgress ? stallCount + 1 : 0;
+    return { stalled: newStallCount >= maxStallCycles, stallCount: newStallCount };
+}
+/**
+ * Detect partial/truncated module writes by scanning for structural damage.
+ * Returns modules that appear truncated or structurally damaged.
+ */
+function detectPartialModuleWrites(modulesDir) {
+    const damaged = [];
+    if (!fs.existsSync(modulesDir))
+        return damaged;
+    for (const file of fs.readdirSync(modulesDir).filter(f => /\.ya?ml$/.test(f))) {
+        const filePath = path.join(modulesDir, file);
+        const content = fs.readFileSync(filePath, 'utf-8');
+        // Check for truncation signs
+        if (content.length === 0) {
+            damaged.push(file.replace(/\.ya?ml$/, '') + ': empty file');
+            continue;
+        }
+        try {
+            const parsed = yaml.load(content);
+            if (!parsed || typeof parsed !== 'object') {
+                damaged.push(file.replace(/\.ya?ml$/, '') + ': not a YAML object');
+            }
+        }
+        catch {
+            damaged.push(file.replace(/\.ya?ml$/, '') + ': YAML parse error (possibly truncated)');
+        }
+    }
+    return damaged;
 }
 process.on('SIGINT', () => {
     cleanupAll();

@@ -52,3 +52,29 @@ export declare class LLMWorker {
      */
     isAlive(): boolean;
 }
+/**
+ * Validate that expected output files from a worker task exist and are non-empty.
+ */
+export declare function validateWorkerOutput(expectedFiles: string[], projectDir: string): {
+    valid: string[];
+    missing: string[];
+    empty: string[];
+};
+export interface CrashReport {
+    exitCode: number | null;
+    signal: string | null;
+    lastTask: string;
+    partialOutput: string[];
+    timestamp: string;
+    type: 'crash' | 'timeout' | 'stream_failure';
+}
+/**
+ * Scan expected output paths for any files the worker wrote before crashing.
+ * Returns paths of files that exist (partial work that may be recoverable).
+ */
+export declare function drainPartialOutput(expectedPaths: string[], projectDir: string): string[];
+/**
+ * Check if a file path is within the allowed directory.
+ * Defense-in-depth against path traversal — Claude Code also has its own checks.
+ */
+export declare function isPathWithinScope(filePath: string, allowedDir: string): boolean;

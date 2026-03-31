@@ -11,5 +11,6 @@
     "isolated_modules": 0,
     "duplicate_names": 0
   },
-  "interface_hash": "sha256:21a6e2d35836e06fe55cff1b8983cb53c00f146a29ea616ee332c5f48456c01b"
+  "interface_hash": "sha256:21a6e2d35836e06fe55cff1b8983cb53c00f146a29ea616ee332c5f48456c01b",
+  "spec_hash": "5dbd21256cb617dedbf41a4a8c31eddb695256d11f0d353aa2087e918f45a53d"
 }

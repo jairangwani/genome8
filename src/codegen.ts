@@ -130,3 +130,87 @@ function generateTypeScriptSkeleton(name: string, node: CompiledNode): string {
 function toCamelCase(str: string): string {
   return str.charAt(0).toLowerCase() + str.slice(1).replace(/[^a-zA-Z0-9]/g, '');
 }
+
+/**
+ * Build a prompt for the LLM to fill a skeleton file with working implementation.
+ * Returns the prompt string. Caller passes it to the LLM worker.
+ */
+export function buildFillPrompt(
+  skeletonContent: string,
+  fullNodeName: string,
+  node: CompiledNode
+): string {
+  const lines: string[] = [];
+  lines.push(`Fill in the implementation for this TypeScript skeleton.`);
+  lines.push(`Node: ${fullNodeName}`);
+  lines.push(`Description: ${node.description}`);
+  lines.push('');
+  lines.push(`Context:`);
+  lines.push(`- Preceded by: ${node.preceded_by.join(', ') || 'none'}`);
+  lines.push(`- Followed by: ${node.followed_by.join(', ') || 'none'}`);
+  if (node.triggered_by_actors.length) {
+    lines.push(`- Triggered by: ${node.triggered_by_actors.join(', ')}`);
+  }
+  lines.push('');
+  lines.push(`Rules:`);
+  lines.push(`- Replace every \`throw new Error('Not implemented')\` with working code`);
+  lines.push(`- Keep the class/function signatures exactly as they are`);
+  lines.push(`- Add imports as needed at the top`);
+  lines.push(`- Output ONLY the complete file content, no explanations`);
+  lines.push('');
+  lines.push(`Skeleton:`);
+  lines.push('```typescript');
+  lines.push(skeletonContent);
+  lines.push('```');
+  return lines.join('\n');
+}
+
+export interface FillResult {
+  filePath: string;
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Validate that a generated/filled TypeScript file has valid syntax.
+ * Runs tsc --noEmit on the file. Returns null if valid, error string if not.
+ */
+export function validateFilledSyntax(filePath: string, projectDir: string): string | null {
+  const { execSync } = require('node:child_process') as typeof import('node:child_process');
+  try {
+    execSync(`npx tsc --noEmit "${filePath}"`, {
+      cwd: projectDir,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      timeout: 30_000,
+    });
+    return null; // Valid
+  } catch (err: unknown) {
+    const execErr = err as { stdout?: string; stderr?: string };
+    return execErr.stdout || execErr.stderr || 'Unknown type check error';
+  }
+}
+
+/**
+ * Write a generated file to disk with retry on failure.
+ * Returns true on success, throws with specific reason on failure.
+ */
+export function writeGeneratedFile(filePath: string, content: string, maxRetries = 2): void {
+  const dir = path.dirname(filePath);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, content);
+      return;
+    } catch (err: unknown) {
+      const ioErr = err as NodeJS.ErrnoException;
+      if (attempt === maxRetries) {
+        throw new Error(`Failed to write ${filePath} after ${maxRetries + 1} attempts: ${ioErr.code ?? ioErr.message}`);
+      }
+      // Wait briefly before retry
+    }
+  }
+}

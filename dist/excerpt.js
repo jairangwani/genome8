@@ -126,6 +126,37 @@ export function generateExcerpt(input) {
     lines.push('```yaml');
     lines.push(moduleFileContent);
     lines.push('```');
-    return lines.join('\n');
+    // Truncate to ~200 line target
+    return truncateToLimit(lines.join('\n'), 200);
+}
+/**
+ * Truncate excerpt to approximately the target number of lines.
+ * Prioritizes keeping structural sections (nodes, journeys, issues, cross-module)
+ * and truncating the raw module file content last.
+ */
+function truncateToLimit(content, targetLines) {
+    const lines = content.split('\n');
+    if (lines.length <= targetLines)
+        return content;
+    // Find the raw module file section and truncate it first
+    const yamlStart = lines.findIndex(l => l === '```yaml');
+    if (yamlStart !== -1 && yamlStart < targetLines) {
+        const overhead = lines.length - targetLines;
+        const yamlEnd = lines.lastIndexOf('```');
+        const yamlLength = yamlEnd - yamlStart - 1;
+        if (yamlLength > overhead) {
+            // Truncate the YAML section
+            const keepLines = yamlLength - overhead;
+            const truncated = [
+                ...lines.slice(0, yamlStart + 1),
+                ...lines.slice(yamlStart + 1, yamlStart + 1 + keepLines),
+                `# ... truncated ${overhead} lines ...`,
+                ...lines.slice(yamlEnd),
+            ];
+            return truncated.join('\n');
+        }
+    }
+    // Fallback: hard truncate with notice
+    return [...lines.slice(0, targetLines - 1), `# ... truncated ${lines.length - targetLines + 1} lines ...`].join('\n');
 }
 //# sourceMappingURL=excerpt.js.map

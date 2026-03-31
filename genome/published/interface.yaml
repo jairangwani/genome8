@@ -1,5 +1,5 @@
-engine: genome
-version_hash: sha256:21a6e2d35836e06fe55cff1b8983cb53c00f146a29ea616ee332c5f48456c01b
+engine: genome8
+version_hash: sha256:af41ed169b824f8ccfee28d91c1105a73abf6e6c5da86a6130d0ead8a2026293
 provides:
   actors/DiscoverFromActivities:
     type: process
@@ -1232,19 +1232,19 @@ provides:
     description: >-
       genome8 is a self-describing protocol that manages itself — same convergence.ts runs at every level, the graph
       describes its own architecture, and the protocol applies to any system
-    in_journeys: 0
+    in_journeys: 1
   convergence/ProductionReadyNoShortcuts:
     type: rule
     description: >-
       no hacks or shortcuts — every change is validated by compilation, tested by journey tests, protected by
       destructive edit detection, bounded by retry limits, and staged before deployment
-    in_journeys: 0
+    in_journeys: 1
   convergence/SelfSustainingWithoutHumans:
     type: rule
     description: >-
       the system runs autonomously after initial spec — sleep/wake cycle monitors for changes at zero cost, event-driven
       ripple propagates updates, and reconvergence restores consistency without human intervention
-    in_journeys: 0
+    in_journeys: 1
   convergence/WarmWorkersAcrossPhases:
     type: rule
     description: >-

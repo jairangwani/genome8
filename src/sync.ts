@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import yaml from 'js-yaml';
-import type { PublishedInterface, DependenciesFile, CompiledIndex, Changelog } from './types.js';
+import type { PublishedInterface, DependenciesFile, DependencyConfig, CompiledIndex, Changelog } from './types.js';
 
 export interface SyncChange {
   dependency: string;
@@ -19,9 +19,11 @@ export interface SyncChange {
 }
 
 export interface SyncState {
-  known_hashes: Record<string, string>; // dependency → last known hash
-  sync_in_progress?: boolean;           // Guard against concurrent sync operations
-  sync_started_at?: string;             // Timestamp of last sync start (for stale lock detection)
+  known_hashes: Record<string, string>;       // dependency → last known hash
+  sync_in_progress?: boolean;                 // Guard against concurrent sync operations
+  sync_started_at?: string;                   // Timestamp of last sync start (for stale lock detection)
+  last_processed_sequence?: Record<string, number>; // dependency → last processed event sequence number
+  box_id?: string;                            // This box's ID for oscillation chain tracking
 }
 
 /**
@@ -172,4 +174,152 @@ export function markModulesStale(
     const updated = `_stale: true\n_stale_reason: "${reason}"\n\n${content}`;
     fs.writeFileSync(filePath, updated);
   }
+}
+
+/**
+ * Parse an event file payload. Event files contain JSON with interface hash,
+ * changelog summary, origin chain, and sequence number.
+ */
+export interface EventPayload {
+  interface_hash: string;
+  changelog_summary?: string[];
+  origin_chain: string[];
+  sequence_number: number;
+  dependency: string;
+}
+
+export function parseEventPayload(eventFilePath: string): EventPayload | null {
+  try {
+    const raw = fs.readFileSync(eventFilePath, 'utf-8');
+    const parsed = JSON.parse(raw) as EventPayload;
+    if (!parsed.interface_hash || typeof parsed.sequence_number !== 'number') {
+      return null;
+    }
+    return {
+      interface_hash: parsed.interface_hash,
+      changelog_summary: parsed.changelog_summary ?? [],
+      origin_chain: parsed.origin_chain ?? [],
+      sequence_number: parsed.sequence_number,
+      dependency: parsed.dependency ?? '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if an event's sequence number is newer than the last processed sequence.
+ * Returns true if the event should be processed, false if it should be discarded.
+ */
+export function checkEventSequence(
+  syncState: SyncState,
+  dependency: string,
+  incomingSequence: number
+): boolean {
+  const lastProcessed = syncState.last_processed_sequence?.[dependency] ?? -1;
+  return incomingSequence > lastProcessed;
+}
+
+/**
+ * Detect oscillation in a ripple origin chain.
+ * Returns true if this box's ID appears in the chain (A→B→A cycle).
+ */
+export function detectOscillation(
+  originChain: string[],
+  boxId: string
+): boolean {
+  return originChain.includes(boxId);
+}
+
+/**
+ * Validate dependency configuration: check that each dependency's
+ * directory exists and interface.yaml is present.
+ */
+export function validateDependencyConfig(
+  deps: Record<string, DependencyConfig>,
+  resolveDependencyPath: (depName: string) => string | null
+): Array<{ dependency: string; error: string }> {
+  const errors: Array<{ dependency: string; error: string }> = [];
+
+  for (const depName of Object.keys(deps)) {
+    const depPath = resolveDependencyPath(depName);
+    if (!depPath) {
+      errors.push({ dependency: depName, error: 'dependency directory not found' });
+      continue;
+    }
+    const interfacePath = path.join(depPath, 'interface.yaml');
+    if (!fs.existsSync(interfacePath)) {
+      errors.push({ dependency: depName, error: 'interface.yaml not found' });
+    }
+  }
+  return errors;
+}
+
+/**
+ * Filter affected modules by comparing their cross-module references
+ * against a changelog's changed nodes. Only modules that reference
+ * actually-changed nodes remain in the affected set.
+ */
+export function filterUnrelatedChanges(
+  affectedModules: string[],
+  changelog: Changelog | null,
+  index: CompiledIndex
+): string[] {
+  if (!changelog || !changelog.changes.length) {
+    return affectedModules; // No changelog to filter with
+  }
+
+  // Build set of changed node names from changelog
+  const changedNodes = new Set(changelog.changes.map(c => c.node));
+
+  return affectedModules.filter(mod => {
+    // Check if any node in this module references a changed dependency node
+    for (const [, node] of Object.entries(index.nodes)) {
+      if (node.module !== mod) continue;
+      for (const ref of node.cross_module_connections) {
+        if (changedNodes.has(ref) || changedNodes.has(ref.split('/')[1])) {
+          return true;
+        }
+      }
+    }
+    return false;
+  });
+}
+
+/**
+ * Append this box's ID to the ripple origin chain for downstream propagation.
+ */
+export function appendToOriginChain(
+  existingChain: string[],
+  boxId: string
+): string[] {
+  return [...existingChain, boxId];
+}
+
+/**
+ * Narrow outgoing changelog to include only changes that affected this box.
+ * Removes entries for nodes not referenced by any local module.
+ */
+export function narrowChangelog(
+  changelog: Changelog,
+  index: CompiledIndex
+): Changelog {
+  // Build set of all external nodes referenced locally
+  const referencedNodes = new Set<string>();
+  for (const node of Object.values(index.nodes)) {
+    for (const ref of node.cross_module_connections) {
+      referencedNodes.add(ref);
+      referencedNodes.add(ref.split('/')[1]); // bare name too
+    }
+  }
+
+  const narrowedChanges = changelog.changes.filter(c =>
+    referencedNodes.has(c.node) || referencedNodes.has(c.node.split('/')[1])
+  );
+
+  return {
+    previous_hash: changelog.previous_hash,
+    current_hash: changelog.current_hash,
+    changes: narrowedChanges,
+  };
 }
