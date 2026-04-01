@@ -1,4 +1,4 @@
-spec_sections: [2, 3]
+spec_sections: [2, 3, 7]
 
 nodes:
   CollectExportedNodes:
@@ -1180,3 +1180,22 @@ journeys:
         action: writes the event file to notify dependents of the fresh publish after corruption recovery
       - node: EventFile
         action: the event file signals dependents to resync since interface continuity was broken
+
+  PublishEnablesDecentralizedVision:
+    steps:
+      - node: _actors/ParentEngine
+        action: completes convergence on its box and triggers publish
+      - node: CollectExportedNodes
+        action: collects nodes that other boxes depend on into the published interface
+      - node: CollectExportedJourneys
+        action: collects journeys that cross box boundaries into the published interface
+      - node: GenerateInterfaceYaml
+        action: writes a standard interface file that any dependent box can consume
+      - node: ComputeInterfaceHash
+        action: computes a content hash over the interface for change detection
+      - node: WriteEventFile
+        action: writes an event file signaling the change to all dependent boxes
+      - node: _actors/DependentBox
+        action: receives the event and triggers targeted reconvergence on its own graph
+      - node: HashBasedChangeDetection
+        action: ensures only real changes propagate preventing false ripples across the decentralized network

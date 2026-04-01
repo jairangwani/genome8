@@ -1,40 +1,25 @@
-previous_hash: sha256:7b1577303fe6261282bb0c1fdc5ef580aded5eca869527f07483a239c81e8f88
-current_hash: sha256:3ff765bf348546f686b471026d389f7852db72102ec445bcc49f0146c387a768
+previous_hash: sha256:3ff765bf348546f686b471026d389f7852db72102ec445bcc49f0146c387a768
+current_hash: sha256:e63ebc392ea228f2bd86f36fd879bdd4638b46df8449e43e03db3628d98f8b86
 changes:
-  - node: organization/HandleEmptySpecContent
-    type: added
-    impact: >-
-      New process: detects that spec.md exists on disk but contains no parseable sections — either zero bytes,
-      whitespace only, or content that yields zero numbered sections — and reports a fatal error distinct from missing
-      file
-  - node: compilation/YAMLErrorReporting
+  - node: convergence/LoadProjectConfig
     type: modified
     field: description
     was: >-
-      collects _parseError tags from malformed modules and promotes them to severity-error ValidationIssues with file
-      name and line number so parse failures appear in the final compilation report
+      reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model,
+      maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, messageTimeoutMs,
+      maxHierarchyDepth, maxAuditCycles, and eventDebounceMs
     now: >-
-      collects _parseError tags from malformed modules and promotes them to severity-error ValidationIssues with module
-      name and error message so parse failures appear in the final compilation report
-    impact: compilation/YAMLErrorReporting description changed. Dependents should review.
-  - node: compilation/ValidateDescriptionQuality
+      reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model,
+      maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, messageTimeoutMs,
+      maxHierarchyDepth, maxAuditCycles, eventDebounceMs, and maxConcurrentChildren
+    impact: convergence/LoadProjectConfig description changed. Dependents should review.
+  - node: convergence/EnsureOutputDirectories
     type: modified
     field: description
     was: >-
-      checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions as
-      errors and descriptions exceeding 500 characters as warnings to prevent context window exhaustion
+      creates the modules, compiled, and published directories under genome/ with recursive mkdir if they do not already
+      exist
     now: >-
-      checks that every node has a meaningful description string, flagging nodes with missing or empty descriptions as
-      warnings and descriptions exceeding 500 characters as warnings to prevent context window exhaustion
-    impact: compilation/ValidateDescriptionQuality description changed. Dependents should review.
-  - node: compilation/EmptyModuleDirectoryDetection
-    type: modified
-    field: description
-    was: >-
-      detects when the modules directory is missing or contains zero YAML files and reports a clear error instead of
-      producing an empty compiled index
-    now: >-
-      detects when the modules directory contains zero YAML files and reports a tagged _parseError on an _empty module
-      entry instead of producing a silent empty compiled index, while a missing directory returns an empty module map
-      without error
-    impact: compilation/EmptyModuleDirectoryDetection description changed. Dependents should review.
+      creates the modules, .internal, compiled, and published directories under genome/ with recursive mkdir if they do
+      not already exist
+    impact: convergence/EnsureOutputDirectories description changed. Dependents should review.

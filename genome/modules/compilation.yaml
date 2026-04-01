@@ -1,4 +1,4 @@
-spec_sections: [3]
+spec_sections: [3, 9]
 
 nodes:
   YAMLParsing:
@@ -859,3 +859,22 @@ journeys:
         action: detects the module has no cross-module connections to any other module
       - node: _actors/Compiler
         action: reports the module as isolated, signaling it should be removed from the graph
+
+  EnforceZeroErrorArchitecturalDecision:
+    steps:
+      - node: _actors/Compiler
+        action: runs compilation after every module change enforcing the zero-error gate
+      - node: CompileFromModules
+        action: parses all modules and runs the full validation suite
+      - node: DuplicateDetection
+        action: rejects duplicate node or journey names enforcing graph uniqueness
+      - node: DanglingRefDetection
+        action: rejects references to nodes that do not exist enforcing referential integrity
+      - node: OrphanDetection
+        action: flags nodes with zero connections enforcing the no-isolation rule
+      - node: ZeroErrorConvergence
+        action: enforces that compilation must produce zero errors before audit can proceed
+      - node: EarlyTerminationRule
+        action: halts the pipeline immediately on error rather than allowing downstream phases to run on bad data
+      - node: CompilationResult
+        action: produces the compilation result that gates all downstream pipeline phases

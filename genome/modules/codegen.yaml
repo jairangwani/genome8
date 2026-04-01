@@ -752,3 +752,22 @@ journeys:
         action: checks that the edit did not hollow out function bodies replacing implementations with placeholders
       - node: StageFilledModule
         action: stages the structurally validated updated module in the codegen result
+
+  IncludeActorContextInCodegen:
+    steps:
+      - node: _actors/Compiler
+        action: triggers codegen after compilation produces zero errors
+      - node: ReadConvergedGraph
+        action: reads the converged graph including actor-triggered journeys
+      - node: actors/ProvideActorsForModuleCreation
+        action: provides the actor list so codegen knows which actors trigger each process
+      - node: BuildFillPrompt
+        action: includes actor type context in the fill prompt so generated code handles actor-specific inputs
+      - node: EnrichSkeletonWithConnectionContext
+        action: annotates skeletons with inbound actor connections informing parameter types
+      - node: _actors/LLMWorker
+        action: receives the actor-enriched prompt and generates implementation aware of caller context
+      - node: FillImplementation
+        action: fills the skeleton with implementation that validates inputs based on triggering actor type
+      - node: ValidateFilledSyntax
+        action: validates the filled code compiles correctly with actor-aware type signatures

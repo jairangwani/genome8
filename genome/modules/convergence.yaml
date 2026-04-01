@@ -232,14 +232,14 @@ nodes:
     files: [src/cli.ts]
   LoadProjectConfig:
     type: process
-    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, messageTimeoutMs, maxHierarchyDepth, maxAuditCycles, and eventDebounceMs
+    description: reads genome/config.json if it exists and merges user overrides with default values for maxRounds, model, maxFixAttempts, maxZeroDelta, minModulesForSplit, watchIntervalMs, sessionResetChars, messageTimeoutMs, maxHierarchyDepth, maxAuditCycles, eventDebounceMs, and maxConcurrentChildren
     files: [src/convergence.ts]
   ProjectConfig:
     type: artifact
     description: the merged configuration controlling pipeline behavior including LLM model, retry limits, split thresholds, and watch intervals
   EnsureOutputDirectories:
     type: process
-    description: creates the modules, compiled, and published directories under genome/ with recursive mkdir if they do not already exist
+    description: creates the modules, .internal, compiled, and published directories under genome/ with recursive mkdir if they do not already exist
     files: [src/convergence.ts]
   WritePidFile:
     type: process

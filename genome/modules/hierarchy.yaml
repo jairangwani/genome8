@@ -1,4 +1,4 @@
-spec_sections: [2, 3, 5, 6]
+spec_sections: [2, 3, 5, 6, 7]
 
 nodes:
   AnalyzeModuleIndependence:
@@ -1099,3 +1099,26 @@ journeys:
         action: prevents recursive splits from creating unbounded hierarchy depth
       - node: MaxDepthLimit
         action: halts further splitting when the maximum allowed depth is reached
+
+  HierarchyEnablesGrandVision:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing a system too large for a single convergence engine
+      - node: AnalyzeModuleIndependence
+        action: identifies clusters of modules that can converge independently
+      - node: DecideSplit
+        action: decides the system warrants splitting into child engines for scale
+      - node: CreateChildDirectory
+        action: creates isolated directories for each child engine
+      - node: GenerateScopedSpec
+        action: generates a scoped spec for each child covering only its subsystem
+      - node: SpawnChildEngine
+        action: launches child engines that run the same convergence code at any depth
+      - node: SameCodeEveryLevel
+        action: enforces that parent and child run identical protocol code proving fractal scalability
+      - node: CollectChildInterfaces
+        action: collects published interfaces from all children into the parent
+      - node: CreateCrossEngineJourneys
+        action: connects child subsystems through cross-engine journeys at the parent level
+      - node: MergeChildGraphsIntoParent
+        action: merges all child graphs into the parent creating a unified multi-level context graph

@@ -689,3 +689,22 @@ journeys:
         action: rebuilds the fix prompt with explicit instruction that test cases must not be removed or restructured
       - node: SelectNextFailureToFix
         action: re-queues the failure for a non-destructive fix attempt
+
+  IncludeActorContextInTestgen:
+    steps:
+      - node: _actors/Compiler
+        action: confirms zero compilation errors before test generation begins
+      - node: ReadJourneySteps
+        action: reads journey steps identifying which actors trigger each journey
+      - node: actors/ProvideActorsForModuleCreation
+        action: provides the actor list so testgen knows actor types and descriptions
+      - node: GenerateTestFilePerJourney
+        action: generates a test file for each journey with actor setup in the test preamble
+      - node: GenerateStepTestCase
+        action: generates a test case per step with actor context informing mock inputs
+      - node: _actors/LLMWorker
+        action: receives the actor-enriched context and fills test assertions that validate actor interactions
+      - node: FillTestAssertions
+        action: fills assertions that verify the journey behaves correctly for the triggering actor type
+      - node: ValidateFilledTestSyntax
+        action: validates the filled test compiles with correct actor type references

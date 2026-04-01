@@ -103,6 +103,7 @@ const compiledDir = path.join(internalDir, 'compiled');
 const publishedDir = path.join(genomeDir, 'published');
 
 // Load project config (overrides defaults)
+// Priority: env vars (from parent) > config.json > defaults
 const configPath = path.join(internalDir, 'config.json');
 let config: ConvergenceConfig = { ...DEFAULT_CONFIG };
 if (fs.existsSync(configPath)) {
@@ -112,6 +113,10 @@ if (fs.existsSync(configPath)) {
     console.log(`Loaded config from ${configPath}`);
   } catch { /* use defaults */ }
 }
+// Env vars override config.json — ensures parent's limits cascade to ALL children
+if (process.env.GENOME_MAX_CONCURRENT_CHILDREN) config.maxConcurrentChildren = parseInt(process.env.GENOME_MAX_CONCURRENT_CHILDREN);
+if (process.env.GENOME_MAX_HIERARCHY_DEPTH) config.maxHierarchyDepth = parseInt(process.env.GENOME_MAX_HIERARCHY_DEPTH);
+if (process.env.GENOME_MESSAGE_TIMEOUT_MS) config.messageTimeoutMs = parseInt(process.env.GENOME_MESSAGE_TIMEOUT_MS);
 
 if (!fs.existsSync(specPath)) {
   console.error(`No spec found at ${specPath}`);
@@ -2611,7 +2616,13 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
     const childArgs = ['tsx', path.join(import.meta.dirname!, 'convergence.ts'), childDir, '--depth', String(currentDepth + 1), '--once'];
     const proc = spawnChild('npx', childArgs, {
       cwd: path.resolve(import.meta.dirname!, '..'),
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        // Cascade config to children via env vars so ALL levels inherit limits
+        GENOME_MAX_CONCURRENT_CHILDREN: String(config.maxConcurrentChildren),
+        GENOME_MAX_HIERARCHY_DEPTH: String(config.maxHierarchyDepth),
+        GENOME_MESSAGE_TIMEOUT_MS: String(config.messageTimeoutMs),
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: true,
     });

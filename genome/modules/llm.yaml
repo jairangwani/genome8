@@ -1,4 +1,4 @@
-spec_sections: [3]
+spec_sections: [3, 9]
 
 nodes:
   SpawnWorkerProcess:
@@ -1211,3 +1211,24 @@ journeys:
         action: tears down the corrupted session for a fresh start
       - node: convergence/DetectWorkerFailure
         action: receives the session error for respawn decision
+
+  EnforceCodeOrchestratesLLMCreates:
+    steps:
+      - node: convergence/ModuleCreation
+        action: orchestrates module creation by dispatching tasks to LLM workers
+      - node: BuildTaskContext
+        action: assembles the task context from excerpt data not from open-ended prompts
+      - node: InjectSystemPrompt
+        action: injects the system prompt that constrains the worker to create only what was asked
+      - node: SendTask
+        action: sends a scoped single-file task to the worker
+      - node: NativeToolSet
+        action: the worker uses native tools to read write and edit files as instructed
+      - node: ValidateWorkerOutput
+        action: validates the output before accepting it rejecting hallucinated or out-of-scope content
+      - node: ScopeWritesToAllowedPaths
+        action: enforces that the worker can only write to allowed paths within the box
+      - node: SingleFilePerTask
+        action: enforces one file per task preventing the worker from making unbounded changes
+      - node: WorkerCreatesCodeOrchestrates
+        action: enforces the architectural decision that code orchestrates and LLM creates never the reverse

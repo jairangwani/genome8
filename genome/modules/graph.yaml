@@ -1,4 +1,4 @@
-spec_sections: [2]
+spec_sections: [1, 2]
 
 nodes:
   NodeDefinition:
@@ -783,3 +783,22 @@ journeys:
         action: queues the deprecated module for removal from the compiled index
       - node: CompiledIndex
         action: removes the deprecated module's nodes and connections from the graph
+
+  GraphIsTheProtocolCore:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing a system too large for any single brain
+      - node: NodeDefinition
+        action: represents each discrete concept as a typed node in the graph
+      - node: JourneyDefinition
+        action: represents each use case as an ordered sequence of steps across nodes
+      - node: StepDefinition
+        action: binds each step to a node reference and an action description
+      - node: ConnectionComputation
+        action: derives directed edges from consecutive journey steps creating the living graph
+      - node: CrossModuleRefResolution
+        action: resolves references across module boundaries connecting independent pieces
+      - node: CompiledIndex
+        action: assembles all nodes connections and journeys into a single queryable graph
+      - node: ConnectionSet
+        action: stores the full directed edge set that IS the system context no separate documentation needed

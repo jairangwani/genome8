@@ -1,4 +1,4 @@
-spec_sections: [3, 5]
+spec_sections: [3, 4, 5, 8]
 
 nodes:
   CheckSpecCoverage:
@@ -1041,3 +1041,39 @@ journeys:
         action: records the crash as a failed fix attempt counting toward the per-gap attempt limit
       - node: PerGapFixAttemptLimit
         action: checks whether the crash pushed this gap past its attempt limit triggering skip if so
+
+  AuditActorCoverageAcrossModules:
+    steps:
+      - node: _actors/Auditor
+        action: receives the actor coverage audit task after zero compilation errors
+      - node: CheckActorCoverage
+        action: checks whether every actor in the actors file appears in at least one journey
+      - node: CheckActorCoverage
+        action: cross-references the compiled graph journeys against the full actor list
+      - node: ActorCoverageReport
+        action: produces a report listing actors with zero journey participation
+      - node: CollectAuditFindings
+        action: collects actor coverage gaps as audit findings
+      - node: PrioritizeGaps
+        action: ranks actor coverage gaps by severity for targeted fixing
+      - node: BuildGapFixPrompt
+        action: constructs a prompt instructing the worker to add journeys involving the uncovered actor
+      - node: _actors/LLMWorker
+        action: receives the fix prompt and adds journeys referencing the missing actor
+
+  AuditGoalCoverageCompleteness:
+    steps:
+      - node: _actors/Auditor
+        action: receives the goal coverage audit task
+      - node: CheckGoalCoverage
+        action: checks whether every goal node has at least one proving journey
+      - node: CheckGoalCoverage
+        action: cross-references goal nodes against journeys that reference them
+      - node: GoalCoverageReport
+        action: produces a report listing goals without sufficient proof journeys
+      - node: CollectAuditFindings
+        action: collects goal coverage gaps as audit findings
+      - node: PrioritizeGaps
+        action: ranks goal gaps by importance ensuring foundational goals are fixed first
+      - node: SelectNextGapToFix
+        action: picks the highest priority goal gap for targeted fixing

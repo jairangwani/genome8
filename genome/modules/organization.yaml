@@ -1,4 +1,4 @@
-spec_sections: [3, 5]
+spec_sections: [1, 3, 5]
 
 nodes:
   ReadSpecFile:
@@ -675,3 +675,20 @@ journeys:
         action: receives the fatal error and halts the pipeline with a message explaining that spec.md must contain numbered sections
       - node: _actors/ProjectOwner
         action: is notified that spec.md exists but needs content before convergence can proceed
+
+  OrganizationDefinesWhatGenomeIs:
+    steps:
+      - node: _actors/ProjectOwner
+        action: writes spec.md describing any system they want genome8 to manage
+      - node: ReadSpecFile
+        action: reads the spec as the sole human input to the protocol
+      - node: ParseSpecSections
+        action: identifies numbered sections that define the system scope
+      - node: IdentifyModules
+        action: breaks the system into independent scoped modules each owning a concern
+      - node: AnalyzeDependencies
+        action: determines how modules depend on each other forming a dependency graph
+      - node: AssembleOrganization
+        action: produces the organization file that drives all downstream pipeline phases
+      - node: WriteOrganizationFile
+        action: writes the organization to disk as the structural blueprint for module creation
