@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 // Implementation: src/compile.ts
 // Implementation: test/cross-project.test.ts
 

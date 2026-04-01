@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("ExhaustFillRetriesAndSkip", () => {
   it("step 1: codegen/FillImplementation LLM produces a filled file that fails validation", () => {
     // Node: codegen/FillImplementation (process)
@@ -12,7 +14,7 @@ describe("ExhaustFillRetriesAndSkip", () => {
   });
 
   it("step 2: codegen/ValidateFilledSyntax detects syntax or type errors in the filled output", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: detects syntax or type errors in the filled output
     // TODO: agent fills assertion
   });
@@ -45,7 +47,7 @@ describe("ExhaustFillRetriesAndSkip", () => {
   });
 
   it("step 5: codegen/ValidateFilledSyntax re-checks the retry output and finds it still fails", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: re-checks the retry output and finds it still fails
     // TODO: agent fills assertion
   });

@@ -321,3 +321,87 @@ export function detectMissingImplementation(
   }
   return missing;
 }
+
+/**
+ * Read all journeys from the compiled index and return them as a flat list.
+ * Standalone export for the ReadJourneySteps node.
+ */
+export function readJourneySteps(
+  index: CompiledIndex
+): Array<{ name: string; module: string; steps: CompiledJourney['steps'] }> {
+  return Object.values(index.journeys).map(j => ({
+    name: j.name,
+    module: j.module,
+    steps: j.steps,
+  }));
+}
+
+/**
+ * Verify that every journey has a filled test file on disk.
+ * Returns journeys still missing their test file.
+ * Standalone export for the ConfirmAllTestsFilled node.
+ */
+export function confirmAllTestsFilled(
+  index: CompiledIndex,
+  testDir: string
+): string[] {
+  const missing: string[] = [];
+  for (const [name] of Object.entries(index.journeys)) {
+    const testPath = path.join(testDir, 'journeys', `${name}.test.ts`);
+    if (!fs.existsSync(testPath)) {
+      missing.push(name);
+    }
+  }
+  return missing;
+}
+
+/**
+ * Verify that the test result report shows zero failures.
+ * Standalone export for the ConfirmAllTestsPassing node.
+ */
+export function confirmAllTestsPassing(result: TestResult): boolean {
+  return result.failed === 0;
+}
+
+/**
+ * Compare pre-fix and post-fix test results to detect new failures
+ * that did not exist before the fix was applied.
+ * Standalone export for the DetectFixInducedRegression node.
+ */
+export function detectFixInducedRegression(
+  preFix: TestResult,
+  postFix: TestResult
+): { regressed: boolean; newFailures: string[] } {
+  const preFailures = new Set(preFix.failures.map(f => `${f.file}:${f.test}`));
+
+  const newFailures = postFix.failures
+    .filter(f => !preFailures.has(`${f.file}:${f.test}`))
+    .map(f => `${f.file}:${f.test}`);
+
+  return {
+    regressed: newFailures.length > 0,
+    newFailures,
+  };
+}
+
+/**
+ * Build a targeted fix prompt for a test failure.
+ * Standalone export for the GenerateFixPrompt node.
+ */
+export function generateFixPrompt(
+  failure: { file: string; test: string; error: string },
+  implFile?: string
+): string {
+  const lines: string[] = [];
+  lines.push(`Fix this failing test:`);
+  lines.push(`File: ${failure.file}`);
+  lines.push(`Test: ${failure.test}`);
+  lines.push(`Error: ${failure.error}`);
+  lines.push('');
+  if (implFile) {
+    lines.push(`Implementation file: ${implFile}`);
+  }
+  lines.push(`Determine if the test assertion is wrong or the implementation has a bug.`);
+  lines.push(`Fix the root cause, not the symptom.`);
+  return lines.join('\n');
+}

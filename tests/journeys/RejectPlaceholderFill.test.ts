@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
 // Implementation: test/codegen.test.ts
 
 describe("RejectPlaceholderFill", () => {
@@ -26,7 +27,7 @@ describe("RejectPlaceholderFill", () => {
   });
 
   it("step 3: codegen/DetectPlaceholderFill scans each function body for throw-not-implemented, TODO comments, empty bodies, and return-undefined patterns", () => {
-    // Node: codegen/DetectPlaceholderFill (process)
+    // Node: codegen/DetectPlaceholderFill (process) — has code: src/codegen.ts
     // Action: scans each function body for throw-not-implemented, TODO comments, empty bodies, and return-undefined patterns
     // TODO: agent fills assertion
   });
@@ -37,7 +38,7 @@ describe("RejectPlaceholderFill", () => {
   });
 
   it("step 4: codegen/DetectPlaceholderFill flags specific functions that contain only placeholder code without real logic", () => {
-    // Node: codegen/DetectPlaceholderFill (process)
+    // Node: codegen/DetectPlaceholderFill (process) — has code: src/codegen.ts
     // Action: flags specific functions that contain only placeholder code without real logic
     // TODO: agent fills assertion
   });
@@ -125,7 +126,7 @@ describe("RejectPlaceholderFill", () => {
   });
 
   it("step 12: codegen/DetectPlaceholderFill re-checks to confirm all function bodies now contain substantive code", () => {
-    // Node: codegen/DetectPlaceholderFill (process)
+    // Node: codegen/DetectPlaceholderFill (process) — has code: src/codegen.ts
     // Action: re-checks to confirm all function bodies now contain substantive code
     // TODO: agent fills assertion
   });

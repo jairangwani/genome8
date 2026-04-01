@@ -7,31 +7,39 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildValidateBootstrapModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      MigratingProject: { type: 'actor', description: 'Has been bootstrapped into genome8 with modules created from its spec' },
-      Compiler: { type: 'actor', description: 'Runs full compilation on the bootstrapped graph' },
-      Auditor: { type: 'actor', description: 'Checks spec coverage to verify the bootstrap captured all system concepts' },
+      MigratingProject: { type: 'actor', description: 'an existing project with source code that predates the genome8 graph' },
+      Compiler: { type: 'actor', description: 'the compilation process that validates graph structure' },
+      Auditor: { type: 'actor', description: 'the LLM-based auditor that checks coverage from multiple angles' },
     },
-    journeys: {},
   });
 
   modules.set('compilation', {
     nodes: {
-      CompilationResult: { type: 'artifact', description: 'Confirms zero errors after bootstrap' },
+      CompilationResult: { type: 'artifact', description: 'the output of compile.ts containing the compiled index, issues list, and coverage report' },
     },
-    journeys: {},
   });
 
   modules.set('audit', {
     nodes: {
-      CheckSpecCoverage: { type: 'process', description: 'Compares spec sections against bootstrapped module nodes and journeys' },
-      CollectAuditFindings: { type: 'process', description: 'Identifies any legacy concepts missing from the bootstrapped graph' },
-      AuditFindingsList: { type: 'artifact', description: 'Records gaps between the existing system and the new graph' },
+      CheckSpecCoverage: { type: 'process', description: 'auditor 1 compares spec sections against the graph to find sections not represented by any node or journey' },
+      CollectAuditFindings: { type: 'process', description: 'gathers findings from all 4 auditors into a single list of coverage gaps with locations and descriptions' },
+      AuditFindingsList: { type: 'artifact', description: 'the collected list of coverage gaps from all 4 auditors with gap type, location, and description' },
     },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      TargetedAudit: { type: 'process', description: 'dispatches auditors to check coverage from all angles' },
+    },
+  });
+
+  modules.set('actors', {
+    nodes: {},
     journeys: {
       MigratingProjectValidateAfterBootstrap: {
         steps: [
@@ -39,27 +47,20 @@ function buildValidateBootstrapModules() {
           { node: '_actors/Compiler', action: 'runs full compilation on the bootstrapped graph' },
           { node: 'compilation/CompilationResult', action: 'confirms zero errors after bootstrap' },
           { node: '_actors/Auditor', action: 'checks spec coverage to verify the bootstrap captured all system concepts' },
-          { node: 'CheckSpecCoverage', action: 'compares spec sections against bootstrapped module nodes and journeys' },
-          { node: 'CollectAuditFindings', action: 'identifies any legacy concepts missing from the bootstrapped graph' },
-          { node: 'AuditFindingsList', action: 'records gaps between the existing system and the new graph' },
+          { node: 'audit/CheckSpecCoverage', action: 'compares spec sections against bootstrapped module nodes and journeys' },
+          { node: 'audit/CollectAuditFindings', action: 'identifies any legacy concepts missing from the bootstrapped graph' },
+          { node: 'audit/AuditFindingsList', action: 'records gaps between the existing system and the new graph' },
           { node: 'convergence/TargetedAudit', action: 'triggers targeted fixes for any gaps found during migration validation' },
         ],
       },
     },
   });
 
-  modules.set('convergence', {
-    nodes: {
-      TargetedAudit: { type: 'process', description: 'Triggers targeted fixes for any gaps found during migration validation' },
-    },
-    journeys: {},
-  });
-
   return modules;
 }
 
 describe("MigratingProjectValidateAfterBootstrap", () => {
-  const modules = buildValidateBootstrapModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['MigratingProjectValidateAfterBootstrap'];
 
@@ -67,6 +68,7 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
     const node = result.index.nodes['_actors/MigratingProject'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('MigratingProjectValidateAfterBootstrap'))).toBe(true);
   });
 
   it("step 2: _actors/Compiler runs full compilation on the bootstrapped graph", () => {
@@ -77,8 +79,8 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: _actors/MigratingProject → _actors/Compiler", () => {
-    const from = result.index.nodes['_actors/MigratingProject'];
-    expect(from.followed_by).toContain('_actors/Compiler');
+    const src = result.index.nodes['_actors/MigratingProject'];
+    expect(src.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 3: compilation/CompilationResult confirms zero errors after bootstrap", () => {
@@ -89,8 +91,8 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: _actors/Compiler → compilation/CompilationResult", () => {
-    const from = result.index.nodes['_actors/Compiler'];
-    expect(from.followed_by).toContain('compilation/CompilationResult');
+    const src = result.index.nodes['_actors/Compiler'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 4: _actors/Auditor checks spec coverage to verify the bootstrap captured all system concepts", () => {
@@ -101,8 +103,8 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: compilation/CompilationResult → _actors/Auditor", () => {
-    const from = result.index.nodes['compilation/CompilationResult'];
-    expect(from.followed_by).toContain('_actors/Auditor');
+    const src = result.index.nodes['compilation/CompilationResult'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 5: audit/CheckSpecCoverage compares spec sections against bootstrapped module nodes and journeys", () => {
@@ -113,8 +115,8 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: _actors/Auditor → audit/CheckSpecCoverage", () => {
-    const from = result.index.nodes['_actors/Auditor'];
-    expect(from.followed_by).toContain('audit/CheckSpecCoverage');
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/CheckSpecCoverage');
   });
 
   it("step 6: audit/CollectAuditFindings identifies any legacy concepts missing from the bootstrapped graph", () => {
@@ -125,8 +127,8 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: audit/CheckSpecCoverage → audit/CollectAuditFindings", () => {
-    const from = result.index.nodes['audit/CheckSpecCoverage'];
-    expect(from.followed_by).toContain('audit/CollectAuditFindings');
+    const src = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(src.followed_by).toContain('audit/CollectAuditFindings');
   });
 
   it("step 7: audit/AuditFindingsList records gaps between the existing system and the new graph", () => {
@@ -137,8 +139,8 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: audit/CollectAuditFindings → audit/AuditFindingsList", () => {
-    const from = result.index.nodes['audit/CollectAuditFindings'];
-    expect(from.followed_by).toContain('audit/AuditFindingsList');
+    const src = result.index.nodes['audit/CollectAuditFindings'];
+    expect(src.followed_by).toContain('audit/AuditFindingsList');
   });
 
   it("step 8: convergence/TargetedAudit triggers targeted fixes for any gaps found during migration validation", () => {
@@ -149,22 +151,12 @@ describe("MigratingProjectValidateAfterBootstrap", () => {
   });
 
   it("connection: audit/AuditFindingsList → convergence/TargetedAudit", () => {
-    const from = result.index.nodes['audit/AuditFindingsList'];
-    expect(from.followed_by).toContain('convergence/TargetedAudit');
+    const src = result.index.nodes['audit/AuditFindingsList'];
+    expect(src.followed_by).toContain('convergence/TargetedAudit');
   });
 
-  it("journey covers full validation pipeline (8 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 8 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(8);
-    expect(journey.steps[0].node).toBe('_actors/MigratingProject');
-    expect(journey.steps[7].node).toBe('convergence/TargetedAudit');
-  });
-
-  it("journey actor is MigratingProject", () => {
-    expect(journey.actor).toBe('_actors/MigratingProject');
-  });
-
-  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

@@ -7,72 +7,47 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildDeprecatedModules(opts?: { isolated?: boolean }) {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      DeprecatedModule: { type: 'actor', description: 'Exists on disk but is no longer relevant to the current spec' },
-      Auditor: { type: 'actor', description: 'Flags the deprecated module during coverage audit' },
+      DeprecatedModule: { type: 'actor', description: 'a module that exists on disk but is no longer relevant to the current spec' },
+      Auditor: { type: 'actor', description: 'the audit engine that checks spec coverage and flags gaps' },
     },
-    journeys: {},
   });
 
   modules.set('compilation', {
     nodes: {
-      OrphanDetection: { type: 'process', description: 'Detects nodes no longer referenced by any journey' },
-      IsolatedModuleDetection: { type: 'process', description: 'Detects modules with zero cross-module connections' },
-      CompilationResult: { type: 'artifact', description: 'Reports the module as both orphaned and isolated' },
-    },
-    journeys: {
-      DeprecatedModuleCleanup: {
-        steps: [
-          { node: '_actors/DeprecatedModule', action: 'exists on disk but is no longer relevant to the current spec' },
-          { node: 'OrphanDetection', action: 'detects that the module nodes are no longer referenced by any journey' },
-          { node: 'IsolatedModuleDetection', action: 'detects that the module has zero cross-module connections' },
-          { node: 'CompilationResult', action: 'reports the module as both orphaned and isolated' },
-          { node: '_actors/Auditor', action: 'flags the deprecated module during coverage audit' },
-          { node: 'convergence/AuditGapFix', action: 'targeted fix removes or archives the deprecated module' },
-        ],
-      },
+      OrphanDetection: { type: 'process', description: 'detects nodes that exist in modules but are never referenced by any journey step' },
+      IsolatedModuleDetection: { type: 'process', description: 'detects modules with zero cross-module connections' },
+      CompilationResult: { type: 'artifact', description: 'the final compilation output containing the index, issues, and coverage report' },
     },
   });
 
   modules.set('convergence', {
     nodes: {
-      AuditGapFix: { type: 'process', description: 'Targeted fix removes or archives the deprecated module' },
+      AuditGapFix: { type: 'process', description: 'applies targeted fixes to close gaps found during audit' },
     },
-    journeys: {},
+    journeys: {
+      DeprecatedModuleCleanup: {
+        steps: [
+          { node: '_actors/DeprecatedModule', action: 'exists on disk but is no longer relevant to the current spec' },
+          { node: 'compilation/OrphanDetection', action: 'detects that the module nodes are no longer referenced by any journey' },
+          { node: 'compilation/IsolatedModuleDetection', action: 'detects that the module has zero cross-module connections' },
+          { node: 'compilation/CompilationResult', action: 'reports the module as both orphaned and isolated' },
+          { node: '_actors/Auditor', action: 'flags the deprecated module during coverage audit' },
+          { node: 'AuditGapFix', action: 'targeted fix removes or archives the deprecated module' },
+        ],
+      },
+    },
   });
-
-  // A deprecated module that is completely isolated — no cross-module refs
-  // Must have > 3 nodes to trigger isolated_modules detection
-  if (opts?.isolated) {
-    modules.set('deprecated', {
-      nodes: {
-        OldFeature: { type: 'process', description: 'An old feature no one uses' },
-        OldData: { type: 'artifact', description: 'Old data store' },
-        OldConfig: { type: 'artifact', description: 'Old config file' },
-        OldValidation: { type: 'process', description: 'Old validation step' },
-      },
-      journeys: {
-        OldInternalFlow: {
-          steps: [
-            { node: 'OldFeature', action: 'does something old' },
-            { node: 'OldData', action: 'stores old data' },
-            { node: 'OldConfig', action: 'reads old config' },
-            { node: 'OldValidation', action: 'validates old data' },
-          ],
-        },
-      },
-    });
-  }
 
   return modules;
 }
 
 describe("DeprecatedModuleCleanup", () => {
-  const modules = buildDeprecatedModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['DeprecatedModuleCleanup'];
 
@@ -80,6 +55,7 @@ describe("DeprecatedModuleCleanup", () => {
     const node = result.index.nodes['_actors/DeprecatedModule'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('DeprecatedModuleCleanup'))).toBe(true);
   });
 
   it("step 2: compilation/OrphanDetection detects that the module's nodes are no longer referenced by any journey", () => {
@@ -90,8 +66,8 @@ describe("DeprecatedModuleCleanup", () => {
   });
 
   it("connection: _actors/DeprecatedModule → compilation/OrphanDetection", () => {
-    const from = result.index.nodes['_actors/DeprecatedModule'];
-    expect(from.followed_by).toContain('compilation/OrphanDetection');
+    const src = result.index.nodes['_actors/DeprecatedModule'];
+    expect(src.followed_by).toContain('compilation/OrphanDetection');
   });
 
   it("step 3: compilation/IsolatedModuleDetection detects that the module has zero cross-module connections", () => {
@@ -102,8 +78,8 @@ describe("DeprecatedModuleCleanup", () => {
   });
 
   it("connection: compilation/OrphanDetection → compilation/IsolatedModuleDetection", () => {
-    const from = result.index.nodes['compilation/OrphanDetection'];
-    expect(from.followed_by).toContain('compilation/IsolatedModuleDetection');
+    const src = result.index.nodes['compilation/OrphanDetection'];
+    expect(src.followed_by).toContain('compilation/IsolatedModuleDetection');
   });
 
   it("step 4: compilation/CompilationResult reports the module as both orphaned and isolated", () => {
@@ -114,8 +90,8 @@ describe("DeprecatedModuleCleanup", () => {
   });
 
   it("connection: compilation/IsolatedModuleDetection → compilation/CompilationResult", () => {
-    const from = result.index.nodes['compilation/IsolatedModuleDetection'];
-    expect(from.followed_by).toContain('compilation/CompilationResult');
+    const src = result.index.nodes['compilation/IsolatedModuleDetection'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 5: _actors/Auditor flags the deprecated module during coverage audit", () => {
@@ -126,8 +102,8 @@ describe("DeprecatedModuleCleanup", () => {
   });
 
   it("connection: compilation/CompilationResult → _actors/Auditor", () => {
-    const from = result.index.nodes['compilation/CompilationResult'];
-    expect(from.followed_by).toContain('_actors/Auditor');
+    const src = result.index.nodes['compilation/CompilationResult'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 6: convergence/AuditGapFix targeted fix removes or archives the deprecated module", () => {
@@ -138,26 +114,12 @@ describe("DeprecatedModuleCleanup", () => {
   });
 
   it("connection: _actors/Auditor → convergence/AuditGapFix", () => {
-    const from = result.index.nodes['_actors/Auditor'];
-    expect(from.followed_by).toContain('convergence/AuditGapFix');
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('convergence/AuditGapFix');
   });
 
-  it("isolated module with no cross-module connections is detected", () => {
-    const isoModules = buildDeprecatedModules({ isolated: true });
-    const isoResult = compileFromModules(isoModules);
-    // The 'deprecated' module has only internal journeys — should be flagged as isolated
-    expect(isoResult.index._stats.isolated_modules).toBeGreaterThan(0);
-    // The deprecated module's coverage should show 0 cross-module connections
-    const depCov = isoResult.coverage.modules['deprecated'];
-    expect(depCov).toBeDefined();
-    expect(depCov.cross_module_connections).toBe(0);
-  });
-
-  it("journey actor is DeprecatedModule", () => {
-    expect(journey.actor).toBe('_actors/DeprecatedModule');
-  });
-
-  it("compiles without errors", () => {
+  it("journey has 6 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(6);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

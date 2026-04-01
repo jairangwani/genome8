@@ -778,7 +778,7 @@ journeys:
         action: records the destructive fix attempt for progress tracking
 
   AuditCompletionTriggersPublish:
-    files: [tests/journeys/AuditCompletionTriggersPublish.test.ts]
+    files: [test/journeys/AuditCompletionTriggersPublish.test.ts]
     steps:
       - node: _actors/Auditor
         action: completes the final audit round with zero remaining gaps
@@ -796,7 +796,7 @@ journeys:
         action: writes the event file notifying dependents of the converged interface
 
   AuditPassTriggersCodegen:
-    files: [tests/journeys/AuditPassTriggersCodegen.test.ts]
+    files: [test/journeys/AuditPassTriggersCodegen.test.ts]
     steps:
       - node: _actors/Auditor
         action: completes the final audit round with all coverage gaps resolved
@@ -1014,3 +1014,30 @@ journeys:
         action: records which modules are well-connected, which are isolated, and which are weakly connected
       - node: CollectAuditFindings
         action: adds cross-module coverage gaps to the findings list with the isolated module name and missing connection direction as context
+
+  HandleFixWorkerCrash:
+    steps:
+      - node: BuildGapFixPrompt
+        action: has built the fix prompt for a specific gap
+      - node: ProvideFixContext
+        action: has assembled the module excerpt and gap details into a fix payload
+      - node: llm/SendTask
+        action: sends the fix task to the LLM worker process
+      - node: _actors/LLMWorker
+        action: crashes mid-task due to timeout, out-of-memory, or process exit before producing a result
+      - node: llm/ReceiveResult
+        action: receives an error instead of a valid result from the crashed worker
+      - node: graph/ModuleFile
+        action: may contain a partial write from the worker's native Edit tool before the crash
+      - node: RejectAndRevertFix
+        action: restores the target module from the pre-fix backup regardless of whether the file was partially modified
+      - node: _actors/Compiler
+        action: recompiles to confirm the revert restored the pre-fix clean state
+      - node: compilation/CompilationResult
+        action: confirms zero errors after revert
+      - node: AuditFindingsList
+        action: retains the gap with a worker-crash annotation for the next fix attempt
+      - node: TrackAuditRound
+        action: records the crash as a failed fix attempt counting toward the per-gap attempt limit
+      - node: PerGapFixAttemptLimit
+        action: checks whether the crash pushed this gap past its attempt limit triggering skip if so

@@ -19,6 +19,7 @@ nodes:
   ValidateFilledSyntax:
     type: process
     description: runs a TypeScript syntax and type check on the filled source file to catch LLM-generated errors before staging
+    files: ["src/codegen.ts"]
   StageFilledModule:
     type: process
     description: writes the validated filled file to the staging directory rather than directly to the final output, allowing review before commit
@@ -85,9 +86,11 @@ nodes:
   DetectNodeStubMismatch:
     type: process
     description: compares function and class exports in a filled file against the module's node list to detect added or removed stubs that violate CodeComesFromNodes
+    files: ["src/codegen.ts"]
   DetectPlaceholderFill:
     type: process
     description: scans filled function bodies for placeholder patterns like throw-not-implemented, TODO comments, empty bodies, and return-undefined stubs that indicate the LLM did not produce real implementations
+    files: ["src/codegen.ts"]
   DispatchByFileExtension:
     type: process
     description: selects the language-specific skeleton generator based on file extension, routing .ts and .js files to the TypeScript generator and all others to a generic comment skeleton
@@ -111,6 +114,7 @@ nodes:
   DetectCodeNeedsUpdate:
     type: process
     description: compares the current graph node metadata against the existing source file to determine if the code has drifted from the graph and needs an edit-based update rather than a fresh skeleton
+    files: ["src/codegen.ts"]
   GenerateUpdateContext:
     type: process
     description: assembles the diff between the previous graph state and the current graph state for a node, producing targeted edit instructions that describe what changed in the node's description, connections, or journey participation

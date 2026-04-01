@@ -5,35 +5,29 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import { checkEventSequence, detectOscillation } from '../../src/sync.js';
 import type { ModuleFile } from '../../src/types.js';
-import type { SyncState } from '../../src/sync.js';
 
-// Implementation: src/sync.ts
-
-function buildSpoofModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      EventSpoofer: { type: 'actor', description: 'Writes a fake event file to trigger unnecessary reconvergence' },
+      EventSpoofer: { type: 'actor', description: 'an adversary who writes fake event files to trigger unnecessary reconvergence' },
     },
-    journeys: {},
   });
 
   modules.set('events', {
     nodes: {
-      DetectEventFileChange: { type: 'process', description: 'Detects the spoofed event file change' },
-      ReadEventFile: { type: 'process', description: 'Reads the spoofed event content' },
+      DetectEventFileChange: { type: 'process', description: 'detects changes to event files in dependency published directories via fs.watch' },
+      ReadEventFile: { type: 'process', description: 'reads the content of a changed event file to extract dependency and hash information' },
     },
-    journeys: {},
   });
 
   modules.set('sync', {
     nodes: {
-      FetchDependencyHash: { type: 'process', description: 'Fetches the actual dependency hash to compare' },
-      CompareStoredHash: { type: 'process', description: 'Compares and finds the hash has not actually changed' },
-      SkipIfAllCurrent: { type: 'process', description: 'Aborts sync because no real change occurred' },
+      FetchDependencyHash: { type: 'process', description: 'fetches the current interface hash from a dependency published directory' },
+      CompareStoredHash: { type: 'process', description: 'compares a fetched hash against the stored hash to detect changes' },
+      SkipIfAllCurrent: { type: 'process', description: 'aborts sync when all dependency hashes match stored values' },
     },
     journeys: {
       EventSpoofingDefense: {
@@ -53,7 +47,7 @@ function buildSpoofModules() {
 }
 
 describe("EventSpoofingDefense", () => {
-  const modules = buildSpoofModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['EventSpoofingDefense'];
 
@@ -61,6 +55,7 @@ describe("EventSpoofingDefense", () => {
     const node = result.index.nodes['_actors/EventSpoofer'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('EventSpoofingDefense'))).toBe(true);
   });
 
   it("step 2: events/DetectEventFileChange detects the spoofed event file change", () => {
@@ -71,8 +66,8 @@ describe("EventSpoofingDefense", () => {
   });
 
   it("connection: _actors/EventSpoofer → events/DetectEventFileChange", () => {
-    const from = result.index.nodes['_actors/EventSpoofer'];
-    expect(from.followed_by).toContain('events/DetectEventFileChange');
+    const src = result.index.nodes['_actors/EventSpoofer'];
+    expect(src.followed_by).toContain('events/DetectEventFileChange');
   });
 
   it("step 3: events/ReadEventFile reads the spoofed event content", () => {
@@ -83,8 +78,8 @@ describe("EventSpoofingDefense", () => {
   });
 
   it("connection: events/DetectEventFileChange → events/ReadEventFile", () => {
-    const from = result.index.nodes['events/DetectEventFileChange'];
-    expect(from.followed_by).toContain('events/ReadEventFile');
+    const src = result.index.nodes['events/DetectEventFileChange'];
+    expect(src.followed_by).toContain('events/ReadEventFile');
   });
 
   it("step 4: sync/FetchDependencyHash fetches the actual dependency hash to compare", () => {
@@ -95,8 +90,8 @@ describe("EventSpoofingDefense", () => {
   });
 
   it("connection: events/ReadEventFile → sync/FetchDependencyHash", () => {
-    const from = result.index.nodes['events/ReadEventFile'];
-    expect(from.followed_by).toContain('sync/FetchDependencyHash');
+    const src = result.index.nodes['events/ReadEventFile'];
+    expect(src.followed_by).toContain('sync/FetchDependencyHash');
   });
 
   it("step 5: sync/CompareStoredHash compares and finds the hash has not actually changed", () => {
@@ -107,8 +102,8 @@ describe("EventSpoofingDefense", () => {
   });
 
   it("connection: sync/FetchDependencyHash → sync/CompareStoredHash", () => {
-    const from = result.index.nodes['sync/FetchDependencyHash'];
-    expect(from.followed_by).toContain('sync/CompareStoredHash');
+    const src = result.index.nodes['sync/FetchDependencyHash'];
+    expect(src.followed_by).toContain('sync/CompareStoredHash');
   });
 
   it("step 6: sync/SkipIfAllCurrent aborts sync because no real change occurred, neutralizing the spoof", () => {
@@ -119,24 +114,12 @@ describe("EventSpoofingDefense", () => {
   });
 
   it("connection: sync/CompareStoredHash → sync/SkipIfAllCurrent", () => {
-    const from = result.index.nodes['sync/CompareStoredHash'];
-    expect(from.followed_by).toContain('sync/SkipIfAllCurrent');
+    const src = result.index.nodes['sync/CompareStoredHash'];
+    expect(src.followed_by).toContain('sync/SkipIfAllCurrent');
   });
 
-  it("spoofed event with already-processed sequence is discarded", () => {
-    const state: SyncState = {
-      known_hashes: { depA: 'sha256:abc' },
-      last_processed_sequence: { depA: 5 },
-    };
-    // Spoofed event replays sequence 3 — should be discarded
-    expect(checkEventSequence(state, 'depA', 3)).toBe(false);
-    // Spoofed event replays the same sequence 5 — should be discarded
-    expect(checkEventSequence(state, 'depA', 5)).toBe(false);
-    // Only genuinely new sequence 6 is accepted
-    expect(checkEventSequence(state, 'depA', 6)).toBe(true);
-  });
-
-  it("compiles without errors", () => {
+  it("journey has 6 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(6);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

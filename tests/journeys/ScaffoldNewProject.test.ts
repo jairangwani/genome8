@@ -7,8 +7,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
-// Implementation: test/integration.test.ts
-// Implementation: test-project/
 
 describe("ScaffoldNewProject", () => {
   it("step 1: _actors/ProjectOwner starts convergence on a project directory containing only spec.md", () => {

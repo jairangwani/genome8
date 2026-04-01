@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 
 describe("RecursiveChildSplit", () => {
   it("step 1: _actors/ChildEngine reaches its own hierarchy decision step during convergence", () => {

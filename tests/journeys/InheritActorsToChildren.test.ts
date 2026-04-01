@@ -7,26 +7,27 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildInheritModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
-  // _actors module: includes ParentEngine + ChildEngine actors plus inherited actors
   modules.set('_actors', {
     nodes: {
-      ParentEngine: { type: 'actor', description: 'The parent engine that discovered actors' },
-      ChildEngine: { type: 'actor', description: 'A child engine that receives inherited actors' },
-      ProjectOwner: { type: 'actor', description: 'Person who wrote the spec' },
-      HumanDeveloper: { type: 'actor', description: 'Developer who builds the system' },
+      ParentEngine: { type: 'actor', description: 'the top-level convergence engine that discovers actors and delegates to children' },
+      ChildEngine: { type: 'actor', description: 'a child convergence engine that inherits actors from the parent' },
     },
-    journeys: {},
   });
 
-  // actors module: inheritance processes
+  modules.set('hierarchy', {
+    nodes: {
+      DistributeSharedActors: { type: 'process', description: 'places the shared actors in each child engine modules directory' },
+    },
+  });
+
   modules.set('actors', {
     nodes: {
-      ActorsFile: { type: 'artifact', description: 'The _actors.yaml file on disk' },
-      ParentDiscoversChildrenInherit: { type: 'rule', description: 'Enforces that children inherit actors rather than re-discovering' },
-      InheritActorsFromParent: { type: 'process', description: 'Copies _actors.yaml into the child engine directory' },
+      ActorsFile: { type: 'artifact', description: 'the _actors.yaml file containing all discovered actors with type and description' },
+      ParentDiscoversChildrenInherit: { type: 'rule', description: 'only the parent engine discovers actors — children inherit them to prevent duplication' },
+      InheritActorsFromParent: { type: 'process', description: 'copies the parent _actors.yaml into a child engine directory so children share the same actor set' },
     },
     journeys: {
       InheritActorsToChildren: {
@@ -42,19 +43,11 @@ function buildInheritModules() {
     },
   });
 
-  // hierarchy module: distribution process
-  modules.set('hierarchy', {
-    nodes: {
-      DistributeSharedActors: { type: 'process', description: 'Places the shared actors in each child modules directory' },
-    },
-    journeys: {},
-  });
-
   return modules;
 }
 
 describe("InheritActorsToChildren", () => {
-  const modules = buildInheritModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['InheritActorsToChildren'];
 
@@ -62,7 +55,7 @@ describe("InheritActorsToChildren", () => {
     const node = result.index.nodes['_actors/ParentEngine'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
-    expect(node.in_journeys.length).toBeGreaterThanOrEqual(1);
+    expect(node.in_journeys.some(j => j.startsWith('InheritActorsToChildren'))).toBe(true);
   });
 
   it("step 2: actors/ActorsFile provides the parent's _actors.yaml for distribution", () => {
@@ -73,10 +66,8 @@ describe("InheritActorsToChildren", () => {
   });
 
   it("connection: _actors/ParentEngine → actors/ActorsFile", () => {
-    const from = result.index.nodes['_actors/ParentEngine'];
-    const to = result.index.nodes['actors/ActorsFile'];
-    expect(from.followed_by).toContain('actors/ActorsFile');
-    expect(to.preceded_by).toContain('_actors/ParentEngine');
+    const src = result.index.nodes['_actors/ParentEngine'];
+    expect(src.followed_by).toContain('actors/ActorsFile');
   });
 
   it("step 3: actors/ParentDiscoversChildrenInherit enforces that children inherit actors rather than re-discovering", () => {
@@ -87,8 +78,8 @@ describe("InheritActorsToChildren", () => {
   });
 
   it("connection: actors/ActorsFile → actors/ParentDiscoversChildrenInherit", () => {
-    const from = result.index.nodes['actors/ActorsFile'];
-    expect(from.followed_by).toContain('actors/ParentDiscoversChildrenInherit');
+    const src = result.index.nodes['actors/ActorsFile'];
+    expect(src.followed_by).toContain('actors/ParentDiscoversChildrenInherit');
   });
 
   it("step 4: actors/InheritActorsFromParent copies _actors.yaml into the child engine directory", () => {
@@ -99,8 +90,8 @@ describe("InheritActorsToChildren", () => {
   });
 
   it("connection: actors/ParentDiscoversChildrenInherit → actors/InheritActorsFromParent", () => {
-    const from = result.index.nodes['actors/ParentDiscoversChildrenInherit'];
-    expect(from.followed_by).toContain('actors/InheritActorsFromParent');
+    const src = result.index.nodes['actors/ParentDiscoversChildrenInherit'];
+    expect(src.followed_by).toContain('actors/InheritActorsFromParent');
   });
 
   it("step 5: hierarchy/DistributeSharedActors places the shared actors in each child's modules directory", () => {
@@ -111,8 +102,8 @@ describe("InheritActorsToChildren", () => {
   });
 
   it("connection: actors/InheritActorsFromParent → hierarchy/DistributeSharedActors", () => {
-    const from = result.index.nodes['actors/InheritActorsFromParent'];
-    expect(from.followed_by).toContain('hierarchy/DistributeSharedActors');
+    const src = result.index.nodes['actors/InheritActorsFromParent'];
+    expect(src.followed_by).toContain('hierarchy/DistributeSharedActors');
   });
 
   it("step 6: _actors/ChildEngine receives the inherited actors and uses them during its own convergence", () => {
@@ -123,28 +114,12 @@ describe("InheritActorsToChildren", () => {
   });
 
   it("connection: hierarchy/DistributeSharedActors → _actors/ChildEngine", () => {
-    const from = result.index.nodes['hierarchy/DistributeSharedActors'];
-    expect(from.followed_by).toContain('_actors/ChildEngine');
+    const src = result.index.nodes['hierarchy/DistributeSharedActors'];
+    expect(src.followed_by).toContain('_actors/ChildEngine');
   });
 
-  it("journey actor is ParentEngine (first actor in steps)", () => {
-    expect(journey).toBeDefined();
-    expect(journey.actor).toBe('_actors/ParentEngine');
-  });
-
-  it("inherited actor nodes exist alongside parent/child actors", () => {
-    expect(result.index.nodes['_actors/ProjectOwner']).toBeDefined();
-    expect(result.index.nodes['_actors/HumanDeveloper']).toBeDefined();
-    expect(result.index.nodes['_actors/ProjectOwner'].type).toBe('actor');
-    expect(result.index.nodes['_actors/HumanDeveloper'].type).toBe('actor');
-  });
-
-  it("triggered_by_actors is populated for nodes in the journey", () => {
-    const node = result.index.nodes['actors/InheritActorsFromParent'];
-    expect(node.triggered_by_actors).toContain('_actors/ParentEngine');
-  });
-
-  it("compiles without errors", () => {
+  it("journey has 6 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(6);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

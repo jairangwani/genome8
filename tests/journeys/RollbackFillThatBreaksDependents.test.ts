@@ -16,7 +16,7 @@ describe("RollbackFillThatBreaksDependents", () => {
   });
 
   it("step 2: codegen/ValidateFilledSyntax confirms the filled file itself has valid syntax and types", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: confirms the filled file itself has valid syntax and types
     // TODO: agent fills assertion
   });
@@ -60,7 +60,7 @@ describe("RollbackFillThatBreaksDependents", () => {
   });
 
   it("step 6: codegen/ValidateFilledSyntax runs type checking on the dependent and detects type errors caused by the upstream fill", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: runs type checking on the dependent and detects type errors caused by the upstream fill
     // TODO: agent fills assertion
   });
@@ -71,7 +71,7 @@ describe("RollbackFillThatBreaksDependents", () => {
   });
 
   it("step 7: codegen/ValidateFilledSyntax traces the type errors back to exported signatures in the upstream filled module", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: traces the type errors back to exported signatures in the upstream filled module
     // TODO: agent fills assertion
   });
@@ -170,7 +170,7 @@ describe("RollbackFillThatBreaksDependents", () => {
   });
 
   it("step 16: codegen/ValidateFilledSyntax re-checks the corrected fill for syntax errors before re-attempting dependents", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: re-checks the corrected fill for syntax errors before re-attempting dependents
     // TODO: agent fills assertion
   });

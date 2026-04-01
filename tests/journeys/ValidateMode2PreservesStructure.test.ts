@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("ValidateMode2PreservesStructure", () => {
   it("step 1: codegen/ApplyEditToExistingCode LLM has applied edits to an existing source file during Mode 2 update", () => {
     // Node: codegen/ApplyEditToExistingCode (process)
@@ -12,7 +14,7 @@ describe("ValidateMode2PreservesStructure", () => {
   });
 
   it("step 2: codegen/ValidateFilledSyntax confirms the edited file has valid syntax and types", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: confirms the edited file has valid syntax and types
     // TODO: agent fills assertion
   });
@@ -23,7 +25,7 @@ describe("ValidateMode2PreservesStructure", () => {
   });
 
   it("step 3: codegen/DetectNodeStubMismatch compares exported functions and classes in the edited file against the module's node list from the graph", () => {
-    // Node: codegen/DetectNodeStubMismatch (process)
+    // Node: codegen/DetectNodeStubMismatch (process) — has code: src/codegen.ts
     // Action: compares exported functions and classes in the edited file against the module's node list from the graph
     // TODO: agent fills assertion
   });
@@ -45,7 +47,7 @@ describe("ValidateMode2PreservesStructure", () => {
   });
 
   it("step 5: codegen/DetectNodeStubMismatch confirms no stubs were removed by the edit and no extra functions were added", () => {
-    // Node: codegen/DetectNodeStubMismatch (process)
+    // Node: codegen/DetectNodeStubMismatch (process) — has code: src/codegen.ts
     // Action: confirms no stubs were removed by the edit and no extra functions were added
     // TODO: agent fills assertion
   });
@@ -56,7 +58,7 @@ describe("ValidateMode2PreservesStructure", () => {
   });
 
   it("step 6: codegen/DetectPlaceholderFill checks that the edit did not hollow out function bodies replacing implementations with placeholders", () => {
-    // Node: codegen/DetectPlaceholderFill (process)
+    // Node: codegen/DetectPlaceholderFill (process) — has code: src/codegen.ts
     // Action: checks that the edit did not hollow out function bodies replacing implementations with placeholders
     // TODO: agent fills assertion
   });

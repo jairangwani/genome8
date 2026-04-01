@@ -22,7 +22,7 @@ nodes:
   SpawnChildEngine:
     type: process
     description: launches a child convergence.ts process for each child directory as an independent subprocess
-    files: [src/convergence.ts, test/multi-engine.test.ts]
+    files: [src/convergence.ts]
   WaitForAllChildren:
     type: process
     description: blocks until every spawned child engine has completed its convergence and published its interface
@@ -1082,3 +1082,20 @@ journeys:
         action: parent tears down its own event watchers on child directories
       - node: ChildConvergenceStatus
         action: updated to show all children terminated and the hierarchy is fully shut down
+
+  BoundChildSpawningFromExhauster:
+    steps:
+      - node: _actors/ResourceExhauster
+        action: submits a spec designed to create an excessive number of independent modules that all warrant splitting
+      - node: AnalyzeModuleIndependence
+        action: identifies a very large number of independent module groups from the adversarial spec
+      - node: DecideSplit
+        action: decides that a split is warranted given the module independence analysis
+      - node: LimitConcurrentChildren
+        action: enforces the configured maximum number of concurrent child engine processes
+      - node: ChildConcurrencyLimit
+        action: caps the number of simultaneously running children to prevent memory and API quota exhaustion
+      - node: EnforceMaxDepth
+        action: prevents recursive splits from creating unbounded hierarchy depth
+      - node: MaxDepthLimit
+        action: halts further splitting when the maximum allowed depth is reached

@@ -7,23 +7,34 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildPoisoningModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      MaliciousSpecAuthor: { type: 'actor', description: 'Crafts a spec where actor descriptions contain hidden instructions or prompt injection fragments' },
+      MaliciousSpecAuthor: { type: 'actor', description: 'an adversary who submits a spec.md containing prompt injection or adversarial content' },
     },
-    journeys: {},
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      ErrorReport: { type: 'artifact', description: 'the list of compilation errors with location and severity' },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      AuditGapFix: { type: 'process', description: 'applies targeted fixes to close gaps found during audit' },
+    },
   });
 
   modules.set('actors', {
     nodes: {
-      DiscoverFromActivities: { type: 'process', description: 'Extracts actors whose descriptions carry the embedded adversarial payload' },
-      MergeAndDeduplicate: { type: 'process', description: 'Merges the poisoned actors into the final set without content filtering' },
-      WriteActorsFile: { type: 'process', description: 'Writes the poisoned descriptions to _actors.yaml' },
-      DetectActorDescriptionPoisoning: { type: 'process', description: 'Scans each actor description for known adversarial patterns' },
-      ValidateActorYAMLStructure: { type: 'process', description: 'Rejects actors whose descriptions fail the poisoning check' },
+      DiscoverFromActivities: { type: 'process', description: 'analyzes the spec to find actors from the activities perspective' },
+      MergeAndDeduplicate: { type: 'process', description: 'combines actors from all 3 angles, removes duplicates, and keeps the best description for each' },
+      WriteActorsFile: { type: 'process', description: 'writes the merged actor list to _actors.yaml in the modules directory' },
+      DetectActorDescriptionPoisoning: { type: 'process', description: 'scans actor descriptions for adversarial content patterns such as prompt injection fragments or encoded instructions' },
+      ValidateActorYAMLStructure: { type: 'process', description: 'checks that each entry in _actors.yaml has type actor and a non-empty description' },
     },
     journeys: {
       ActorDescriptionPoisoningDefense: {
@@ -42,25 +53,11 @@ function buildPoisoningModules() {
     },
   });
 
-  modules.set('compilation', {
-    nodes: {
-      ErrorReport: { type: 'artifact', description: 'Records each flagged description with the specific adversarial pattern detected' },
-    },
-    journeys: {},
-  });
-
-  modules.set('convergence', {
-    nodes: {
-      AuditGapFix: { type: 'process', description: 'Targeted fix sanitizes or removes the poisoned actor descriptions' },
-    },
-    journeys: {},
-  });
-
   return modules;
 }
 
 describe("ActorDescriptionPoisoningDefense", () => {
-  const modules = buildPoisoningModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['ActorDescriptionPoisoningDefense'];
 
@@ -68,6 +65,7 @@ describe("ActorDescriptionPoisoningDefense", () => {
     const node = result.index.nodes['_actors/MaliciousSpecAuthor'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('ActorDescriptionPoisoningDefense'))).toBe(true);
   });
 
   it("step 2: actors/DiscoverFromActivities extracts actors whose descriptions carry the embedded adversarial payload", () => {
@@ -78,8 +76,8 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: _actors/MaliciousSpecAuthor → actors/DiscoverFromActivities", () => {
-    const from = result.index.nodes['_actors/MaliciousSpecAuthor'];
-    expect(from.followed_by).toContain('actors/DiscoverFromActivities');
+    const src = result.index.nodes['_actors/MaliciousSpecAuthor'];
+    expect(src.followed_by).toContain('actors/DiscoverFromActivities');
   });
 
   it("step 3: actors/MergeAndDeduplicate merges the poisoned actors into the final set without content filtering", () => {
@@ -90,8 +88,8 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: actors/DiscoverFromActivities → actors/MergeAndDeduplicate", () => {
-    const from = result.index.nodes['actors/DiscoverFromActivities'];
-    expect(from.followed_by).toContain('actors/MergeAndDeduplicate');
+    const src = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(src.followed_by).toContain('actors/MergeAndDeduplicate');
   });
 
   it("step 4: actors/WriteActorsFile writes the poisoned descriptions to _actors.yaml", () => {
@@ -102,8 +100,8 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: actors/MergeAndDeduplicate → actors/WriteActorsFile", () => {
-    const from = result.index.nodes['actors/MergeAndDeduplicate'];
-    expect(from.followed_by).toContain('actors/WriteActorsFile');
+    const src = result.index.nodes['actors/MergeAndDeduplicate'];
+    expect(src.followed_by).toContain('actors/WriteActorsFile');
   });
 
   it("step 5: actors/DetectActorDescriptionPoisoning scans each actor description for known adversarial patterns such as instruction overrides or encoded payloads", () => {
@@ -114,20 +112,19 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: actors/WriteActorsFile → actors/DetectActorDescriptionPoisoning", () => {
-    const from = result.index.nodes['actors/WriteActorsFile'];
-    expect(from.followed_by).toContain('actors/DetectActorDescriptionPoisoning');
+    const src = result.index.nodes['actors/WriteActorsFile'];
+    expect(src.followed_by).toContain('actors/DetectActorDescriptionPoisoning');
   });
 
   it("step 6: actors/DetectActorDescriptionPoisoning flags descriptions exceeding the maximum length threshold as potential payload carriers", () => {
     const node = result.index.nodes['actors/DetectActorDescriptionPoisoning'];
-    expect(node).toBeDefined();
-    // Self-connection: same node consecutively
-    expect(node.followed_by).toContain('actors/ValidateActorYAMLStructure');
+    expect(node.preceded_by).toContain('actors/DetectActorDescriptionPoisoning');
   });
 
   it("connection: actors/DetectActorDescriptionPoisoning → actors/DetectActorDescriptionPoisoning", () => {
     const node = result.index.nodes['actors/DetectActorDescriptionPoisoning'];
-    expect(node.preceded_by).toContain('actors/WriteActorsFile');
+    expect(node.preceded_by).toContain('actors/DetectActorDescriptionPoisoning');
+    expect(node.followed_by).toContain('actors/DetectActorDescriptionPoisoning');
   });
 
   it("step 7: actors/ValidateActorYAMLStructure rejects actors whose descriptions fail the poisoning check", () => {
@@ -138,8 +135,8 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: actors/DetectActorDescriptionPoisoning → actors/ValidateActorYAMLStructure", () => {
-    const from = result.index.nodes['actors/DetectActorDescriptionPoisoning'];
-    expect(from.followed_by).toContain('actors/ValidateActorYAMLStructure');
+    const src = result.index.nodes['actors/DetectActorDescriptionPoisoning'];
+    expect(src.followed_by).toContain('actors/ValidateActorYAMLStructure');
   });
 
   it("step 8: compilation/ErrorReport records each flagged description with the specific adversarial pattern detected", () => {
@@ -150,8 +147,8 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: actors/ValidateActorYAMLStructure → compilation/ErrorReport", () => {
-    const from = result.index.nodes['actors/ValidateActorYAMLStructure'];
-    expect(from.followed_by).toContain('compilation/ErrorReport');
+    const src = result.index.nodes['actors/ValidateActorYAMLStructure'];
+    expect(src.followed_by).toContain('compilation/ErrorReport');
   });
 
   it("step 9: convergence/AuditGapFix targeted fix sanitizes or removes the poisoned actor descriptions", () => {
@@ -162,15 +159,12 @@ describe("ActorDescriptionPoisoningDefense", () => {
   });
 
   it("connection: compilation/ErrorReport → convergence/AuditGapFix", () => {
-    const from = result.index.nodes['compilation/ErrorReport'];
-    expect(from.followed_by).toContain('convergence/AuditGapFix');
+    const src = result.index.nodes['compilation/ErrorReport'];
+    expect(src.followed_by).toContain('convergence/AuditGapFix');
   });
 
-  it("journey actor is MaliciousSpecAuthor", () => {
-    expect(journey.actor).toBe('_actors/MaliciousSpecAuthor');
-  });
-
-  it("compiles without errors", () => {
+  it("journey has 9 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(9);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

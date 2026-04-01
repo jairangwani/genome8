@@ -7,7 +7,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: test/journeys/
 // Implementation: test/testgen.test.ts
-// Implementation: tests/journeys/
 
 describe("RejectTrivialAssertionFill", () => {
   it("step 1: testgen/FillTestAssertions LLM has produced a filled test file that passes syntax validation", () => {

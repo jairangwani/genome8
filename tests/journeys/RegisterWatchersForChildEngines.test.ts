@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 
 describe("RegisterWatchersForChildEngines", () => {
   it("step 1: hierarchy/SpawnChildEngine launches a child engine process in its scoped directory", () => {

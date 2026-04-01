@@ -3,15 +3,15 @@
   "totalTokens": 0,
   "stepTimings": {
     "step1_organization": 1,
-    "step2_actors": 96,
-    "step3_modules": 2,
-    "step4_convergence": 14273213,
-    "step5_publish": 87,
-    "step6_codegen": 5703104
+    "step2_actors": 42,
+    "step3_modules": 1,
+    "step4_convergence": 4543630,
+    "step5_publish": 80,
+    "step6_codegen": 3323496
   },
   "startedAt": "2026-03-31T19:48:26.989Z",
-  "completedAt": "2026-04-01T01:21:41.209Z",
+  "completedAt": "2026-04-01T03:54:15.186Z",
   "modulesProcessed": 17,
-  "nodesCreated": 759,
-  "journeysCreated": 598
+  "nodesCreated": 760,
+  "journeysCreated": 608
 }

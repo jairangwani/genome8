@@ -80,7 +80,7 @@ describe("HandleCascadeFillFailure", () => {
   });
 
   it("step 8: codegen/ValidateFilledSyntax validates the independent module's fill", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: validates the independent module's fill
     // TODO: agent fills assertion
   });

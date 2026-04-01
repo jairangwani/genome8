@@ -71,7 +71,7 @@ nodes:
   TestSkeletonFile:
     type: artifact
     description: a TypeScript test file with empty assertion bodies for all steps in a journey
-    files: ["test/testgen.test.ts", "tests/journeys/"]
+    files: ["test/testgen.test.ts", "test/journeys/"]
   FilledTestFile:
     type: artifact
     description: a TypeScript test file with LLM-filled assertions ready to execute

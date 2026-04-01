@@ -106,6 +106,9 @@ nodes:
   HandleOrganizationRepairExhaustion:
     type: process
     description: detects when an organization-level repair loop — malformed output, circular dependency, spec coverage gap, empty module list, duplicate names, dangling dependency ref, or ungrounded module — has exhausted its bounded retry budget without producing valid output, and reports the unresolvable validation failure to convergence to halt the pipeline
+  HandleEmptySpecContent:
+    type: process
+    description: detects that spec.md exists on disk but contains no parseable sections — either zero bytes, whitespace only, or content that yields zero numbered sections — and reports a fatal error distinct from missing file
 
 journeys:
   AnalyzeSpecAndWriteOrganization:
@@ -653,3 +656,22 @@ journeys:
         action: receives the fatal organization error and halts the pipeline with a clear message identifying which validation could not be repaired
       - node: _actors/ProjectOwner
         action: is notified that manual spec or organization intervention is needed before convergence can proceed
+
+  HandleEmptySpecContent:
+    steps:
+      - node: convergence/ReadSpec
+        action: triggers the organization step with spec.md present on disk
+      - node: ReadSpecFile
+        action: reads spec.md and finds the file contains zero bytes or only whitespace
+      - node: ParseSpecSections
+        action: attempts to split the content into numbered sections and produces an empty section list
+      - node: HandleEmptySpecContent
+        action: detects that SpecSectionIndex would be empty despite the file existing on disk
+      - node: HandleEmptySpecContent
+        action: distinguishes this from HandleMissingSpecFile by noting the file exists but has no usable content
+      - node: HandleEmptySpecContent
+        action: logs the file path and byte count to clarify whether the file is zero-length or just unparseable
+      - node: convergence/ConvergenceState
+        action: receives the fatal error and halts the pipeline with a message explaining that spec.md must contain numbered sections
+      - node: _actors/ProjectOwner
+        action: is notified that spec.md exists but needs content before convergence can proceed

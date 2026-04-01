@@ -768,3 +768,18 @@ journeys:
         action: records the external ref as a deferred warning instead of a validation error
       - node: CompiledIndex
         action: stores the external ref classification so the parent engine can validate it after all children converge
+
+  DetectAndIsolateDeprecatedModule:
+    steps:
+      - node: _actors/DeprecatedModule
+        action: exists in the module registry but its spec sections have been removed in a recent spec update
+      - node: JourneyMembershipTracking
+        action: reveals the deprecated module's nodes appear in zero active journeys
+      - node: ModulesTouchedTracking
+        action: confirms no recent compilation or enrichment pass has touched the module
+      - node: NoIsolationRule
+        action: flags the deprecated module as isolated because it has no inbound or outbound connections
+      - node: ModulePurge
+        action: queues the deprecated module for removal from the compiled index
+      - node: CompiledIndex
+        action: removes the deprecated module's nodes and connections from the graph

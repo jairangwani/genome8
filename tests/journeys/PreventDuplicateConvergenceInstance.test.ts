@@ -7,8 +7,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
-// Implementation: test/integration.test.ts
-// Implementation: test-project/
 
 describe("PreventDuplicateConvergenceInstance", () => {
   it("step 1: _actors/ProjectOwner starts a second convergence process on the same project directory", () => {

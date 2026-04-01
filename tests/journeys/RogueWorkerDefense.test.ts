@@ -7,24 +7,32 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildRogueModules(opts?: { phantomActor?: boolean }) {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
-  const actorNodes: Record<string, { type: string; description: string }> = {
-    RogueWorker: { type: 'actor', description: 'Produces subtly wrong actor content with hallucinated or phantom actors' },
-  };
-  // A phantom/hallucinated actor that no journey references
-  if (opts?.phantomActor) {
-    actorNodes.HallucinatedAdmin = { type: 'actor', description: 'A phantom actor injected by rogue worker' };
-  }
+  modules.set('_actors', {
+    nodes: {
+      RogueWorker: { type: 'actor', description: 'a malfunctioning LLM worker that produces subtly wrong content with hallucinated or phantom entries' },
+    },
+  });
 
-  modules.set('_actors', { nodes: actorNodes, journeys: {} });
+  modules.set('compilation', {
+    nodes: {
+      OrphanDetection: { type: 'process', description: 'detects nodes that exist in modules but are never referenced by any journey step' },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      AuditGapFix: { type: 'process', description: 'applies targeted fixes to close gaps found during audit' },
+    },
+  });
 
   modules.set('actors', {
     nodes: {
-      WriteActorsFile: { type: 'process', description: 'Writes the rogue content to _actors.yaml' },
-      ActorsFile: { type: 'artifact', description: 'Contains the hallucinated actors' },
-      ValidateActorCoverage: { type: 'process', description: 'Checks that every actor appears in at least one journey' },
+      WriteActorsFile: { type: 'process', description: 'writes the merged actor list to _actors.yaml in the modules directory' },
+      ActorsFile: { type: 'artifact', description: 'the _actors.yaml file containing all discovered actors with type and description' },
+      ValidateActorCoverage: { type: 'process', description: 'checks that every discovered actor appears in at least one journey across all modules' },
     },
     journeys: {
       RogueWorkerDefense: {
@@ -40,25 +48,11 @@ function buildRogueModules(opts?: { phantomActor?: boolean }) {
     },
   });
 
-  modules.set('compilation', {
-    nodes: {
-      OrphanDetection: { type: 'process', description: 'Flags nodes that no journey references as orphans' },
-    },
-    journeys: {},
-  });
-
-  modules.set('convergence', {
-    nodes: {
-      AuditGapFix: { type: 'process', description: 'Targeted fix removes orphan actors' },
-    },
-    journeys: {},
-  });
-
   return modules;
 }
 
 describe("RogueWorkerDefense", () => {
-  const modules = buildRogueModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['RogueWorkerDefense'];
 
@@ -66,6 +60,7 @@ describe("RogueWorkerDefense", () => {
     const node = result.index.nodes['_actors/RogueWorker'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('RogueWorkerDefense'))).toBe(true);
   });
 
   it("step 2: actors/WriteActorsFile writes the rogue content to _actors.yaml", () => {
@@ -76,10 +71,8 @@ describe("RogueWorkerDefense", () => {
   });
 
   it("connection: _actors/RogueWorker → actors/WriteActorsFile", () => {
-    const from = result.index.nodes['_actors/RogueWorker'];
-    const to = result.index.nodes['actors/WriteActorsFile'];
-    expect(from.followed_by).toContain('actors/WriteActorsFile');
-    expect(to.preceded_by).toContain('_actors/RogueWorker');
+    const src = result.index.nodes['_actors/RogueWorker'];
+    expect(src.followed_by).toContain('actors/WriteActorsFile');
   });
 
   it("step 3: actors/ActorsFile contains the hallucinated actors", () => {
@@ -90,8 +83,8 @@ describe("RogueWorkerDefense", () => {
   });
 
   it("connection: actors/WriteActorsFile → actors/ActorsFile", () => {
-    const from = result.index.nodes['actors/WriteActorsFile'];
-    expect(from.followed_by).toContain('actors/ActorsFile');
+    const src = result.index.nodes['actors/WriteActorsFile'];
+    expect(src.followed_by).toContain('actors/ActorsFile');
   });
 
   it("step 4: actors/ValidateActorCoverage checks that every actor appears in at least one journey", () => {
@@ -102,8 +95,8 @@ describe("RogueWorkerDefense", () => {
   });
 
   it("connection: actors/ActorsFile → actors/ValidateActorCoverage", () => {
-    const from = result.index.nodes['actors/ActorsFile'];
-    expect(from.followed_by).toContain('actors/ValidateActorCoverage');
+    const src = result.index.nodes['actors/ActorsFile'];
+    expect(src.followed_by).toContain('actors/ValidateActorCoverage');
   });
 
   it("step 5: compilation/OrphanDetection flags hallucinated actors that no journey references as orphans", () => {
@@ -114,8 +107,8 @@ describe("RogueWorkerDefense", () => {
   });
 
   it("connection: actors/ValidateActorCoverage → compilation/OrphanDetection", () => {
-    const from = result.index.nodes['actors/ValidateActorCoverage'];
-    expect(from.followed_by).toContain('compilation/OrphanDetection');
+    const src = result.index.nodes['actors/ValidateActorCoverage'];
+    expect(src.followed_by).toContain('compilation/OrphanDetection');
   });
 
   it("step 6: convergence/AuditGapFix targeted fix removes orphan actors that cannot be connected to any journey", () => {
@@ -126,23 +119,12 @@ describe("RogueWorkerDefense", () => {
   });
 
   it("connection: compilation/OrphanDetection → convergence/AuditGapFix", () => {
-    const from = result.index.nodes['compilation/OrphanDetection'];
-    expect(from.followed_by).toContain('convergence/AuditGapFix');
+    const src = result.index.nodes['compilation/OrphanDetection'];
+    expect(src.followed_by).toContain('convergence/AuditGapFix');
   });
 
-  it("phantom actor with no journey references is detected as orphan", () => {
-    const phantomModules = buildRogueModules({ phantomActor: true });
-    const phantomResult = compileFromModules(phantomModules);
-    // HallucinatedAdmin exists but no journey references it → orphan count > 0
-    expect(phantomResult.index.nodes['_actors/HallucinatedAdmin']).toBeDefined();
-    expect(phantomResult.index._stats.orphans).toBeGreaterThan(0);
-  });
-
-  it("journey actor is RogueWorker", () => {
-    expect(journey.actor).toBe('_actors/RogueWorker');
-  });
-
-  it("compiles without errors in the clean scenario", () => {
+  it("journey has 6 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(6);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

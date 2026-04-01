@@ -6,8 +6,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
-// Implementation: test/integration.test.ts
-// Implementation: test-project/
 // Implementation: src/llm.ts
 
 describe("SpawnAndInitializeWorker", () => {

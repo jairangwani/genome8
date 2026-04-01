@@ -60,7 +60,7 @@ describe("UpdateExistingCodeFromGraph", () => {
   });
 
   it("step 6: codegen/DetectCodeNeedsUpdate compares each existing source file against its updated graph node metadata", () => {
-    // Node: codegen/DetectCodeNeedsUpdate (process)
+    // Node: codegen/DetectCodeNeedsUpdate (process) — has code: src/codegen.ts
     // Action: compares each existing source file against its updated graph node metadata
     // TODO: agent fills assertion
   });
@@ -71,7 +71,7 @@ describe("UpdateExistingCodeFromGraph", () => {
   });
 
   it("step 7: codegen/DetectCodeNeedsUpdate identifies nodes where description, connections, or journey participation changed", () => {
-    // Node: codegen/DetectCodeNeedsUpdate (process)
+    // Node: codegen/DetectCodeNeedsUpdate (process) — has code: src/codegen.ts
     // Action: identifies nodes where description, connections, or journey participation changed
     // TODO: agent fills assertion
   });
@@ -126,7 +126,7 @@ describe("UpdateExistingCodeFromGraph", () => {
   });
 
   it("step 12: codegen/ValidateFilledSyntax validates that the edited file still has valid syntax", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: validates that the edited file still has valid syntax
     // TODO: agent fills assertion
   });

@@ -7,8 +7,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
-// Implementation: test/integration.test.ts
-// Implementation: test-project/
 
 describe("CheckConvergenceStatusFromCLI", () => {
   it("step 1: _actors/HumanDeveloper runs genome status to check if the graph is structurally converged", () => {

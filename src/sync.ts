@@ -436,3 +436,325 @@ export function detectStaleMarkingWriteFailure(
   }
   return failed;
 }
+
+/**
+ * Read the dependencies.yaml file and return the dependency config map.
+ * Standalone export for the ReadDependencyList node.
+ */
+export function readDependencyList(
+  dependenciesPath: string
+): Record<string, DependencyConfig> {
+  if (!fs.existsSync(dependenciesPath)) return {};
+  try {
+    const deps = yaml.load(fs.readFileSync(dependenciesPath, 'utf-8')) as DependenciesFile;
+    return deps?.dependencies ?? {};
+  } catch { return {}; }
+}
+
+/**
+ * Fetch the current interface hash for a single dependency.
+ * Standalone export for the FetchDependencyHash node.
+ */
+export function fetchDependencyHash(
+  depPublishedDir: string
+): string | null {
+  const interfacePath = path.join(depPublishedDir, 'interface.yaml');
+  if (!fs.existsSync(interfacePath)) return null;
+  try {
+    const iface = yaml.load(fs.readFileSync(interfacePath, 'utf-8')) as PublishedInterface;
+    return iface?.version_hash ?? null;
+  } catch { return null; }
+}
+
+/**
+ * Compare a fetched hash against the stored hash for a dependency.
+ * Returns 'changed', 'unchanged', or 'new' (no stored hash).
+ * Standalone export for the CompareStoredHash node.
+ */
+export function compareStoredHash(
+  syncState: SyncState,
+  dependency: string,
+  currentHash: string
+): 'changed' | 'unchanged' | 'new' {
+  const known = syncState.known_hashes[dependency];
+  if (!known) return 'new';
+  return known === currentHash ? 'unchanged' : 'changed';
+}
+
+/**
+ * Update stored hashes in the sync state file for one or more dependencies.
+ * Standalone export for the UpdateStoredHashes node.
+ */
+export function updateStoredHashes(
+  syncStatePath: string,
+  updates: Record<string, string>
+): void {
+  let state: SyncState = { known_hashes: {} };
+  if (fs.existsSync(syncStatePath)) {
+    try { state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8')); } catch { /* fresh */ }
+  }
+  Object.assign(state.known_hashes, updates);
+  fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+}
+
+/**
+ * Identify which dependencies have stale (changed) hashes.
+ * Returns dependency names whose current hash differs from stored.
+ * Standalone export for the IdentifyStaleDependencies node.
+ */
+export function identifyStaleDependencies(
+  syncState: SyncState,
+  currentHashes: Record<string, string>
+): string[] {
+  return Object.entries(currentHashes).filter(([dep, hash]) => {
+    const known = syncState.known_hashes[dep];
+    return !known || known !== hash;
+  }).map(([dep]) => dep);
+}
+
+/**
+ * Count the total number of stale modules across all changed dependencies.
+ * Standalone export for the ComputeStaleModuleCount node.
+ */
+export function computeStaleModuleCount(changes: SyncChange[]): number {
+  const allModules = new Set<string>();
+  for (const c of changes) {
+    for (const m of c.affected_modules) allModules.add(m);
+  }
+  return allModules.size;
+}
+
+/**
+ * Compute the full ripple scope: the set of unique affected modules
+ * across all dependency changes.
+ * Standalone export for the ComputeRippleScope node.
+ */
+export function computeRippleScope(changes: SyncChange[]): string[] {
+  const scope = new Set<string>();
+  for (const c of changes) {
+    for (const m of c.affected_modules) scope.add(m);
+  }
+  return [...scope].sort();
+}
+
+/**
+ * After writing hashes to sync state, re-read the file and verify
+ * the stored values match what was written.
+ * Standalone export for the VerifyHashAfterStore node.
+ */
+export function verifyHashAfterStore(
+  syncStatePath: string,
+  expected: Record<string, string>
+): { verified: boolean; mismatches: string[] } {
+  const mismatches: string[] = [];
+  try {
+    const state: SyncState = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+    for (const [dep, hash] of Object.entries(expected)) {
+      if (state.known_hashes[dep] !== hash) {
+        mismatches.push(dep);
+      }
+    }
+  } catch {
+    return { verified: false, mismatches: Object.keys(expected) };
+  }
+  return { verified: mismatches.length === 0, mismatches };
+}
+
+/**
+ * Cross-validate an event file's hash against the fetched interface hash.
+ * Returns true if they match.
+ * Standalone export for the CrossValidateEventHashWithFetchedHash node.
+ */
+export function crossValidateEventHash(
+  eventPayload: EventPayload,
+  fetchedHash: string
+): boolean {
+  return eventPayload.interface_hash === fetchedHash;
+}
+
+/**
+ * Detect if the sync state file was partially written (e.g. truncated JSON).
+ * Returns true if the file exists but is corrupt.
+ * Standalone export for the DetectPartialHashUpdate node.
+ */
+export function detectPartialHashUpdate(syncStatePath: string): boolean {
+  if (!fs.existsSync(syncStatePath)) return false;
+  try {
+    const raw = fs.readFileSync(syncStatePath, 'utf-8');
+    JSON.parse(raw);
+    return false; // Valid JSON — no partial update
+  } catch {
+    return true; // Corrupt — partial write detected
+  }
+}
+
+/**
+ * Re-read module files before reconvergence to confirm they are still stale.
+ * Returns modules that are confirmed stale (have _stale: true marker).
+ * Standalone export for the VerifyStalenessBeforeReconvergence node.
+ */
+export function verifyStalenessBeforeReconvergence(
+  modulesDir: string,
+  candidates: string[]
+): string[] {
+  return candidates.filter(mod => {
+    const filePath = path.join(modulesDir, `${mod}.yaml`);
+    if (!fs.existsSync(filePath)) return false;
+    return fs.readFileSync(filePath, 'utf-8').includes('_stale: true');
+  });
+}
+
+/**
+ * Sort stale modules deterministically by name for consistent processing order.
+ * Standalone export for the EnforceDeterministicStaleOrder node.
+ */
+export function enforceDeterministicStaleOrder(modules: string[]): string[] {
+  return [...modules].sort();
+}
+
+/**
+ * Canonicalize changelog entries by sorting changes alphabetically by node name
+ * before narrowing, ensuring deterministic output.
+ * Standalone export for the CanonicalizeChangelogForNarrowing node.
+ */
+export function canonicalizeChangelogForNarrowing(changelog: Changelog): Changelog {
+  return {
+    previous_hash: changelog.previous_hash,
+    current_hash: changelog.current_hash,
+    changes: [...changelog.changes].sort((a, b) => a.node.localeCompare(b.node)),
+  };
+}
+
+/**
+ * Validate the integrity of the hash store on cold start.
+ * Checks that the file is valid JSON, has a known_hashes map, and all values are strings.
+ * Standalone export for the ValidateHashStoreIntegrityOnStartup node.
+ */
+export function validateHashStoreIntegrity(
+  syncStatePath: string
+): { valid: boolean; error?: string } {
+  if (!fs.existsSync(syncStatePath)) return { valid: true }; // No file = fresh start
+  try {
+    const raw = fs.readFileSync(syncStatePath, 'utf-8');
+    const state = JSON.parse(raw);
+    if (!state.known_hashes || typeof state.known_hashes !== 'object') {
+      return { valid: false, error: 'missing or invalid known_hashes' };
+    }
+    for (const [dep, hash] of Object.entries(state.known_hashes)) {
+      if (typeof hash !== 'string') {
+        return { valid: false, error: `non-string hash for dependency ${dep}` };
+      }
+    }
+    return { valid: true };
+  } catch (e: any) {
+    return { valid: false, error: `corrupt JSON: ${e.message}` };
+  }
+}
+
+/**
+ * Reconcile sequence numbers after a crash by reading the sync state
+ * and the latest event files on disk.
+ * Standalone export for the ReconcileSequenceNumbersOnRestart node.
+ */
+export function reconcileSequenceNumbers(
+  syncStatePath: string,
+  eventDirs: Array<{ dependency: string; eventsDir: string }>
+): Record<string, number> {
+  let state: SyncState = { known_hashes: {} };
+  if (fs.existsSync(syncStatePath)) {
+    try { state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8')); } catch { /* fresh */ }
+  }
+  const reconciled: Record<string, number> = { ...(state.last_processed_sequence ?? {}) };
+
+  for (const { dependency, eventsDir } of eventDirs) {
+    if (!fs.existsSync(eventsDir)) continue;
+    const files = fs.readdirSync(eventsDir).filter(f => f.endsWith('.event')).sort();
+    if (files.length === 0) continue;
+    const latestFile = path.join(eventsDir, files[files.length - 1]);
+    try {
+      const event = JSON.parse(fs.readFileSync(latestFile, 'utf-8'));
+      const diskSeq = typeof event.sequence_number === 'number' ? event.sequence_number : -1;
+      const stateSeq = reconciled[dependency] ?? -1;
+      reconciled[dependency] = Math.max(diskSeq, stateSeq);
+    } catch { /* skip corrupt event files */ }
+  }
+
+  return reconciled;
+}
+
+/**
+ * Verify that an outgoing event file was successfully written to disk.
+ * Standalone export for the VerifyOutgoingEventWritten node.
+ */
+export function verifyOutgoingEventWritten(eventFilePath: string): boolean {
+  if (!fs.existsSync(eventFilePath)) return false;
+  try {
+    const raw = fs.readFileSync(eventFilePath, 'utf-8');
+    JSON.parse(raw); // Verify valid JSON
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate the format of an event file: must be valid JSON with required fields.
+ * Standalone export for the ValidateEventFileFormat node (events module).
+ */
+export function validateEventFileFormat(
+  eventFilePath: string
+): { valid: boolean; error?: string } {
+  if (!fs.existsSync(eventFilePath)) return { valid: false, error: 'file not found' };
+  try {
+    const raw = fs.readFileSync(eventFilePath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed.hash && !parsed.interface_hash) {
+      return { valid: false, error: 'missing hash field' };
+    }
+    return { valid: true };
+  } catch (e: any) {
+    return { valid: false, error: `invalid JSON: ${e.message}` };
+  }
+}
+
+/**
+ * Detect duplicate event sequence numbers for a dependency.
+ * Returns true if the incoming sequence was already processed.
+ * Standalone export for the DetectDuplicateEventSequence node.
+ */
+export function detectDuplicateEventSequence(
+  syncState: SyncState,
+  dependency: string,
+  sequenceNumber: number
+): boolean {
+  const lastProcessed = syncState.last_processed_sequence?.[dependency] ?? -1;
+  return sequenceNumber <= lastProcessed;
+}
+
+/**
+ * Detect if an event file was partially written (truncated/empty).
+ * Returns true if the file exists but cannot be fully parsed.
+ * Standalone export for the DetectPartiallyWrittenEventFile node.
+ */
+export function detectPartiallyWrittenEventFile(eventFilePath: string): boolean {
+  if (!fs.existsSync(eventFilePath)) return false;
+  try {
+    const raw = fs.readFileSync(eventFilePath, 'utf-8');
+    if (raw.trim().length === 0) return true;
+    JSON.parse(raw);
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Prioritize events by impact: events affecting more modules rank higher.
+ * Returns events sorted by descending affected module count.
+ * Standalone export for the PrioritizeEventsByImpact node.
+ */
+export function prioritizeEventsByImpact(
+  events: Array<{ dependency: string; affectedModules: string[] }>
+): Array<{ dependency: string; affectedModules: string[] }> {
+  return [...events].sort((a, b) => b.affectedModules.length - a.affectedModules.length);
+}

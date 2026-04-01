@@ -22,7 +22,7 @@ nodes:
     description: classifies unresolved refs as external sibling-engine references and emits warnings instead of errors
   YAMLErrorReporting:
     type: process
-    description: collects _parseError tags from malformed modules and promotes them to severity-error ValidationIssues with file name and line number so parse failures appear in the final compilation report
+    description: collects _parseError tags from malformed modules and promotes them to severity-error ValidationIssues with module name and error message so parse failures appear in the final compilation report
     files: ["src/compile.ts"]
   ValidationAggregation:
     type: process
@@ -59,7 +59,7 @@ nodes:
     files: ["src/compile.ts"]
   ValidateDescriptionQuality:
     type: process
-    description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions as errors and descriptions exceeding 500 characters as warnings to prevent context window exhaustion
+    description: checks that every node has a meaningful description string, flagging nodes with missing or empty descriptions as warnings and descriptions exceeding 500 characters as warnings to prevent context window exhaustion
     files: ["src/compile.ts"]
   NodeNameValidation:
     type: process
@@ -105,7 +105,7 @@ nodes:
     description: unresolved refs to sibling engines are warnings in children, errors only at parent level
   EmptyModuleDirectoryDetection:
     type: process
-    description: detects when the modules directory is missing or contains zero YAML files and reports a clear error instead of producing an empty compiled index
+    description: detects when the modules directory contains zero YAML files and reports a tagged _parseError on an _empty module entry instead of producing a silent empty compiled index, while a missing directory returns an empty module map without error
     files: ["src/compile.ts"]
   FileReadFailureHandling:
     type: process

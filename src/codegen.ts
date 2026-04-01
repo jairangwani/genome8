@@ -310,3 +310,116 @@ export function detectCodeNeedsUpdate(
 
   return false;
 }
+
+/**
+ * Check that every module in the build list has a filled source file on disk.
+ * Returns modules still missing their filled implementation file.
+ * Standalone export for the ConfirmAllModulesFilled node.
+ */
+export function confirmAllModulesFilled(
+  index: CompiledIndex,
+  projectDir: string
+): string[] {
+  const missing: string[] = [];
+  const checked = new Set<string>();
+
+  for (const [, node] of Object.entries(index.nodes)) {
+    if (node.type !== 'process' || !node.files?.length) continue;
+    if (checked.has(node.module)) continue;
+    checked.add(node.module);
+
+    for (const filePath of node.files) {
+      const absPath = path.join(projectDir, filePath);
+      if (!fs.existsSync(absPath)) {
+        missing.push(filePath);
+      }
+    }
+  }
+
+  return missing;
+}
+
+/**
+ * On restart after a partial crash, scan the generated code directory
+ * to find which modules already have filled files and return the next
+ * unfilled module in alphabetical order.
+ * Standalone export for the ResumeFromLastFilledModule node.
+ */
+export function resumeFromLastFilledModule(
+  index: CompiledIndex,
+  projectDir: string
+): string | null {
+  const modules = new Set<string>();
+  for (const [, node] of Object.entries(index.nodes)) {
+    if (node.type === 'process' && node.files?.length) {
+      modules.add(node.module);
+    }
+  }
+
+  const sorted = [...modules].sort();
+  for (const mod of sorted) {
+    const moduleNodes = Object.entries(index.nodes)
+      .filter(([, n]) => n.module === mod && n.type === 'process' && n.files?.length);
+    for (const [, node] of moduleNodes) {
+      for (const filePath of node.files!) {
+        if (!fs.existsSync(path.join(projectDir, filePath))) {
+          return mod; // This module still needs filling
+        }
+      }
+    }
+  }
+
+  return null; // All modules filled
+}
+
+/**
+ * Revert a filled file back to its skeleton state when the fill causes
+ * downstream type errors.
+ * Standalone export for the RollbackCorruptedFill node.
+ */
+export function rollbackCorruptedFill(
+  filePath: string,
+  fullNodeName: string,
+  node: CompiledNode
+): void {
+  const content = generateSkeleton(fullNodeName, node, filePath);
+  fs.writeFileSync(filePath, content);
+}
+
+/**
+ * Generate the diff between previous and current graph state for a node,
+ * producing targeted edit instructions.
+ * Standalone export for the GenerateUpdateContext node.
+ */
+export function generateUpdateContext(
+  previousNode: CompiledNode | null,
+  currentNode: CompiledNode
+): string[] {
+  const instructions: string[] = [];
+
+  if (!previousNode) {
+    instructions.push(`New node — generate complete implementation for: ${currentNode.description}`);
+    return instructions;
+  }
+
+  if (previousNode.description !== currentNode.description) {
+    instructions.push(`Description changed from "${previousNode.description}" to "${currentNode.description}"`);
+  }
+
+  const newJourneys = currentNode.in_journeys.filter(j => !previousNode.in_journeys.includes(j));
+  if (newJourneys.length > 0) {
+    instructions.push(`New journey participation: ${newJourneys.join(', ')}`);
+  }
+
+  const removedJourneys = previousNode.in_journeys.filter(j => !currentNode.in_journeys.includes(j));
+  if (removedJourneys.length > 0) {
+    instructions.push(`Removed from journeys: ${removedJourneys.join(', ')}`);
+  }
+
+  const newConnections = currentNode.followed_by.filter(c => !previousNode.followed_by.includes(c));
+  if (newConnections.length > 0) {
+    instructions.push(`New downstream connections: ${newConnections.join(', ')}`);
+  }
+
+  return instructions;
+}

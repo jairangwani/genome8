@@ -4,225 +4,315 @@
 // Modules touched: convergence, audit, _actors, compilation
 
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: test/compile.test.ts
-// Implementation: test/pando8.test.ts
-// Implementation: test/pando9.test.ts
+function buildModules(): Map<string, ModuleFile> {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      Compiler: { type: 'actor', description: 'the compilation process that validates graph structure' },
+      Auditor: { type: 'actor', description: 'the LLM-based auditor that checks coverage from multiple angles' },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      ConvergenceState: { type: 'artifact', description: 'persistent JSON file tracking which pipeline steps have completed and their results' },
+      RecompileAfterFix: { type: 'process', description: 'runs full compilation after all fixes in this round' },
+      ReauditAfterFix: { type: 'process', description: 'triggers a re-audit to check for remaining gaps' },
+    },
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'the output of compile.ts containing the compiled index, issues list, and coverage report' },
+    },
+  });
+
+  modules.set('audit', {
+    nodes: {
+      TrackAuditRound: { type: 'artifact', description: 'records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking and termination decisions' },
+      AuditRoundLimit: { type: 'rule', description: 'audit-fix-reaudit cycles are capped at a maximum number of rounds to prevent infinite loops when gaps cannot be resolved' },
+      ValidateGraphInvariantsPostFix: { type: 'process', description: 'checks all convergence invariants after a fix round including zero errors, zero orphans, zero duplicates, and zero isolated modules' },
+      GenerateAuditPrompt: { type: 'process', description: 'builds a focused prompt for each auditor containing the compiled graph excerpt and the specific coverage angle to check' },
+      CheckSpecCoverage: { type: 'process', description: 'auditor 1 compares spec sections against the graph to find sections not represented by any node or journey' },
+      CheckActorCoverage: { type: 'process', description: 'auditor 2 checks that every actor in _actors.yaml participates in at least one journey across all modules' },
+      CheckCrossModuleCoverage: { type: 'process', description: 'auditor 3 verifies that every module has at least one cross-module connection and no module is an island' },
+      CheckGoalCoverage: { type: 'process', description: 'auditor 4 checks that each goal rule node is connected to at least one journey that exercises the goals achievement path' },
+      MergeAuditReports: { type: 'process', description: 'combines the 4 individual coverage reports into a unified view with normalized gap format before feeding into findings collection' },
+      CollectAuditFindings: { type: 'process', description: 'gathers findings from all 4 auditors into a single list of coverage gaps with locations and descriptions' },
+      AuditFindingsList: { type: 'artifact', description: 'the collected list of coverage gaps from all 4 auditors with gap type, location, and description' },
+    },
+    journeys: {
+      AuditFixReauditCycle: {
+        steps: [
+          { node: 'convergence/ConvergenceState', action: 'indicates gaps remain after a fix round' },
+          { node: 'TrackAuditRound', action: 'increments the round counter for the next audit-fix cycle' },
+          { node: 'AuditRoundLimit', action: 'checks whether the round counter has exceeded the maximum allowed cycles' },
+          { node: 'convergence/RecompileAfterFix', action: 'runs full compilation after all fixes in this round' },
+          { node: '_actors/Compiler', action: 'validates the full graph after fixes' },
+          { node: 'compilation/CompilationResult', action: 'confirms 0 errors after the fix round' },
+          { node: 'ValidateGraphInvariantsPostFix', action: 'checks zero orphans, zero duplicates, and zero isolated modules in the post-fix graph' },
+          { node: 'convergence/ReauditAfterFix', action: 'triggers a re-audit to check for remaining gaps' },
+          { node: 'GenerateAuditPrompt', action: 'rebuilds audit prompts for all 4 angles' },
+          { node: '_actors/Auditor', action: 're-checks spec coverage after fixes' },
+          { node: 'CheckSpecCoverage', action: 're-examines spec sections against the updated graph' },
+          { node: '_actors/Auditor', action: 're-checks actor coverage after fixes' },
+          { node: 'CheckActorCoverage', action: 're-examines actor references in the updated graph' },
+          { node: '_actors/Auditor', action: 're-checks cross-module coverage after fixes' },
+          { node: 'CheckCrossModuleCoverage', action: 're-examines module connections in the updated graph' },
+          { node: '_actors/Auditor', action: 're-checks goal coverage after fixes' },
+          { node: 'CheckGoalCoverage', action: 're-examines goal rule nodes against journeys in the updated graph' },
+          { node: 'MergeAuditReports', action: 'combines the 4 re-audit reports into unified format' },
+          { node: 'CollectAuditFindings', action: 'gathers findings from the re-audit' },
+          { node: 'AuditFindingsList', action: 'stores the updated gap list — may be empty' },
+        ],
+      },
+    },
+  });
+
+  return modules;
+}
 
 describe("AuditFixReauditCycle", () => {
+  const modules = buildModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['AuditFixReauditCycle'];
+
   it("step 1: convergence/ConvergenceState indicates gaps remain after a fix round", () => {
-    // Node: convergence/ConvergenceState (artifact)
-    // Action: indicates gaps remain after a fix round
-    // TODO: agent fills assertion
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.in_journeys.some(j => j.startsWith('AuditFixReauditCycle'))).toBe(true);
   });
 
   it("step 2: audit/TrackAuditRound increments the round counter for the next audit-fix cycle", () => {
-    // Node: audit/TrackAuditRound (artifact)
-    // Action: increments the round counter for the next audit-fix cycle
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/ConvergenceState');
   });
 
   it("connection: convergence/ConvergenceState → audit/TrackAuditRound", () => {
-    // Assert that the output of step 1 feeds into step 2
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['convergence/ConvergenceState'];
+    expect(src.followed_by).toContain('audit/TrackAuditRound');
   });
 
   it("step 3: audit/AuditRoundLimit checks whether the round counter has exceeded the maximum allowed cycles", () => {
-    // Node: audit/AuditRoundLimit (rule)
-    // Action: checks whether the round counter has exceeded the maximum allowed cycles
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/AuditRoundLimit'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('audit/TrackAuditRound');
   });
 
   it("connection: audit/TrackAuditRound → audit/AuditRoundLimit", () => {
-    // Assert that the output of step 2 feeds into step 3
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/TrackAuditRound'];
+    expect(src.followed_by).toContain('audit/AuditRoundLimit');
   });
 
   it("step 4: convergence/RecompileAfterFix runs full compilation after all fixes in this round", () => {
-    // Node: convergence/RecompileAfterFix (process)
-    // Action: runs full compilation after all fixes in this round
-    // TODO: agent fills assertion
+    const node = result.index.nodes['convergence/RecompileAfterFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditRoundLimit');
   });
 
   it("connection: audit/AuditRoundLimit → convergence/RecompileAfterFix", () => {
-    // Assert that the output of step 3 feeds into step 4
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/AuditRoundLimit'];
+    expect(src.followed_by).toContain('convergence/RecompileAfterFix');
   });
 
   it("step 5: _actors/Compiler validates the full graph after fixes", () => {
-    // Node: _actors/Compiler (actor)
-    // Action: validates the full graph after fixes
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Compiler'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('convergence/RecompileAfterFix');
   });
 
   it("connection: convergence/RecompileAfterFix → _actors/Compiler", () => {
-    // Assert that the output of step 4 feeds into step 5
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['convergence/RecompileAfterFix'];
+    expect(src.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 6: compilation/CompilationResult confirms 0 errors after the fix round", () => {
-    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
-    // Action: confirms 0 errors after the fix round
-    // TODO: agent fills assertion
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('_actors/Compiler');
   });
 
   it("connection: _actors/Compiler → compilation/CompilationResult", () => {
-    // Assert that the output of step 5 feeds into step 6
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Compiler'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 7: audit/ValidateGraphInvariantsPostFix checks zero orphans, zero duplicates, and zero isolated modules in the post-fix graph", () => {
-    // Node: audit/ValidateGraphInvariantsPostFix (process)
-    // Action: checks zero orphans, zero duplicates, and zero isolated modules in the post-fix graph
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
   });
 
   it("connection: compilation/CompilationResult → audit/ValidateGraphInvariantsPostFix", () => {
-    // Assert that the output of step 6 feeds into step 7
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['compilation/CompilationResult'];
+    expect(src.followed_by).toContain('audit/ValidateGraphInvariantsPostFix');
   });
 
   it("step 8: convergence/ReauditAfterFix triggers a re-audit to check for remaining gaps", () => {
-    // Node: convergence/ReauditAfterFix (process)
-    // Action: triggers a re-audit to check for remaining gaps
-    // TODO: agent fills assertion
+    const node = result.index.nodes['convergence/ReauditAfterFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ValidateGraphInvariantsPostFix');
   });
 
   it("connection: audit/ValidateGraphInvariantsPostFix → convergence/ReauditAfterFix", () => {
-    // Assert that the output of step 7 feeds into step 8
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(src.followed_by).toContain('convergence/ReauditAfterFix');
   });
 
   it("step 9: audit/GenerateAuditPrompt rebuilds audit prompts for all 4 angles", () => {
-    // Node: audit/GenerateAuditPrompt (process)
-    // Action: rebuilds audit prompts for all 4 angles
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('convergence/ReauditAfterFix');
   });
 
   it("connection: convergence/ReauditAfterFix → audit/GenerateAuditPrompt", () => {
-    // Assert that the output of step 8 feeds into step 9
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['convergence/ReauditAfterFix'];
+    expect(src.followed_by).toContain('audit/GenerateAuditPrompt');
   });
 
   it("step 10: _actors/Auditor re-checks spec coverage after fixes", () => {
-    // Node: _actors/Auditor (actor)
-    // Action: re-checks spec coverage after fixes
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('audit/GenerateAuditPrompt');
   });
 
   it("connection: audit/GenerateAuditPrompt → _actors/Auditor", () => {
-    // Assert that the output of step 9 feeds into step 10
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 11: audit/CheckSpecCoverage re-examines spec sections against the updated graph", () => {
-    // Node: audit/CheckSpecCoverage (process)
-    // Action: re-examines spec sections against the updated graph
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
   });
 
   it("connection: _actors/Auditor → audit/CheckSpecCoverage", () => {
-    // Assert that the output of step 10 feeds into step 11
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/CheckSpecCoverage');
   });
 
   it("step 12: _actors/Auditor re-checks actor coverage after fixes", () => {
-    // Node: _actors/Auditor (actor)
-    // Action: re-checks actor coverage after fixes
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node.preceded_by).toContain('audit/CheckSpecCoverage');
   });
 
   it("connection: audit/CheckSpecCoverage → _actors/Auditor", () => {
-    // Assert that the output of step 11 feeds into step 12
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 13: audit/CheckActorCoverage re-examines actor references in the updated graph", () => {
-    // Node: audit/CheckActorCoverage (process)
-    // Action: re-examines actor references in the updated graph
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/CheckActorCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
   });
 
   it("connection: _actors/Auditor → audit/CheckActorCoverage", () => {
-    // Assert that the output of step 12 feeds into step 13
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/CheckActorCoverage');
   });
 
   it("step 14: _actors/Auditor re-checks cross-module coverage after fixes", () => {
-    // Node: _actors/Auditor (actor)
-    // Action: re-checks cross-module coverage after fixes
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node.preceded_by).toContain('audit/CheckActorCoverage');
   });
 
   it("connection: audit/CheckActorCoverage → _actors/Auditor", () => {
-    // Assert that the output of step 13 feeds into step 14
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/CheckActorCoverage'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 15: audit/CheckCrossModuleCoverage re-examines module connections in the updated graph", () => {
-    // Node: audit/CheckCrossModuleCoverage (process)
-    // Action: re-examines module connections in the updated graph
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/CheckCrossModuleCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
   });
 
   it("connection: _actors/Auditor → audit/CheckCrossModuleCoverage", () => {
-    // Assert that the output of step 14 feeds into step 15
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/CheckCrossModuleCoverage');
   });
 
   it("step 16: _actors/Auditor re-checks goal coverage after fixes", () => {
-    // Node: _actors/Auditor (actor)
-    // Action: re-checks goal coverage after fixes
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node.preceded_by).toContain('audit/CheckCrossModuleCoverage');
   });
 
   it("connection: audit/CheckCrossModuleCoverage → _actors/Auditor", () => {
-    // Assert that the output of step 15 feeds into step 16
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/CheckCrossModuleCoverage'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 17: audit/CheckGoalCoverage re-examines goal rule nodes against journeys in the updated graph", () => {
-    // Node: audit/CheckGoalCoverage (process)
-    // Action: re-examines goal rule nodes against journeys in the updated graph
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/CheckGoalCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
   });
 
   it("connection: _actors/Auditor → audit/CheckGoalCoverage", () => {
-    // Assert that the output of step 16 feeds into step 17
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/CheckGoalCoverage');
   });
 
   it("step 18: audit/MergeAuditReports combines the 4 re-audit reports into unified format", () => {
-    // Node: audit/MergeAuditReports (process)
-    // Action: combines the 4 re-audit reports into unified format
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/MergeAuditReports'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/CheckGoalCoverage');
   });
 
   it("connection: audit/CheckGoalCoverage → audit/MergeAuditReports", () => {
-    // Assert that the output of step 17 feeds into step 18
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/CheckGoalCoverage'];
+    expect(src.followed_by).toContain('audit/MergeAuditReports');
   });
 
   it("step 19: audit/CollectAuditFindings gathers findings from the re-audit", () => {
-    // Node: audit/CollectAuditFindings (process)
-    // Action: gathers findings from the re-audit
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/CollectAuditFindings'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/MergeAuditReports');
   });
 
   it("connection: audit/MergeAuditReports → audit/CollectAuditFindings", () => {
-    // Assert that the output of step 18 feeds into step 19
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/MergeAuditReports'];
+    expect(src.followed_by).toContain('audit/CollectAuditFindings');
   });
 
   it("step 20: audit/AuditFindingsList stores the updated gap list — may be empty", () => {
-    // Node: audit/AuditFindingsList (artifact)
-    // Action: stores the updated gap list — may be empty
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CollectAuditFindings');
   });
 
   it("connection: audit/CollectAuditFindings → audit/AuditFindingsList", () => {
-    // Assert that the output of step 19 feeds into step 20
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/CollectAuditFindings'];
+    expect(src.followed_by).toContain('audit/AuditFindingsList');
   });
 
+  it("journey has 20 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(20);
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

@@ -181,3 +181,98 @@ function truncateToLimit(content: string, targetLines: number): string {
   // Fallback: hard truncate with notice
   return [...lines.slice(0, targetLines - 1), `# ... truncated ${lines.length - targetLines + 1} lines ...`].join('\n');
 }
+
+/**
+ * Collect all cross-module connections for a given module.
+ * Returns inbound and outbound connections with their source/target context.
+ * Standalone export for the CollectCrossModuleConnections node.
+ */
+export function collectCrossModuleConnections(
+  focusModule: string,
+  index: CompiledIndex
+): { inbound: Array<{ from: string; to: string }>; outbound: Array<{ from: string; to: string }> } {
+  const inbound: Array<{ from: string; to: string }> = [];
+  const outbound: Array<{ from: string; to: string }> = [];
+
+  for (const [full, node] of Object.entries(index.nodes)) {
+    if (node.module !== focusModule) continue;
+    for (const p of node.preceded_by) {
+      if (p.split('/')[0] !== focusModule) {
+        inbound.push({ from: p, to: full });
+      }
+    }
+    for (const f of node.followed_by) {
+      if (f.split('/')[0] !== focusModule) {
+        outbound.push({ from: full, to: f });
+      }
+    }
+  }
+
+  return { inbound, outbound };
+}
+
+/**
+ * Validate that all cross-module refs in an excerpt resolve to real nodes.
+ * Returns unresolvable refs.
+ * Standalone export for the ValidateCrossModuleRefIntegrity node.
+ */
+export function validateCrossModuleRefIntegrity(
+  focusModule: string,
+  index: CompiledIndex
+): string[] {
+  const unresolvable: string[] = [];
+  for (const [, node] of Object.entries(index.nodes)) {
+    if (node.module !== focusModule) continue;
+    for (const ref of node.cross_module_connections) {
+      if (!index.nodes[ref]) {
+        unresolvable.push(ref);
+      }
+    }
+  }
+  return unresolvable;
+}
+
+/**
+ * Validate that an excerpt contains all mandatory sections.
+ * Returns names of missing sections.
+ * Standalone export for the ValidateExcerptCompleteness node.
+ */
+export function validateExcerptCompleteness(excerpt: string): string[] {
+  const required = ['MODULE STATUS:', 'ALL MODULES:', 'GLOBAL:'];
+  const missing: string[] = [];
+  for (const section of required) {
+    if (!excerpt.includes(section)) {
+      missing.push(section);
+    }
+  }
+  return missing;
+}
+
+/**
+ * Generate excerpts for multiple modules in a single pass.
+ * Returns a map of module name → excerpt string.
+ * Standalone export for the BatchGenerateExcerpts node.
+ */
+export function batchGenerateExcerpts(
+  modules: string[],
+  round: number,
+  index: CompiledIndex,
+  coverage: CoverageReport,
+  issues: ValidationIssue[],
+  moduleContents: Record<string, string>,
+  specSections?: string
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const mod of modules) {
+    result[mod] = generateExcerpt({
+      round,
+      focusModule: mod,
+      index,
+      coverage,
+      issues,
+      moduleFileContent: moduleContents[mod] ?? '',
+      specSections,
+    });
+  }
+  return result;
+}

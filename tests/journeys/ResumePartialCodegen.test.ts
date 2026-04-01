@@ -103,7 +103,7 @@ describe("ResumePartialCodegen", () => {
   });
 
   it("step 10: codegen/ValidateFilledSyntax validates the resumed fill output", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: validates the resumed fill output
     // TODO: agent fills assertion
   });

@@ -7,7 +7,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: test/journeys/
 // Implementation: test/testgen.test.ts
-// Implementation: tests/journeys/
 
 describe("RecoverFromWorkerCrashDuringTestFill", () => {
   it("step 1: llm/SendTask sends the fill task to the LLM worker", () => {

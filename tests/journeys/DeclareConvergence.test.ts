@@ -3,93 +3,151 @@
 // Modules touched: audit, compilation, convergence
 
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: test/compile.test.ts
-// Implementation: test/pando8.test.ts
-// Implementation: test/pando9.test.ts
+function buildModules(): Map<string, ModuleFile> {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'the output of compile.ts containing the compiled index, issues list, and coverage report' },
+      ZeroErrorConvergence: { type: 'rule', description: 'convergence requires compile.ts to report 0 errors and 0 orphans' },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      ConvergenceState: { type: 'artifact', description: 'persistent JSON file tracking which pipeline steps have completed and their results' },
+      TriggerPublish: { type: 'process', description: 'proceeds to publish the converged interface' },
+    },
+  });
+
+  modules.set('audit', {
+    nodes: {
+      AuditFindingsList: { type: 'artifact', description: 'the collected list of coverage gaps from all 4 auditors with gap type, location, and description' },
+      ConfirmAllGapsResolved: { type: 'process', description: 'checks that the re-audit findings list is empty and compilation is clean before allowing convergence declaration to proceed' },
+      ValidateGraphInvariantsPostFix: { type: 'process', description: 'checks all convergence invariants after a fix round including zero errors, zero orphans, zero duplicates, and zero isolated modules' },
+      DeclareConverged: { type: 'process', description: 'marks the graph as CONVERGED after all 4 auditors report zero gaps and compilation shows zero errors' },
+    },
+    journeys: {
+      DeclareConvergence: {
+        steps: [
+          { node: 'AuditFindingsList', action: 'provides the gap list from the latest audit round' },
+          { node: 'ConfirmAllGapsResolved', action: 'verifies the findings list is empty across all 4 coverage angles' },
+          { node: 'compilation/CompilationResult', action: 'confirms 0 errors and 0 orphans in the final compilation' },
+          { node: 'compilation/ZeroErrorConvergence', action: 'confirms the zero-error threshold is met' },
+          { node: 'ValidateGraphInvariantsPostFix', action: 'performs the final invariant check — zero errors, orphans, duplicates, and isolated modules' },
+          { node: 'DeclareConverged', action: 'marks the graph as CONVERGED — all creation, compilation, and audit complete' },
+          { node: 'convergence/ConvergenceState', action: 'records CONVERGED status, ready for publish and codegen' },
+          { node: 'convergence/TriggerPublish', action: 'proceeds to publish the converged interface' },
+        ],
+      },
+    },
+  });
+
+  return modules;
+}
 
 describe("DeclareConvergence", () => {
+  const modules = buildModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['DeclareConvergence'];
+
   it("step 1: audit/AuditFindingsList provides the gap list from the latest audit round", () => {
-    // Node: audit/AuditFindingsList (artifact)
-    // Action: provides the gap list from the latest audit round
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.in_journeys.some(j => j.startsWith('DeclareConvergence'))).toBe(true);
   });
 
   it("step 2: audit/ConfirmAllGapsResolved verifies the findings list is empty across all 4 coverage angles", () => {
-    // Node: audit/ConfirmAllGapsResolved (process)
-    // Action: verifies the findings list is empty across all 4 coverage angles
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/ConfirmAllGapsResolved'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
   });
 
   it("connection: audit/AuditFindingsList → audit/ConfirmAllGapsResolved", () => {
-    // Assert that the output of step 1 feeds into step 2
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/AuditFindingsList'];
+    expect(src.followed_by).toContain('audit/ConfirmAllGapsResolved');
   });
 
   it("step 3: compilation/CompilationResult confirms 0 errors and 0 orphans in the final compilation", () => {
-    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
-    // Action: confirms 0 errors and 0 orphans in the final compilation
-    // TODO: agent fills assertion
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/ConfirmAllGapsResolved');
   });
 
   it("connection: audit/ConfirmAllGapsResolved → compilation/CompilationResult", () => {
-    // Assert that the output of step 2 feeds into step 3
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/ConfirmAllGapsResolved'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 4: compilation/ZeroErrorConvergence confirms the zero-error threshold is met", () => {
-    // Node: compilation/ZeroErrorConvergence (rule)
-    // Action: confirms the zero-error threshold is met
-    // TODO: agent fills assertion
+    const node = result.index.nodes['compilation/ZeroErrorConvergence'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
   });
 
   it("connection: compilation/CompilationResult → compilation/ZeroErrorConvergence", () => {
-    // Assert that the output of step 3 feeds into step 4
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['compilation/CompilationResult'];
+    expect(src.followed_by).toContain('compilation/ZeroErrorConvergence');
   });
 
   it("step 5: audit/ValidateGraphInvariantsPostFix performs the final invariant check — zero errors, orphans, duplicates, and isolated modules", () => {
-    // Node: audit/ValidateGraphInvariantsPostFix (process)
-    // Action: performs the final invariant check — zero errors, orphans, duplicates, and isolated modules
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/ZeroErrorConvergence');
   });
 
   it("connection: compilation/ZeroErrorConvergence → audit/ValidateGraphInvariantsPostFix", () => {
-    // Assert that the output of step 4 feeds into step 5
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['compilation/ZeroErrorConvergence'];
+    expect(src.followed_by).toContain('audit/ValidateGraphInvariantsPostFix');
   });
 
   it("step 6: audit/DeclareConverged marks the graph as CONVERGED — all creation, compilation, and audit complete", () => {
-    // Node: audit/DeclareConverged (process)
-    // Action: marks the graph as CONVERGED — all creation, compilation, and audit complete
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/DeclareConverged'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ValidateGraphInvariantsPostFix');
   });
 
   it("connection: audit/ValidateGraphInvariantsPostFix → audit/DeclareConverged", () => {
-    // Assert that the output of step 5 feeds into step 6
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(src.followed_by).toContain('audit/DeclareConverged');
   });
 
   it("step 7: convergence/ConvergenceState records CONVERGED status, ready for publish and codegen", () => {
-    // Node: convergence/ConvergenceState (artifact)
-    // Action: records CONVERGED status, ready for publish and codegen
-    // TODO: agent fills assertion
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/DeclareConverged');
   });
 
   it("connection: audit/DeclareConverged → convergence/ConvergenceState", () => {
-    // Assert that the output of step 6 feeds into step 7
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/DeclareConverged'];
+    expect(src.followed_by).toContain('convergence/ConvergenceState');
   });
 
   it("step 8: convergence/TriggerPublish proceeds to publish the converged interface", () => {
-    // Node: convergence/TriggerPublish (process)
-    // Action: proceeds to publish the converged interface
-    // TODO: agent fills assertion
+    const node = result.index.nodes['convergence/TriggerPublish'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('convergence/ConvergenceState');
   });
 
   it("connection: convergence/ConvergenceState → convergence/TriggerPublish", () => {
-    // Assert that the output of step 7 feeds into step 8
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['convergence/ConvergenceState'];
+    expect(src.followed_by).toContain('convergence/TriggerPublish');
   });
 
+  it("journey has 8 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(8);
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

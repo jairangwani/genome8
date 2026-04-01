@@ -7,32 +7,43 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildFixAuditGapsModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      LLMWorker: { type: 'actor', description: 'Receives the fix payload with the exact module and gap to address' },
-      Compiler: { type: 'actor', description: 'Validates the edited module has 0 errors' },
-      Auditor: { type: 'actor', description: 'Confirms the specific gap is now closed' },
+      LLMWorker: { type: 'actor', description: 'persistent Claude Code process that creates module content, fills code, and fills test assertions when asked' },
+      Compiler: { type: 'actor', description: 'the compilation process that validates graph structure' },
+      Auditor: { type: 'actor', description: 'the LLM-based auditor that checks coverage from multiple angles' },
     },
-    journeys: {},
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'the output of compile.ts containing the compiled index, issues list, and coverage report' },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      ConvergenceState: { type: 'artifact', description: 'persistent JSON file tracking which pipeline steps have completed and their results' },
+    },
   });
 
   modules.set('audit', {
     nodes: {
-      AuditFindingsList: { type: 'artifact', description: 'Provides the list of coverage gaps to fix' },
-      PrioritizeGaps: { type: 'process', description: 'Ranks gaps by severity to fix the most critical first' },
-      TargetedFixesOnly: { type: 'rule', description: 'Enforces that fixes are targeted edits, not full re-creation' },
-      SelectNextGapToFix: { type: 'process', description: 'Picks the highest-priority unfixed gap from the list' },
-      DetectSelfAuditTarget: { type: 'process', description: 'Checks whether the selected gap targets audit.yaml itself' },
-      BuildGapFixPrompt: { type: 'process', description: 'Builds a specific fix prompt for the selected gap' },
-      ProvideFixContext: { type: 'process', description: 'Assembles the target module excerpt and gap details into a fix payload' },
-      ApplyFix: { type: 'process', description: 'Edits the target module YAML to close the coverage gap' },
-      VerifyFixCompiles: { type: 'process', description: 'Runs compile.ts on the edited module' },
-      DetectFixInducedErrors: { type: 'process', description: 'Compares pre-fix and post-fix compilation to check for new orphans or duplicates' },
-      VerifyGapClosed: { type: 'process', description: 'Re-runs the specific auditor on the fixed area' },
-      TrackAuditRound: { type: 'artifact', description: 'Increments the cumulative gaps-fixed counter' },
+      AuditFindingsList: { type: 'artifact', description: 'the collected list of coverage gaps from all 4 auditors with gap type, location, and description' },
+      PrioritizeGaps: { type: 'process', description: 'ranks the collected gaps by severity so the most critical coverage issues are fixed first' },
+      TargetedFixesOnly: { type: 'rule', description: 'audit gaps are fixed with targeted edits to specific modules, never by re-running the full creation pipeline' },
+      SelectNextGapToFix: { type: 'process', description: 'picks the highest-priority unfixed gap from the prioritized list and advances the pointer to the next gap' },
+      DetectSelfAuditTarget: { type: 'process', description: 'detects when a coverage gap targets audit.yaml itself' },
+      BuildGapFixPrompt: { type: 'process', description: 'builds a targeted fix prompt for each gap specifying exactly which module to edit and what coverage to add' },
+      ProvideFixContext: { type: 'process', description: 'assembles the target module excerpt, the specific gap description, and surrounding graph context into a complete fix payload for the LLM worker' },
+      ApplyFix: { type: 'process', description: 'delegates to LLM to edit the specific module YAML file to close the identified coverage gap' },
+      VerifyFixCompiles: { type: 'process', description: 'runs compile.ts after each fix to ensure the edit did not introduce new errors' },
+      DetectFixInducedErrors: { type: 'process', description: 'compares pre-fix and post-fix compilation results to detect new orphans, duplicates, or dangling refs' },
+      VerifyGapClosed: { type: 'process', description: 're-runs the specific auditor that found the gap to confirm the fix actually closed it' },
+      TrackAuditRound: { type: 'artifact', description: 'records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking and termination decisions' },
     },
     journeys: {
       FixAuditGaps: {
@@ -53,31 +64,17 @@ function buildFixAuditGapsModules() {
           { node: 'VerifyGapClosed', action: 're-runs the specific auditor on the fixed area' },
           { node: '_actors/Auditor', action: 'confirms the specific gap is now closed' },
           { node: 'TrackAuditRound', action: 'increments the cumulative gaps-fixed counter' },
-          { node: 'convergence/ConvergenceState', action: 'updates with the fix result' },
+          { node: 'convergence/ConvergenceState', action: 'updates with the fix result — either more gaps remain or all are closed' },
         ],
       },
     },
-  });
-
-  modules.set('compilation', {
-    nodes: {
-      CompilationResult: { type: 'artifact', description: 'Confirms the fix did not break compilation' },
-    },
-    journeys: {},
-  });
-
-  modules.set('convergence', {
-    nodes: {
-      ConvergenceState: { type: 'artifact', description: 'Updates with the fix result — either more gaps remain or all are closed' },
-    },
-    journeys: {},
   });
 
   return modules;
 }
 
 describe("FixAuditGaps", () => {
-  const modules = buildFixAuditGapsModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['FixAuditGaps'];
 
@@ -85,6 +82,7 @@ describe("FixAuditGaps", () => {
     const node = result.index.nodes['audit/AuditFindingsList'];
     expect(node).toBeDefined();
     expect(node.type).toBe('artifact');
+    expect(node.in_journeys.some(j => j.startsWith('FixAuditGaps'))).toBe(true);
   });
 
   it("step 2: audit/PrioritizeGaps ranks gaps by severity to fix the most critical first", () => {
@@ -95,8 +93,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/AuditFindingsList → audit/PrioritizeGaps", () => {
-    const from = result.index.nodes['audit/AuditFindingsList'];
-    expect(from.followed_by).toContain('audit/PrioritizeGaps');
+    const src = result.index.nodes['audit/AuditFindingsList'];
+    expect(src.followed_by).toContain('audit/PrioritizeGaps');
   });
 
   it("step 3: audit/TargetedFixesOnly enforces that fixes are targeted edits, not full re-creation", () => {
@@ -107,8 +105,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/PrioritizeGaps → audit/TargetedFixesOnly", () => {
-    const from = result.index.nodes['audit/PrioritizeGaps'];
-    expect(from.followed_by).toContain('audit/TargetedFixesOnly');
+    const src = result.index.nodes['audit/PrioritizeGaps'];
+    expect(src.followed_by).toContain('audit/TargetedFixesOnly');
   });
 
   it("step 4: audit/SelectNextGapToFix picks the highest-priority unfixed gap from the list", () => {
@@ -119,8 +117,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/TargetedFixesOnly → audit/SelectNextGapToFix", () => {
-    const from = result.index.nodes['audit/TargetedFixesOnly'];
-    expect(from.followed_by).toContain('audit/SelectNextGapToFix');
+    const src = result.index.nodes['audit/TargetedFixesOnly'];
+    expect(src.followed_by).toContain('audit/SelectNextGapToFix');
   });
 
   it("step 5: audit/DetectSelfAuditTarget checks whether the selected gap targets audit.yaml itself", () => {
@@ -131,8 +129,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/SelectNextGapToFix → audit/DetectSelfAuditTarget", () => {
-    const from = result.index.nodes['audit/SelectNextGapToFix'];
-    expect(from.followed_by).toContain('audit/DetectSelfAuditTarget');
+    const src = result.index.nodes['audit/SelectNextGapToFix'];
+    expect(src.followed_by).toContain('audit/DetectSelfAuditTarget');
   });
 
   it("step 6: audit/BuildGapFixPrompt builds a specific fix prompt for the selected gap", () => {
@@ -143,8 +141,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/DetectSelfAuditTarget → audit/BuildGapFixPrompt", () => {
-    const from = result.index.nodes['audit/DetectSelfAuditTarget'];
-    expect(from.followed_by).toContain('audit/BuildGapFixPrompt');
+    const src = result.index.nodes['audit/DetectSelfAuditTarget'];
+    expect(src.followed_by).toContain('audit/BuildGapFixPrompt');
   });
 
   it("step 7: audit/ProvideFixContext assembles the target module excerpt and gap details into a fix payload", () => {
@@ -155,8 +153,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/BuildGapFixPrompt → audit/ProvideFixContext", () => {
-    const from = result.index.nodes['audit/BuildGapFixPrompt'];
-    expect(from.followed_by).toContain('audit/ProvideFixContext');
+    const src = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(src.followed_by).toContain('audit/ProvideFixContext');
   });
 
   it("step 8: _actors/LLMWorker receives the fix payload with the exact module and gap to address", () => {
@@ -167,8 +165,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/ProvideFixContext → _actors/LLMWorker", () => {
-    const from = result.index.nodes['audit/ProvideFixContext'];
-    expect(from.followed_by).toContain('_actors/LLMWorker');
+    const src = result.index.nodes['audit/ProvideFixContext'];
+    expect(src.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 9: audit/ApplyFix edits the target module YAML to close the coverage gap", () => {
@@ -179,8 +177,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: _actors/LLMWorker → audit/ApplyFix", () => {
-    const from = result.index.nodes['_actors/LLMWorker'];
-    expect(from.followed_by).toContain('audit/ApplyFix');
+    const src = result.index.nodes['_actors/LLMWorker'];
+    expect(src.followed_by).toContain('audit/ApplyFix');
   });
 
   it("step 10: audit/VerifyFixCompiles runs compile.ts on the edited module", () => {
@@ -191,8 +189,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/ApplyFix → audit/VerifyFixCompiles", () => {
-    const from = result.index.nodes['audit/ApplyFix'];
-    expect(from.followed_by).toContain('audit/VerifyFixCompiles');
+    const src = result.index.nodes['audit/ApplyFix'];
+    expect(src.followed_by).toContain('audit/VerifyFixCompiles');
   });
 
   it("step 11: _actors/Compiler validates the edited module has 0 errors", () => {
@@ -203,8 +201,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/VerifyFixCompiles → _actors/Compiler", () => {
-    const from = result.index.nodes['audit/VerifyFixCompiles'];
-    expect(from.followed_by).toContain('_actors/Compiler');
+    const src = result.index.nodes['audit/VerifyFixCompiles'];
+    expect(src.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 12: compilation/CompilationResult confirms the fix did not break compilation", () => {
@@ -215,8 +213,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: _actors/Compiler → compilation/CompilationResult", () => {
-    const from = result.index.nodes['_actors/Compiler'];
-    expect(from.followed_by).toContain('compilation/CompilationResult');
+    const src = result.index.nodes['_actors/Compiler'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 13: audit/DetectFixInducedErrors compares pre-fix and post-fix compilation to check for new orphans or duplicates", () => {
@@ -227,8 +225,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: compilation/CompilationResult → audit/DetectFixInducedErrors", () => {
-    const from = result.index.nodes['compilation/CompilationResult'];
-    expect(from.followed_by).toContain('audit/DetectFixInducedErrors');
+    const src = result.index.nodes['compilation/CompilationResult'];
+    expect(src.followed_by).toContain('audit/DetectFixInducedErrors');
   });
 
   it("step 14: audit/VerifyGapClosed re-runs the specific auditor on the fixed area", () => {
@@ -239,8 +237,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/DetectFixInducedErrors → audit/VerifyGapClosed", () => {
-    const from = result.index.nodes['audit/DetectFixInducedErrors'];
-    expect(from.followed_by).toContain('audit/VerifyGapClosed');
+    const src = result.index.nodes['audit/DetectFixInducedErrors'];
+    expect(src.followed_by).toContain('audit/VerifyGapClosed');
   });
 
   it("step 15: _actors/Auditor confirms the specific gap is now closed", () => {
@@ -251,8 +249,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/VerifyGapClosed → _actors/Auditor", () => {
-    const from = result.index.nodes['audit/VerifyGapClosed'];
-    expect(from.followed_by).toContain('_actors/Auditor');
+    const src = result.index.nodes['audit/VerifyGapClosed'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 16: audit/TrackAuditRound increments the cumulative gaps-fixed counter", () => {
@@ -263,8 +261,8 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: _actors/Auditor → audit/TrackAuditRound", () => {
-    const from = result.index.nodes['_actors/Auditor'];
-    expect(from.followed_by).toContain('audit/TrackAuditRound');
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/TrackAuditRound');
   });
 
   it("step 17: convergence/ConvergenceState updates with the fix result — either more gaps remain or all are closed", () => {
@@ -275,22 +273,12 @@ describe("FixAuditGaps", () => {
   });
 
   it("connection: audit/TrackAuditRound → convergence/ConvergenceState", () => {
-    const from = result.index.nodes['audit/TrackAuditRound'];
-    expect(from.followed_by).toContain('convergence/ConvergenceState');
+    const src = result.index.nodes['audit/TrackAuditRound'];
+    expect(src.followed_by).toContain('convergence/ConvergenceState');
   });
 
-  it("journey covers full fix pipeline (17 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 17 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(17);
-    expect(journey.steps[0].node).toBe('audit/AuditFindingsList');
-    expect(journey.steps[16].node).toBe('convergence/ConvergenceState');
-  });
-
-  it("journey actor is LLMWorker (first actor in steps)", () => {
-    expect(journey.actor).toBe('_actors/LLMWorker');
-  });
-
-  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

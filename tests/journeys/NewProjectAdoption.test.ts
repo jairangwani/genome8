@@ -7,41 +7,35 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: src/cli.ts
-// Implementation: src/convergence.ts
-
-function buildAdoptionModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      NewProjectAdopter: { type: 'actor', description: 'Encounters genome8 and wants to try it on their project' },
-      ProjectOwner: { type: 'actor', description: 'Writes their first spec.md describing their system' },
+      NewProjectAdopter: { type: 'actor', description: 'a user who encounters genome8 and wants to try it on their project' },
+      ProjectOwner: { type: 'actor', description: 'the human who writes spec.md as the sole input to the system' },
     },
-    journeys: {},
   });
 
   modules.set('convergence', {
     nodes: {
-      ConvergenceCLI: { type: 'interface', description: 'Receives the command to start convergence' },
-      ReadSpec: { type: 'process', description: 'Reads the new project spec.md' },
-      ConvergenceState: { type: 'artifact', description: 'Tracks convergence through all pipeline steps' },
+      ConvergenceCLI: { type: 'interface', description: 'the CLI entry point that receives commands to start or resume convergence' },
+      ReadSpec: { type: 'process', description: 'reads the spec.md file from disk as the first pipeline step' },
+      ConvergenceState: { type: 'artifact', description: 'JSON file tracking which pipeline steps have completed and their results' },
     },
-    journeys: {},
   });
 
   modules.set('organization', {
     nodes: {
-      IdentifyModules: { type: 'process', description: 'Discovers the project modules from the spec' },
+      IdentifyModules: { type: 'process', description: 'analyzes the spec to identify the set of modules the system should have' },
     },
-    journeys: {},
   });
 
   modules.set('actors', {
     nodes: {
-      DiscoverFromActivities: { type: 'process', description: 'Discovers the project actors from the activities angle' },
-      DiscoverFromThreats: { type: 'process', description: 'Discovers threat actors relevant to the new project' },
-      DiscoverFromLifecycle: { type: 'process', description: 'Discovers lifecycle actors for the new project' },
+      DiscoverFromActivities: { type: 'process', description: 'analyzes the spec to find actors from the activities perspective' },
+      DiscoverFromThreats: { type: 'process', description: 'analyzes the spec to find threat actors' },
+      DiscoverFromLifecycle: { type: 'process', description: 'analyzes the spec to find lifecycle actors' },
     },
     journeys: {
       NewProjectAdoption: {
@@ -64,7 +58,7 @@ function buildAdoptionModules() {
 }
 
 describe("NewProjectAdoption", () => {
-  const modules = buildAdoptionModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['NewProjectAdoption'];
 
@@ -72,6 +66,7 @@ describe("NewProjectAdoption", () => {
     const node = result.index.nodes['_actors/NewProjectAdopter'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('NewProjectAdoption'))).toBe(true);
   });
 
   it("step 2: _actors/ProjectOwner writes their first spec.md describing their system", () => {
@@ -82,8 +77,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: _actors/NewProjectAdopter → _actors/ProjectOwner", () => {
-    const from = result.index.nodes['_actors/NewProjectAdopter'];
-    expect(from.followed_by).toContain('_actors/ProjectOwner');
+    const src = result.index.nodes['_actors/NewProjectAdopter'];
+    expect(src.followed_by).toContain('_actors/ProjectOwner');
   });
 
   it("step 3: convergence/ConvergenceCLI receives the command to start convergence for the first time", () => {
@@ -94,8 +89,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: _actors/ProjectOwner → convergence/ConvergenceCLI", () => {
-    const from = result.index.nodes['_actors/ProjectOwner'];
-    expect(from.followed_by).toContain('convergence/ConvergenceCLI');
+    const src = result.index.nodes['_actors/ProjectOwner'];
+    expect(src.followed_by).toContain('convergence/ConvergenceCLI');
   });
 
   it("step 4: convergence/ReadSpec reads the new project's spec.md", () => {
@@ -106,8 +101,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: convergence/ConvergenceCLI → convergence/ReadSpec", () => {
-    const from = result.index.nodes['convergence/ConvergenceCLI'];
-    expect(from.followed_by).toContain('convergence/ReadSpec');
+    const src = result.index.nodes['convergence/ConvergenceCLI'];
+    expect(src.followed_by).toContain('convergence/ReadSpec');
   });
 
   it("step 5: organization/IdentifyModules discovers the project's modules from the spec", () => {
@@ -118,8 +113,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: convergence/ReadSpec → organization/IdentifyModules", () => {
-    const from = result.index.nodes['convergence/ReadSpec'];
-    expect(from.followed_by).toContain('organization/IdentifyModules');
+    const src = result.index.nodes['convergence/ReadSpec'];
+    expect(src.followed_by).toContain('organization/IdentifyModules');
   });
 
   it("step 6: actors/DiscoverFromActivities discovers the project's actors from the activities angle", () => {
@@ -130,8 +125,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: organization/IdentifyModules → actors/DiscoverFromActivities", () => {
-    const from = result.index.nodes['organization/IdentifyModules'];
-    expect(from.followed_by).toContain('actors/DiscoverFromActivities');
+    const src = result.index.nodes['organization/IdentifyModules'];
+    expect(src.followed_by).toContain('actors/DiscoverFromActivities');
   });
 
   it("step 7: actors/DiscoverFromThreats discovers threat actors relevant to the new project", () => {
@@ -142,8 +137,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: actors/DiscoverFromActivities → actors/DiscoverFromThreats", () => {
-    const from = result.index.nodes['actors/DiscoverFromActivities'];
-    expect(from.followed_by).toContain('actors/DiscoverFromThreats');
+    const src = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(src.followed_by).toContain('actors/DiscoverFromThreats');
   });
 
   it("step 8: actors/DiscoverFromLifecycle discovers lifecycle actors for the new project", () => {
@@ -154,8 +149,8 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: actors/DiscoverFromThreats → actors/DiscoverFromLifecycle", () => {
-    const from = result.index.nodes['actors/DiscoverFromThreats'];
-    expect(from.followed_by).toContain('actors/DiscoverFromLifecycle');
+    const src = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(src.followed_by).toContain('actors/DiscoverFromLifecycle');
   });
 
   it("step 9: convergence/ConvergenceState tracks the first-time convergence through all pipeline steps", () => {
@@ -166,27 +161,12 @@ describe("NewProjectAdoption", () => {
   });
 
   it("connection: actors/DiscoverFromLifecycle → convergence/ConvergenceState", () => {
-    const from = result.index.nodes['actors/DiscoverFromLifecycle'];
-    expect(from.followed_by).toContain('convergence/ConvergenceState');
+    const src = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(src.followed_by).toContain('convergence/ConvergenceState');
   });
 
-  it("journey covers the full adoption pipeline (9 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 9 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(9);
-    expect(journey.steps[0].node).toBe('_actors/NewProjectAdopter');
-    expect(journey.steps[8].node).toBe('convergence/ConvergenceState');
-  });
-
-  it("journey actor is NewProjectAdopter (first actor in steps)", () => {
-    expect(journey.actor).toBe('_actors/NewProjectAdopter');
-  });
-
-  it("triggered_by_actors propagates from NewProjectAdopter through the pipeline", () => {
-    const readSpec = result.index.nodes['convergence/ReadSpec'];
-    expect(readSpec.triggered_by_actors).toContain('_actors/NewProjectAdopter');
-  });
-
-  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

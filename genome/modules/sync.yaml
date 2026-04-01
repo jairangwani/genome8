@@ -1387,3 +1387,33 @@ journeys:
         action: stores the verified complete stale list after all markers are confirmed written
       - node: convergence/TargetedReconvergence
         action: receives the verified stale list knowing all markers are confirmed on disk
+
+  RejectSpoofedEventDuringSync:
+    steps:
+      - node: _actors/EventSpoofer
+        action: crafts a fake event file with a fabricated interface hash that passed initial format validation
+      - node: ParseEventPayload
+        action: parses the spoofed event payload extracting the claimed interface hash
+      - node: FetchDependencyHash
+        action: fetches the actual current interface hash from the dependency's published interface file
+      - node: CrossValidateEventHashWithFetchedHash
+        action: compares the event's claimed hash against the fetched actual hash and detects a mismatch
+      - node: RejectMalformedEvent
+        action: rejects the event because the claimed hash does not match the dependency's real published interface
+      - node: SyncResult
+        action: records that no modules were marked stale because the event was identified as spoofed
+
+  BlockOscillatingSyncFromLoopTrigger:
+    steps:
+      - node: _actors/InfiniteLoopTrigger
+        action: crafts circular dependency changes causing box A to update box B which updates box A in a loop
+      - node: ParseEventPayload
+        action: parses the incoming event from the oscillating dependency chain
+      - node: DetectOscillationInOriginChain
+        action: inspects the origin chain and detects the current box already appears in it
+      - node: OscillationBlocksSync
+        action: enforces the rule that sync must not proceed when oscillation is detected in the origin chain
+      - node: SuppressSyncOnOscillation
+        action: suppresses the sync operation to break the infinite ripple cycle
+      - node: SyncResult
+        action: records that sync was aborted due to oscillation detection preventing unbounded ripple

@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("RecoverFromMode2UpdateFailure", () => {
   it("step 1: codegen/ApplyEditToExistingCode LLM has applied edits to an existing source file during Mode 2 update", () => {
     // Node: codegen/ApplyEditToExistingCode (process)
@@ -13,7 +15,7 @@ describe("RecoverFromMode2UpdateFailure", () => {
   });
 
   it("step 2: codegen/ValidateFilledSyntax runs syntax and type checking on the edited file and detects errors introduced by the edit", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: runs syntax and type checking on the edited file and detects errors introduced by the edit
     // TODO: agent fills assertion
   });
@@ -24,7 +26,7 @@ describe("RecoverFromMode2UpdateFailure", () => {
   });
 
   it("step 3: codegen/ValidateFilledSyntax collects the specific error messages with line numbers from the failed edit", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: collects the specific error messages with line numbers from the failed edit
     // TODO: agent fills assertion
   });
@@ -123,7 +125,7 @@ describe("RecoverFromMode2UpdateFailure", () => {
   });
 
   it("step 12: codegen/ValidateFilledSyntax re-checks the corrected edit for syntax and type errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: re-checks the corrected edit for syntax and type errors
     // TODO: agent fills assertion
   });

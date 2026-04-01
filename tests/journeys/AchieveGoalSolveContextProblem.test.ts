@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 
 describe("AchieveGoalSolveContextProblem", () => {
   it("step 1: convergence/SourceOfTruthHierarchy asserts that any system at any scale gets scoped, connected, synced context", () => {

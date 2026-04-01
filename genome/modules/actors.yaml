@@ -684,7 +684,7 @@ journeys:
         action: merges actors with organization context ensuring each actor maps to at least one module
 
   ActorExcerptRoundTrip:
-    files: [tests/journeys/ActorExcerptRoundTrip.test.ts]
+    files: [test/journeys/ActorExcerptRoundTrip.test.ts]
     steps:
       - node: ActorsFile
         action: provides the full validated actor list on disk

@@ -5,7 +5,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 
 describe("RecoverCrashedChildEngine", () => {
   it("step 1: convergence/SplitIntoChildEngines has spawned multiple child engine processes for a hierarchy split", () => {

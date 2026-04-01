@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
 // Implementation: test/codegen.test.ts
 
 describe("RecoverFromFillSyntaxError", () => {
@@ -26,7 +27,7 @@ describe("RecoverFromFillSyntaxError", () => {
   });
 
   it("step 3: codegen/ValidateFilledSyntax runs syntax checking and detects errors in the filled output", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: runs syntax checking and detects errors in the filled output
     // TODO: agent fills assertion
   });
@@ -37,7 +38,7 @@ describe("RecoverFromFillSyntaxError", () => {
   });
 
   it("step 4: codegen/ValidateFilledSyntax collects the specific error messages with line numbers and error types", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: collects the specific error messages with line numbers and error types
     // TODO: agent fills assertion
   });
@@ -136,7 +137,7 @@ describe("RecoverFromFillSyntaxError", () => {
   });
 
   it("step 13: codegen/ValidateFilledSyntax re-checks the corrected fill for syntax and type errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: re-checks the corrected fill for syntax and type errors
     // TODO: agent fills assertion
   });

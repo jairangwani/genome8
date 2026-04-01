@@ -115,7 +115,7 @@ describe("FillSkeletonsWithLLM", () => {
   });
 
   it("step 11: codegen/ValidateFilledSyntax runs TypeScript syntax and type checking on the filled output", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: runs TypeScript syntax and type checking on the filled output
     // TODO: agent fills assertion
   });

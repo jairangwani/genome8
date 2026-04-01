@@ -150,6 +150,7 @@ Engine converged → self-audit reads own code + own goals → asks "what preven
 - **Never ask LLM open-ended questions in a loop.** Bounded creation + targeted fixes.
 - **Event-driven, not polling.** Zero cost when nothing changes.
 - **No batch mode.** No --once flag. Engine starts, bootstraps if needed, then watches forever. Every action after bootstrap is targeted to a specific change.
+- **Spec examples are tests.** CLI examples in spec (e.g., `cmd "input" → output`) are executable validation. Run them after every code change and convergence.
 - **Same box at every level.** convergence.ts is the same code at parent, child, grandchild.
 - **Shared actors.** Parent discovers, children inherit. No duplicates.
 - **External refs are warnings in children, errors in parent.** Parent validates after children converge.

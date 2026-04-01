@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 // Implementation: test/director.test.ts
 
 describe("ProveBuildPando", () => {

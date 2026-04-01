@@ -6,34 +6,24 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildValidationModules(opts?: { missingAngle?: 'activities' | 'threats' | 'lifecycle'; badType?: boolean }) {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
-  const actorNodes: Record<string, { type: string; description: string }> = {};
-  if (!opts?.missingAngle || opts.missingAngle !== 'activities') {
-    actorNodes.ProjectOwner = { type: 'actor', description: 'Person who wrote the spec' };
-  }
-  if (!opts?.missingAngle || opts.missingAngle !== 'threats') {
-    actorNodes.MaliciousSpecAuthor = { type: 'actor', description: 'Adversary injecting malicious spec content' };
-  }
-  if (!opts?.missingAngle || opts.missingAngle !== 'lifecycle') {
-    actorNodes.NewProjectAdopter = { type: 'actor', description: 'First-time user onboarding' };
-  }
-  if (opts?.badType) {
-    actorNodes.BadActor = { type: 'process', description: 'This should be type actor but is process' };
-  }
-
-  modules.set('_actors', { nodes: actorNodes, journeys: {} });
+  modules.set('convergence', {
+    nodes: {
+      ValidateActorCompleteness: { type: 'process', description: 'checks that actor discovery produced valid results before proceeding to module creation' },
+    },
+  });
 
   modules.set('actors', {
     nodes: {
-      ActivitiesActorList: { type: 'artifact', description: 'Stores the activities-perspective actors' },
-      ThreatsActorList: { type: 'artifact', description: 'Stores the threats-perspective actors' },
-      LifecycleActorList: { type: 'artifact', description: 'Stores the lifecycle-perspective actors' },
-      ValidateThreeAngleCompleteness: { type: 'process', description: 'Checks that each angle produced at least one actor' },
-      ThreeAngleDiscovery: { type: 'rule', description: 'Enforces all 3 angles are satisfied' },
-      ActorsFile: { type: 'artifact', description: 'The _actors.yaml file on disk' },
-      ValidateActorYAMLStructure: { type: 'process', description: 'Checks that every entry has type actor and a non-empty description' },
+      ActivitiesActorList: { type: 'artifact', description: 'the list of actors discovered from the activities perspective before merging' },
+      ThreatsActorList: { type: 'artifact', description: 'the list of actors discovered from the threats perspective before merging' },
+      LifecycleActorList: { type: 'artifact', description: 'the list of actors discovered from the lifecycle perspective before merging' },
+      ValidateThreeAngleCompleteness: { type: 'process', description: 'checks that all 3 discovery angles produced at least one actor each' },
+      ThreeAngleDiscovery: { type: 'rule', description: 'actors must be discovered from exactly 3 angles (activities, threats, lifecycle) to ensure comprehensive coverage' },
+      ActorsFile: { type: 'artifact', description: 'the _actors.yaml file containing all discovered actors with type and description' },
+      ValidateActorYAMLStructure: { type: 'process', description: 'checks that each entry in _actors.yaml has type actor and a non-empty description' },
     },
     journeys: {
       ValidateActorsBeforeProceeding: {
@@ -54,18 +44,11 @@ function buildValidationModules(opts?: { missingAngle?: 'activities' | 'threats'
     },
   });
 
-  modules.set('convergence', {
-    nodes: {
-      ValidateActorCompleteness: { type: 'process', description: 'Receives actor validation result and proceeds if all checks pass' },
-    },
-    journeys: {},
-  });
-
   return modules;
 }
 
 describe("ValidateActorsBeforeProceeding", () => {
-  const modules = buildValidationModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['ValidateActorsBeforeProceeding'];
 
@@ -73,28 +56,31 @@ describe("ValidateActorsBeforeProceeding", () => {
     const node = result.index.nodes['actors/ActivitiesActorList'];
     expect(node).toBeDefined();
     expect(node.type).toBe('artifact');
+    expect(node.in_journeys.some(j => j.startsWith('ValidateActorsBeforeProceeding'))).toBe(true);
   });
 
   it("step 2: actors/ThreatsActorList provides the threats-angle results for completeness checking", () => {
     const node = result.index.nodes['actors/ThreatsActorList'];
     expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
     expect(node.preceded_by).toContain('actors/ActivitiesActorList');
   });
 
   it("connection: actors/ActivitiesActorList → actors/ThreatsActorList", () => {
-    const from = result.index.nodes['actors/ActivitiesActorList'];
-    expect(from.followed_by).toContain('actors/ThreatsActorList');
+    const src = result.index.nodes['actors/ActivitiesActorList'];
+    expect(src.followed_by).toContain('actors/ThreatsActorList');
   });
 
   it("step 3: actors/LifecycleActorList provides the lifecycle-angle results for completeness checking", () => {
     const node = result.index.nodes['actors/LifecycleActorList'];
     expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
     expect(node.preceded_by).toContain('actors/ThreatsActorList');
   });
 
   it("connection: actors/ThreatsActorList → actors/LifecycleActorList", () => {
-    const from = result.index.nodes['actors/ThreatsActorList'];
-    expect(from.followed_by).toContain('actors/LifecycleActorList');
+    const src = result.index.nodes['actors/ThreatsActorList'];
+    expect(src.followed_by).toContain('actors/LifecycleActorList');
   });
 
   it("step 4: actors/ValidateThreeAngleCompleteness checks that the activities angle produced at least one actor", () => {
@@ -105,14 +91,15 @@ describe("ValidateActorsBeforeProceeding", () => {
   });
 
   it("connection: actors/LifecycleActorList → actors/ValidateThreeAngleCompleteness", () => {
-    const from = result.index.nodes['actors/LifecycleActorList'];
-    expect(from.followed_by).toContain('actors/ValidateThreeAngleCompleteness');
+    const src = result.index.nodes['actors/LifecycleActorList'];
+    expect(src.followed_by).toContain('actors/ValidateThreeAngleCompleteness');
   });
 
   it("step 5: actors/ValidateThreeAngleCompleteness checks that the threats angle produced at least one actor", () => {
-    // Same node reused — it appears multiple times in the journey
+    // Same node repeated — validate it participates in consecutive steps
     const node = result.index.nodes['actors/ValidateThreeAngleCompleteness'];
-    expect(node.in_journeys.length).toBeGreaterThanOrEqual(1);
+    expect(node.preceded_by).toContain('actors/LifecycleActorList');
+    expect(node.followed_by).toContain('actors/ThreeAngleDiscovery');
   });
 
   it("connection: actors/ValidateThreeAngleCompleteness → actors/ValidateThreeAngleCompleteness", () => {
@@ -124,7 +111,7 @@ describe("ValidateActorsBeforeProceeding", () => {
 
   it("step 6: actors/ValidateThreeAngleCompleteness checks that the lifecycle angle produced at least one actor", () => {
     const node = result.index.nodes['actors/ValidateThreeAngleCompleteness'];
-    expect(node).toBeDefined();
+    expect(node.followed_by).toContain('actors/ThreeAngleDiscovery');
   });
 
   it("connection: actors/ValidateThreeAngleCompleteness → actors/ValidateThreeAngleCompleteness", () => {
@@ -140,8 +127,8 @@ describe("ValidateActorsBeforeProceeding", () => {
   });
 
   it("connection: actors/ValidateThreeAngleCompleteness → actors/ThreeAngleDiscovery", () => {
-    const from = result.index.nodes['actors/ValidateThreeAngleCompleteness'];
-    expect(from.followed_by).toContain('actors/ThreeAngleDiscovery');
+    const src = result.index.nodes['actors/ValidateThreeAngleCompleteness'];
+    expect(src.followed_by).toContain('actors/ThreeAngleDiscovery');
   });
 
   it("step 8: actors/ActorsFile provides the written _actors.yaml for structural validation", () => {
@@ -152,8 +139,8 @@ describe("ValidateActorsBeforeProceeding", () => {
   });
 
   it("connection: actors/ThreeAngleDiscovery → actors/ActorsFile", () => {
-    const from = result.index.nodes['actors/ThreeAngleDiscovery'];
-    expect(from.followed_by).toContain('actors/ActorsFile');
+    const src = result.index.nodes['actors/ThreeAngleDiscovery'];
+    expect(src.followed_by).toContain('actors/ActorsFile');
   });
 
   it("step 9: actors/ValidateActorYAMLStructure checks that every entry has type actor and a non-empty description", () => {
@@ -164,18 +151,18 @@ describe("ValidateActorsBeforeProceeding", () => {
   });
 
   it("connection: actors/ActorsFile → actors/ValidateActorYAMLStructure", () => {
-    const from = result.index.nodes['actors/ActorsFile'];
-    expect(from.followed_by).toContain('actors/ValidateActorYAMLStructure');
+    const src = result.index.nodes['actors/ActorsFile'];
+    expect(src.followed_by).toContain('actors/ValidateActorYAMLStructure');
   });
 
   it("step 10: actors/ValidateActorYAMLStructure flags any malformed entries for correction before compilation", () => {
     const node = result.index.nodes['actors/ValidateActorYAMLStructure'];
-    // Self-connection from step 9 to step 10
     expect(node.preceded_by).toContain('actors/ValidateActorYAMLStructure');
   });
 
   it("connection: actors/ValidateActorYAMLStructure → actors/ValidateActorYAMLStructure", () => {
     const node = result.index.nodes['actors/ValidateActorYAMLStructure'];
+    expect(node.preceded_by).toContain('actors/ValidateActorYAMLStructure');
     expect(node.followed_by).toContain('actors/ValidateActorYAMLStructure');
   });
 
@@ -187,17 +174,12 @@ describe("ValidateActorsBeforeProceeding", () => {
   });
 
   it("connection: actors/ValidateActorYAMLStructure → convergence/ValidateActorCompleteness", () => {
-    const from = result.index.nodes['actors/ValidateActorYAMLStructure'];
-    expect(from.followed_by).toContain('convergence/ValidateActorCompleteness');
+    const src = result.index.nodes['actors/ValidateActorYAMLStructure'];
+    expect(src.followed_by).toContain('convergence/ValidateActorCompleteness');
   });
 
-  it("all 3 actor angle nodes exist in the _actors module", () => {
-    expect(result.index.nodes['_actors/ProjectOwner']).toBeDefined();
-    expect(result.index.nodes['_actors/MaliciousSpecAuthor']).toBeDefined();
-    expect(result.index.nodes['_actors/NewProjectAdopter']).toBeDefined();
-  });
-
-  it("compiles without errors", () => {
+  it("journey has 11 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(11);
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

@@ -217,7 +217,7 @@ nodes:
   ConvergenceCLI:
     type: interface
     description: command-line interface to trigger and monitor the convergence pipeline
-    files: [src/cli.ts, src/convergence.ts, test/integration.test.ts, test-project/]
+    files: [src/cli.ts, src/convergence.ts]
   StopConvergenceProcesses:
     type: process
     description: reads pids.json to find running convergence process tree, kills children first then main process with cross-platform support, and deletes the pid file
@@ -2093,7 +2093,7 @@ journeys:
         action: records the hierarchy decision as complete after retry
 
   AchieveGoalSolveContextProblem:
-    files: [tests/journeys/AchieveGoalSolveContextProblem.test.ts]
+    files: [test/journeys/AchieveGoalSolveContextProblem.test.ts]
     steps:
       - node: SourceOfTruthHierarchy
         action: asserts that any system at any scale gets scoped, connected, synced context
@@ -2117,7 +2117,7 @@ journeys:
         action: scales to any depth by spawning child engines — proving it works at any scale
 
   AchieveGoalGenomeIsProtocol:
-    files: [tests/journeys/AchieveGoalGenomeIsProtocol.test.ts]
+    files: [test/journeys/AchieveGoalGenomeIsProtocol.test.ts]
     steps:
       - node: GenomeIsProtocolNotTool
         action: asserts that genome8 is a protocol applicable to any system, not a single-purpose tool
@@ -2139,7 +2139,7 @@ journeys:
         action: confirms the protocol is self-describing — genome managing genome
 
   AchieveGoalProductionReady:
-    files: [tests/journeys/AchieveGoalProductionReady.test.ts]
+    files: [test/journeys/AchieveGoalProductionReady.test.ts]
     steps:
       - node: ProductionReadyNoShortcuts
         action: asserts that every pipeline phase enforces production-quality safeguards
@@ -2163,7 +2163,7 @@ journeys:
         action: verifies all phases completed in correct order before declaring convergence
 
   AchieveGoalSelfSustaining:
-    files: [tests/journeys/AchieveGoalSelfSustaining.test.ts]
+    files: [test/journeys/AchieveGoalSelfSustaining.test.ts]
     steps:
       - node: SelfSustainingWithoutHumans
         action: asserts that the system operates autonomously after the initial spec is written
@@ -2185,7 +2185,7 @@ journeys:
         action: returns to sleep after autonomous reconvergence — the cycle is fully self-sustaining
 
   AchieveGoalBuildPando:
-    files: [tests/journeys/AchieveGoalBuildPando.test.ts]
+    files: [test/journeys/AchieveGoalBuildPando.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: writes a spec.md describing Pando — a decentralized AI platform with multiple independent subsystems
@@ -2209,7 +2209,7 @@ journeys:
         action: runs journey tests validating that Pando subsystems interact correctly through published interfaces
 
   AchieveGoalBuildPandoRipple:
-    files: [tests/journeys/AchieveGoalBuildPandoRipple.test.ts]
+    files: [test/journeys/AchieveGoalBuildPandoRipple.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: converges Pando's consensus subsystem and publishes an interface change
@@ -2227,7 +2227,7 @@ journeys:
         action: ripples the change to any boxes that depend on Pando's published interface
 
   AchieveGoalBuildPandoValidatesProtocol:
-    files: [tests/journeys/AchieveGoalBuildPandoValidatesProtocol.test.ts]
+    files: [test/journeys/AchieveGoalBuildPandoValidatesProtocol.test.ts]
     steps:
       - node: GenomeIsProtocolNotTool
         action: asserts Pando proves genome8 works on a system genome8 did not build
@@ -3254,3 +3254,26 @@ journeys:
         action: skips publish if the interface hash is unchanged despite the dependency update
       - node: EnterSleepMode
         action: returns to zero-cost sleep, ripple continues only if this engine's interface changed
+
+  ScaffoldAndConvergeForNewAdopter:
+    steps:
+      - node: _actors/NewProjectAdopter
+        action: writes spec.md describing their system for the first time and runs the convergence CLI
+      - node: ScaffoldProject
+        action: auto-creates package.json and tsconfig.json since the project has no existing configuration
+      - node: ReadSpec
+        action: reads the new adopter's spec.md as the sole human input to the pipeline
+      - node: WriteOrganization
+        action: analyzes the spec and writes the organization file identifying modules and dependencies
+      - node: DiscoverActors
+        action: discovers actors from three angles in the new project's spec
+      - node: ModuleCreation
+        action: creates YAML module files for each identified module
+      - node: CompileCheck
+        action: validates the newly created modules compile with zero errors
+      - node: TriggerCodegen
+        action: generates code skeletons and fills implementations for the new project
+      - node: TriggerPublish
+        action: publishes the new project's interface after successful convergence
+      - node: EnterSleepMode
+        action: enters watch mode ready to respond to spec or code changes from the new adopter

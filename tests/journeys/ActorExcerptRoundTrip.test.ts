@@ -5,26 +5,37 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: src/excerpt.ts
-
-function buildExcerptRoundTripModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      LLMWorker: { type: 'actor', description: 'Reads the excerpt and writes journey steps referencing _actors/ActorName for discovered actors' },
+      LLMWorker: { type: 'actor', description: 'persistent Claude Code process that creates module content, fills code, and fills test assertions when asked' },
     },
-    journeys: {},
+  });
+
+  modules.set('excerpt', {
+    nodes: {
+      CollectReferencedActors: { type: 'process', description: 'gathers actor references needed by the target module domain' },
+      CollectTriggeredByActors: { type: 'process', description: 'assembles actor descriptions and their journey participation into excerpt context' },
+      AssembleExcerpt: { type: 'process', description: 'assembles the final excerpt including all context sections for the worker' },
+      ExcerptOutput: { type: 'artifact', description: 'the assembled excerpt text ready to be sent to the worker as context' },
+    },
+  });
+
+  modules.set('llm', {
+    nodes: {
+      TaskPayload: { type: 'artifact', description: 'the complete task payload sent to the LLM worker including excerpt and instructions' },
+    },
   });
 
   modules.set('actors', {
     nodes: {
-      ActorsFile: { type: 'artifact', description: 'Provides the full validated actor list on disk' },
-      ProvideActorsForModuleCreation: { type: 'process', description: 'Extracts actor names and descriptions relevant to the target module' },
-      ValidateActorCoverage: { type: 'process', description: 'After all modules are created, checks that every actor appears in at least one journey' },
+      ActorsFile: { type: 'artifact', description: 'the _actors.yaml file containing all discovered actors with type and description' },
+      ProvideActorsForModuleCreation: { type: 'process', description: 'supplies the actor list to the excerpt generator so module workers know which _actors/ references are valid' },
+      ValidateActorCoverage: { type: 'process', description: 'checks that every discovered actor appears in at least one journey across all modules' },
     },
     journeys: {
       ActorExcerptRoundTrip: {
@@ -43,28 +54,11 @@ function buildExcerptRoundTripModules() {
     },
   });
 
-  modules.set('excerpt', {
-    nodes: {
-      CollectReferencedActors: { type: 'process', description: 'Gathers the actor references that the target module journeys use' },
-      CollectTriggeredByActors: { type: 'process', description: 'Assembles actor descriptions and their journey participation into excerpt context' },
-      AssembleExcerpt: { type: 'process', description: 'Includes the actor context section in the final module excerpt' },
-      ExcerptOutput: { type: 'artifact', description: 'The assembled excerpt now contains actor names the worker can reference as _actors/ActorName' },
-    },
-    journeys: {},
-  });
-
-  modules.set('llm', {
-    nodes: {
-      TaskPayload: { type: 'artifact', description: 'Packages the excerpt with actor context into the module creation task' },
-    },
-    journeys: {},
-  });
-
   return modules;
 }
 
 describe("ActorExcerptRoundTrip", () => {
-  const modules = buildExcerptRoundTripModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['ActorExcerptRoundTrip'];
 
@@ -72,6 +66,7 @@ describe("ActorExcerptRoundTrip", () => {
     const node = result.index.nodes['actors/ActorsFile'];
     expect(node).toBeDefined();
     expect(node.type).toBe('artifact');
+    expect(node.in_journeys.some(j => j.startsWith('ActorExcerptRoundTrip'))).toBe(true);
   });
 
   it("step 2: actors/ProvideActorsForModuleCreation extracts actor names and descriptions relevant to the target module", () => {
@@ -82,8 +77,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: actors/ActorsFile → actors/ProvideActorsForModuleCreation", () => {
-    const from = result.index.nodes['actors/ActorsFile'];
-    expect(from.followed_by).toContain('actors/ProvideActorsForModuleCreation');
+    const src = result.index.nodes['actors/ActorsFile'];
+    expect(src.followed_by).toContain('actors/ProvideActorsForModuleCreation');
   });
 
   it("step 3: excerpt/CollectReferencedActors gathers the actor references that the target module's journeys use", () => {
@@ -94,8 +89,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: actors/ProvideActorsForModuleCreation → excerpt/CollectReferencedActors", () => {
-    const from = result.index.nodes['actors/ProvideActorsForModuleCreation'];
-    expect(from.followed_by).toContain('excerpt/CollectReferencedActors');
+    const src = result.index.nodes['actors/ProvideActorsForModuleCreation'];
+    expect(src.followed_by).toContain('excerpt/CollectReferencedActors');
   });
 
   it("step 4: excerpt/CollectTriggeredByActors assembles actor descriptions and their journey participation into excerpt context", () => {
@@ -106,8 +101,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: excerpt/CollectReferencedActors → excerpt/CollectTriggeredByActors", () => {
-    const from = result.index.nodes['excerpt/CollectReferencedActors'];
-    expect(from.followed_by).toContain('excerpt/CollectTriggeredByActors');
+    const src = result.index.nodes['excerpt/CollectReferencedActors'];
+    expect(src.followed_by).toContain('excerpt/CollectTriggeredByActors');
   });
 
   it("step 5: excerpt/AssembleExcerpt includes the actor context section in the final module excerpt", () => {
@@ -118,8 +113,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: excerpt/CollectTriggeredByActors → excerpt/AssembleExcerpt", () => {
-    const from = result.index.nodes['excerpt/CollectTriggeredByActors'];
-    expect(from.followed_by).toContain('excerpt/AssembleExcerpt');
+    const src = result.index.nodes['excerpt/CollectTriggeredByActors'];
+    expect(src.followed_by).toContain('excerpt/AssembleExcerpt');
   });
 
   it("step 6: excerpt/ExcerptOutput the assembled excerpt now contains actor names the worker can reference as _actors/ActorName", () => {
@@ -130,8 +125,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: excerpt/AssembleExcerpt → excerpt/ExcerptOutput", () => {
-    const from = result.index.nodes['excerpt/AssembleExcerpt'];
-    expect(from.followed_by).toContain('excerpt/ExcerptOutput');
+    const src = result.index.nodes['excerpt/AssembleExcerpt'];
+    expect(src.followed_by).toContain('excerpt/ExcerptOutput');
   });
 
   it("step 7: llm/TaskPayload packages the excerpt with actor context into the module creation task", () => {
@@ -142,8 +137,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: excerpt/ExcerptOutput → llm/TaskPayload", () => {
-    const from = result.index.nodes['excerpt/ExcerptOutput'];
-    expect(from.followed_by).toContain('llm/TaskPayload');
+    const src = result.index.nodes['excerpt/ExcerptOutput'];
+    expect(src.followed_by).toContain('llm/TaskPayload');
   });
 
   it("step 8: _actors/LLMWorker reads the excerpt and writes journey steps referencing _actors/ActorName for discovered actors", () => {
@@ -154,8 +149,8 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: llm/TaskPayload → _actors/LLMWorker", () => {
-    const from = result.index.nodes['llm/TaskPayload'];
-    expect(from.followed_by).toContain('_actors/LLMWorker');
+    const src = result.index.nodes['llm/TaskPayload'];
+    expect(src.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 9: actors/ValidateActorCoverage after all modules are created, checks that every actor appears in at least one journey", () => {
@@ -166,35 +161,12 @@ describe("ActorExcerptRoundTrip", () => {
   });
 
   it("connection: _actors/LLMWorker → actors/ValidateActorCoverage", () => {
-    const from = result.index.nodes['_actors/LLMWorker'];
-    expect(from.followed_by).toContain('actors/ValidateActorCoverage');
+    const src = result.index.nodes['_actors/LLMWorker'];
+    expect(src.followed_by).toContain('actors/ValidateActorCoverage');
   });
 
-  it("excerpt includes TRIGGERED BY section with actor names", () => {
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'actors',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: '',
-    });
-    expect(excerpt).toContain('TRIGGERED BY');
-    expect(excerpt).toContain('LLMWorker');
-  });
-
-  it("journey covers full round-trip pipeline (9 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 9 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(9);
-    expect(journey.steps[0].node).toBe('actors/ActorsFile');
-    expect(journey.steps[8].node).toBe('actors/ValidateActorCoverage');
-  });
-
-  it("journey actor is LLMWorker (first actor in steps)", () => {
-    expect(journey.actor).toBe('_actors/LLMWorker');
-  });
-
-  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

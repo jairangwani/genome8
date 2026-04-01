@@ -4,192 +4,287 @@
 // Modules touched: audit, llm, _actors, graph, compilation
 
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: test/compile.test.ts
-// Implementation: test/pando8.test.ts
-// Implementation: test/pando9.test.ts
+function buildModules(): Map<string, ModuleFile> {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      LLMWorker: { type: 'actor', description: 'persistent Claude Code process that creates module content, fills code, and fills test assertions when asked' },
+      Compiler: { type: 'actor', description: 'the compilation process that validates graph structure' },
+      Auditor: { type: 'actor', description: 'the LLM-based auditor that checks coverage from multiple angles' },
+    },
+  });
+
+  modules.set('llm', {
+    nodes: {
+      SendTask: { type: 'process', description: 'sends a task to the LLM worker via stream-JSON protocol' },
+      ReceiveResult: { type: 'process', description: 'receives and parses the result from the LLM worker via stream-JSON protocol' },
+    },
+  });
+
+  modules.set('graph', {
+    nodes: {
+      ModuleFile: { type: 'artifact', description: 'a single module YAML file on disk in the genome/modules directory' },
+    },
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'the output of compile.ts containing the compiled index, issues list, and coverage report' },
+    },
+  });
+
+  modules.set('audit', {
+    nodes: {
+      AuditFindingsList: { type: 'artifact', description: 'the collected list of coverage gaps from all 4 auditors with gap type, location, and description' },
+      SelectNextGapToFix: { type: 'process', description: 'picks the highest-priority unfixed gap from the prioritized list and advances the pointer to the next gap' },
+      ProvideFixContext: { type: 'process', description: 'assembles the target module excerpt, the specific gap description, and surrounding graph context into a complete fix payload for the LLM worker' },
+      BuildGapFixPrompt: { type: 'process', description: 'builds a targeted fix prompt for each gap specifying exactly which module to edit and what coverage to add' },
+      ApplyFix: { type: 'process', description: 'delegates to LLM to edit the specific module YAML file to close the identified coverage gap' },
+      VerifyFixCompiles: { type: 'process', description: 'runs compile.ts after each fix to ensure the edit did not introduce new errors' },
+      DetectFixInducedErrors: { type: 'process', description: 'compares pre-fix and post-fix compilation results to detect new orphans, duplicates, or dangling refs' },
+      VerifyGapClosed: { type: 'process', description: 're-runs the specific auditor that found the gap to confirm the fix actually closed it' },
+      DetectFixInducedGaps: { type: 'process', description: 'compares pre-fix and post-fix audit findings to detect new coverage gaps opened by a fix' },
+      TrackAuditRound: { type: 'artifact', description: 'records the current audit-fix-reaudit cycle number and cumulative gaps fixed for progress tracking and termination decisions' },
+    },
+    journeys: {
+      FixSingleGap: {
+        steps: [
+          { node: 'AuditFindingsList', action: 'provides the prioritized list of gaps' },
+          { node: 'SelectNextGapToFix', action: 'picks the next unfixed gap from the prioritized list' },
+          { node: 'ProvideFixContext', action: 'assembles the module excerpt and gap description for the worker' },
+          { node: 'BuildGapFixPrompt', action: 'builds the targeted fix prompt with module context and specific gap' },
+          { node: 'llm/SendTask', action: 'sends the fix task to the LLM worker process' },
+          { node: '_actors/LLMWorker', action: 'reads the fix prompt and understands which module and gap to address' },
+          { node: 'llm/ReceiveResult', action: 'receives the worker edited YAML output' },
+          { node: 'ApplyFix', action: 'writes the edited YAML content to the target module file' },
+          { node: 'graph/ModuleFile', action: 'stores the updated module on disk' },
+          { node: 'VerifyFixCompiles', action: 'triggers compilation on the updated module' },
+          { node: '_actors/Compiler', action: 'validates the edit produced 0 new errors' },
+          { node: 'compilation/CompilationResult', action: 'provides the post-fix compilation result' },
+          { node: 'DetectFixInducedErrors', action: 'checks whether the fix introduced new orphans, duplicates, or dangling refs' },
+          { node: 'VerifyGapClosed', action: 're-runs the auditor that originally found this gap' },
+          { node: '_actors/Auditor', action: 'confirms the specific gap no longer appears in the coverage check' },
+          { node: 'DetectFixInducedGaps', action: 'checks whether the fix opened new coverage gaps in other angles' },
+          { node: 'TrackAuditRound', action: 'records that one more gap has been fixed in this round' },
+        ],
+      },
+    },
+  });
+
+  return modules;
+}
 
 describe("FixSingleGap", () => {
+  const modules = buildModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['FixSingleGap'];
+
   it("step 1: audit/AuditFindingsList provides the prioritized list of gaps", () => {
-    // Node: audit/AuditFindingsList (artifact)
-    // Action: provides the prioritized list of gaps
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.in_journeys.some(j => j.startsWith('FixSingleGap'))).toBe(true);
   });
 
   it("step 2: audit/SelectNextGapToFix picks the next unfixed gap from the prioritized list", () => {
-    // Node: audit/SelectNextGapToFix (process)
-    // Action: picks the next unfixed gap from the prioritized list
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/SelectNextGapToFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
   });
 
   it("connection: audit/AuditFindingsList → audit/SelectNextGapToFix", () => {
-    // Assert that the output of step 1 feeds into step 2
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/AuditFindingsList'];
+    expect(src.followed_by).toContain('audit/SelectNextGapToFix');
   });
 
   it("step 3: audit/ProvideFixContext assembles the module excerpt and gap description for the worker", () => {
-    // Node: audit/ProvideFixContext (process)
-    // Action: assembles the module excerpt and gap description for the worker
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/ProvideFixContext'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/SelectNextGapToFix');
   });
 
   it("connection: audit/SelectNextGapToFix → audit/ProvideFixContext", () => {
-    // Assert that the output of step 2 feeds into step 3
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/SelectNextGapToFix'];
+    expect(src.followed_by).toContain('audit/ProvideFixContext');
   });
 
   it("step 4: audit/BuildGapFixPrompt builds the targeted fix prompt with module context and specific gap", () => {
-    // Node: audit/BuildGapFixPrompt (process)
-    // Action: builds the targeted fix prompt with module context and specific gap
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ProvideFixContext');
   });
 
   it("connection: audit/ProvideFixContext → audit/BuildGapFixPrompt", () => {
-    // Assert that the output of step 3 feeds into step 4
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/ProvideFixContext'];
+    expect(src.followed_by).toContain('audit/BuildGapFixPrompt');
   });
 
   it("step 5: llm/SendTask sends the fix task to the LLM worker process", () => {
-    // Node: llm/SendTask (process)
-    // Action: sends the fix task to the LLM worker process
-    // TODO: agent fills assertion
+    const node = result.index.nodes['llm/SendTask'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/BuildGapFixPrompt');
   });
 
   it("connection: audit/BuildGapFixPrompt → llm/SendTask", () => {
-    // Assert that the output of step 4 feeds into step 5
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(src.followed_by).toContain('llm/SendTask');
   });
 
   it("step 6: _actors/LLMWorker reads the fix prompt and understands which module and gap to address", () => {
-    // Node: _actors/LLMWorker (actor)
-    // Action: reads the fix prompt and understands which module and gap to address
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('llm/SendTask');
   });
 
   it("connection: llm/SendTask → _actors/LLMWorker", () => {
-    // Assert that the output of step 5 feeds into step 6
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['llm/SendTask'];
+    expect(src.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 7: llm/ReceiveResult receives the worker's edited YAML output", () => {
-    // Node: llm/ReceiveResult (process)
-    // Action: receives the worker's edited YAML output
-    // TODO: agent fills assertion
+    const node = result.index.nodes['llm/ReceiveResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
   });
 
   it("connection: _actors/LLMWorker → llm/ReceiveResult", () => {
-    // Assert that the output of step 6 feeds into step 7
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/LLMWorker'];
+    expect(src.followed_by).toContain('llm/ReceiveResult');
   });
 
   it("step 8: audit/ApplyFix writes the edited YAML content to the target module file", () => {
-    // Node: audit/ApplyFix (process)
-    // Action: writes the edited YAML content to the target module file
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/ApplyFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('llm/ReceiveResult');
   });
 
   it("connection: llm/ReceiveResult → audit/ApplyFix", () => {
-    // Assert that the output of step 7 feeds into step 8
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['llm/ReceiveResult'];
+    expect(src.followed_by).toContain('audit/ApplyFix');
   });
 
   it("step 9: graph/ModuleFile stores the updated module on disk", () => {
-    // Node: graph/ModuleFile (artifact)
-    // Action: stores the updated module on disk
-    // TODO: agent fills assertion
+    const node = result.index.nodes['graph/ModuleFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/ApplyFix');
   });
 
   it("connection: audit/ApplyFix → graph/ModuleFile", () => {
-    // Assert that the output of step 8 feeds into step 9
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/ApplyFix'];
+    expect(src.followed_by).toContain('graph/ModuleFile');
   });
 
   it("step 10: audit/VerifyFixCompiles triggers compilation on the updated module", () => {
-    // Node: audit/VerifyFixCompiles (process)
-    // Action: triggers compilation on the updated module
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/VerifyFixCompiles'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('graph/ModuleFile');
   });
 
   it("connection: graph/ModuleFile → audit/VerifyFixCompiles", () => {
-    // Assert that the output of step 9 feeds into step 10
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['graph/ModuleFile'];
+    expect(src.followed_by).toContain('audit/VerifyFixCompiles');
   });
 
   it("step 11: _actors/Compiler validates the edit produced 0 new errors", () => {
-    // Node: _actors/Compiler (actor)
-    // Action: validates the edit produced 0 new errors
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Compiler'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('audit/VerifyFixCompiles');
   });
 
   it("connection: audit/VerifyFixCompiles → _actors/Compiler", () => {
-    // Assert that the output of step 10 feeds into step 11
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/VerifyFixCompiles'];
+    expect(src.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 12: compilation/CompilationResult provides the post-fix compilation result", () => {
-    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
-    // Action: provides the post-fix compilation result
-    // TODO: agent fills assertion
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('_actors/Compiler');
   });
 
   it("connection: _actors/Compiler → compilation/CompilationResult", () => {
-    // Assert that the output of step 11 feeds into step 12
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Compiler'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 13: audit/DetectFixInducedErrors checks whether the fix introduced new orphans, duplicates, or dangling refs", () => {
-    // Node: audit/DetectFixInducedErrors (process)
-    // Action: checks whether the fix introduced new orphans, duplicates, or dangling refs
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/DetectFixInducedErrors'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
   });
 
   it("connection: compilation/CompilationResult → audit/DetectFixInducedErrors", () => {
-    // Assert that the output of step 12 feeds into step 13
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['compilation/CompilationResult'];
+    expect(src.followed_by).toContain('audit/DetectFixInducedErrors');
   });
 
   it("step 14: audit/VerifyGapClosed re-runs the auditor that originally found this gap", () => {
-    // Node: audit/VerifyGapClosed (process)
-    // Action: re-runs the auditor that originally found this gap
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/VerifyGapClosed'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/DetectFixInducedErrors');
   });
 
   it("connection: audit/DetectFixInducedErrors → audit/VerifyGapClosed", () => {
-    // Assert that the output of step 13 feeds into step 14
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/DetectFixInducedErrors'];
+    expect(src.followed_by).toContain('audit/VerifyGapClosed');
   });
 
   it("step 15: _actors/Auditor confirms the specific gap no longer appears in the coverage check", () => {
-    // Node: _actors/Auditor (actor)
-    // Action: confirms the specific gap no longer appears in the coverage check
-    // TODO: agent fills assertion
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('audit/VerifyGapClosed');
   });
 
   it("connection: audit/VerifyGapClosed → _actors/Auditor", () => {
-    // Assert that the output of step 14 feeds into step 15
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/VerifyGapClosed'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 16: audit/DetectFixInducedGaps checks whether the fix opened new coverage gaps in other angles", () => {
-    // Node: audit/DetectFixInducedGaps (process)
-    // Action: checks whether the fix opened new coverage gaps in other angles
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/DetectFixInducedGaps'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
   });
 
   it("connection: _actors/Auditor → audit/DetectFixInducedGaps", () => {
-    // Assert that the output of step 15 feeds into step 16
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('audit/DetectFixInducedGaps');
   });
 
   it("step 17: audit/TrackAuditRound records that one more gap has been fixed in this round", () => {
-    // Node: audit/TrackAuditRound (artifact)
-    // Action: records that one more gap has been fixed in this round
-    // TODO: agent fills assertion
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/DetectFixInducedGaps');
   });
 
   it("connection: audit/DetectFixInducedGaps → audit/TrackAuditRound", () => {
-    // Assert that the output of step 16 feeds into step 17
-    // TODO: agent fills connection assertion
+    const src = result.index.nodes['audit/DetectFixInducedGaps'];
+    expect(src.followed_by).toContain('audit/TrackAuditRound');
   });
 
+  it("journey has 17 steps and compiles without errors", () => {
+    expect(journey.steps).toHaveLength(17);
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

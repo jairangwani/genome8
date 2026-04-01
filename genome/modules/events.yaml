@@ -1301,3 +1301,20 @@ journeys:
         action: selects payloads for disk spill using the deterministic order so the same payloads are always spilled across runs
       - node: DelegateToSync
         action: passes the deterministically ordered events to sync.ts ensuring consistent processing sequence
+
+  RecoverStaleBoxWatcher:
+    steps:
+      - node: _actors/StaleBox
+        action: has been offline with a crashed event watcher, silently missing upstream dependency changes
+      - node: DetectWatcherCrash
+        action: detects that the stale box's watcher process is no longer running
+      - node: ReregisterCrashedWatcher
+        action: re-registers the event watcher for the stale box's dependency paths
+      - node: ConfirmWatcherHealth
+        action: confirms the newly registered watcher is alive and receiving filesystem events
+      - node: sync/ScanForMissedEventsDuringSleep
+        action: scans for event files written while the watcher was down to identify missed changes
+      - node: DelegateToSync
+        action: delegates the missed events to sync for hash comparison and stale module marking
+      - node: convergence/TargetedReconvergence
+        action: reconverges only the modules affected by changes missed during the stale period

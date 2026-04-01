@@ -6,7 +6,6 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 
 describe("SpawnChildrenWithConcurrencyLimit", () => {
   it("step 1: _actors/ParentEngine has many child directories prepared and needs to spawn them within resource constraints", () => {

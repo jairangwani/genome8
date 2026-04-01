@@ -25,7 +25,7 @@ describe("ValidateAndStageFilledModule", () => {
   });
 
   it("step 3: codegen/ValidateFilledSyntax parses the filled file to check for syntax errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: parses the filled file to check for syntax errors
     // TODO: agent fills assertion
   });
@@ -36,7 +36,7 @@ describe("ValidateAndStageFilledModule", () => {
   });
 
   it("step 4: codegen/ValidateFilledSyntax runs type checking against the module's imports and dependencies", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: runs type checking against the module's imports and dependencies
     // TODO: agent fills assertion
   });

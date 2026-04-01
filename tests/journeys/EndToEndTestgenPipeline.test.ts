@@ -7,7 +7,6 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/types.ts
 // Implementation: src/testgen.ts
 // Implementation: test/testgen.test.ts
-// Implementation: tests/journeys/
 // Implementation: test/journeys/
 
 describe("EndToEndTestgenPipeline", () => {

@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
 // Implementation: test/codegen.test.ts
 
 describe("RecoverFromNodeStubMismatch", () => {
@@ -26,7 +27,7 @@ describe("RecoverFromNodeStubMismatch", () => {
   });
 
   it("step 3: codegen/DetectNodeStubMismatch compares exported functions and classes against the module's node list from the graph", () => {
-    // Node: codegen/DetectNodeStubMismatch (process)
+    // Node: codegen/DetectNodeStubMismatch (process) — has code: src/codegen.ts
     // Action: compares exported functions and classes against the module's node list from the graph
     // TODO: agent fills assertion
   });
@@ -48,7 +49,7 @@ describe("RecoverFromNodeStubMismatch", () => {
   });
 
   it("step 5: codegen/DetectNodeStubMismatch produces a list of added and removed stubs with their names", () => {
-    // Node: codegen/DetectNodeStubMismatch (process)
+    // Node: codegen/DetectNodeStubMismatch (process) — has code: src/codegen.ts
     // Action: produces a list of added and removed stubs with their names
     // TODO: agent fills assertion
   });
@@ -125,7 +126,7 @@ describe("RecoverFromNodeStubMismatch", () => {
   });
 
   it("step 12: codegen/DetectNodeStubMismatch re-checks the corrected fill to confirm all stubs match the node list", () => {
-    // Node: codegen/DetectNodeStubMismatch (process)
+    // Node: codegen/DetectNodeStubMismatch (process) — has code: src/codegen.ts
     // Action: re-checks the corrected fill to confirm all stubs match the node list
     // TODO: agent fills assertion
   });

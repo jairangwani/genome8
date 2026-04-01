@@ -9,7 +9,6 @@ import { describe, it, expect } from 'vitest';
 // Implementation: src/sync.ts
 // Implementation: test/staleness.test.ts
 // Implementation: src/convergence.ts
-// Implementation: test/multi-engine.test.ts
 
 describe("ProveSolveContextProblem", () => {
   it("step 1: _goals/SolveContextProblem governs that any system gets scoped, connected, synced context", () => {

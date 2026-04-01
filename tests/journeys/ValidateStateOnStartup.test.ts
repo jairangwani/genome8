@@ -7,8 +7,6 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/cli.ts
 // Implementation: src/convergence.ts
-// Implementation: test/integration.test.ts
-// Implementation: test-project/
 
 describe("ValidateStateOnStartup", () => {
   it("step 1: _actors/ProjectOwner starts or restarts the convergence pipeline", () => {

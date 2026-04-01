@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 // Implementation: test/pando9.test.ts
 // Implementation: src/testgen.ts
 // Implementation: test/testgen.test.ts
-// Implementation: tests/journeys/
+// Implementation: test/journeys/
 
 describe("GenerateTestsFromCLI", () => {
   it("step 1: _actors/HumanDeveloper runs genome test-gen from the command line with a modules directory and test output directory", () => {

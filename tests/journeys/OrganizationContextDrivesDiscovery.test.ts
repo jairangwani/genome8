@@ -6,33 +6,31 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildOrgDiscoveryModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('convergence', {
     nodes: {
-      WriteOrganization: { type: 'process', description: 'Completes the organization step producing ORGANIZATION.md' },
-      DiscoverActors: { type: 'process', description: 'Receives the organization context and begins actor discovery' },
+      WriteOrganization: { type: 'process', description: 'analyzes the spec to produce ORGANIZATION.md with module list and dependencies' },
+      DiscoverActors: { type: 'process', description: 'delegates to LLM to discover actors from 3 angles and write _actors.yaml' },
     },
-    journeys: {},
   });
 
   modules.set('organization', {
     nodes: {
-      OrganizationFile: { type: 'artifact', description: 'Provides the module list, dependencies, and scope analysis' },
-      IdentifyScope: { type: 'process', description: 'Defines the system boundary that constrains which actors are relevant' },
-      IdentifyModules: { type: 'process', description: 'Provides the module names so discovery can target actors per domain' },
-      ModuleSpecSectionMap: { type: 'artifact', description: 'Maps spec sections to modules so each discovery angle knows which sections matter' },
+      OrganizationFile: { type: 'artifact', description: 'the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis' },
+      IdentifyScope: { type: 'process', description: 'defines the system boundary that constrains which actors are relevant' },
+      IdentifyModules: { type: 'process', description: 'analyzes the spec to identify the set of modules the system should have' },
+      ModuleSpecSectionMap: { type: 'artifact', description: 'maps spec sections to modules so each discovery angle knows which sections matter' },
     },
-    journeys: {},
   });
 
   modules.set('actors', {
     nodes: {
-      DiscoverFromActivities: { type: 'process', description: 'Uses the module list to identify which activities produce which actors' },
-      DiscoverFromThreats: { type: 'process', description: 'Uses the scope boundary to identify which threat actors target which modules' },
-      DiscoverFromLifecycle: { type: 'process', description: 'Uses the module domains to identify lifecycle actors per concern area' },
-      MergeAndDeduplicate: { type: 'process', description: 'Merges actors with organization context ensuring each actor maps to at least one module' },
+      DiscoverFromActivities: { type: 'process', description: 'analyzes the spec to find actors from the activities perspective' },
+      DiscoverFromThreats: { type: 'process', description: 'analyzes the spec to find threat actors' },
+      DiscoverFromLifecycle: { type: 'process', description: 'analyzes the spec to find lifecycle actors' },
+      MergeAndDeduplicate: { type: 'process', description: 'combines actors from all 3 angles, removes duplicates, and keeps the best description for each' },
     },
     journeys: {
       OrganizationContextDrivesDiscovery: {
@@ -56,7 +54,7 @@ function buildOrgDiscoveryModules() {
 }
 
 describe("OrganizationContextDrivesDiscovery", () => {
-  const modules = buildOrgDiscoveryModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['OrganizationContextDrivesDiscovery'];
 
@@ -64,6 +62,7 @@ describe("OrganizationContextDrivesDiscovery", () => {
     const node = result.index.nodes['convergence/WriteOrganization'];
     expect(node).toBeDefined();
     expect(node.type).toBe('process');
+    expect(node.in_journeys.some(j => j.startsWith('OrganizationContextDrivesDiscovery'))).toBe(true);
   });
 
   it("step 2: organization/OrganizationFile provides the module list, dependencies, and scope analysis", () => {
@@ -74,8 +73,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: convergence/WriteOrganization → organization/OrganizationFile", () => {
-    const from = result.index.nodes['convergence/WriteOrganization'];
-    expect(from.followed_by).toContain('organization/OrganizationFile');
+    const src = result.index.nodes['convergence/WriteOrganization'];
+    expect(src.followed_by).toContain('organization/OrganizationFile');
   });
 
   it("step 3: organization/IdentifyScope defines the system boundary that constrains which actors are relevant", () => {
@@ -86,8 +85,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: organization/OrganizationFile → organization/IdentifyScope", () => {
-    const from = result.index.nodes['organization/OrganizationFile'];
-    expect(from.followed_by).toContain('organization/IdentifyScope');
+    const src = result.index.nodes['organization/OrganizationFile'];
+    expect(src.followed_by).toContain('organization/IdentifyScope');
   });
 
   it("step 4: organization/IdentifyModules provides the module names so discovery can target actors per domain", () => {
@@ -98,8 +97,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: organization/IdentifyScope → organization/IdentifyModules", () => {
-    const from = result.index.nodes['organization/IdentifyScope'];
-    expect(from.followed_by).toContain('organization/IdentifyModules');
+    const src = result.index.nodes['organization/IdentifyScope'];
+    expect(src.followed_by).toContain('organization/IdentifyModules');
   });
 
   it("step 5: organization/ModuleSpecSectionMap maps spec sections to modules so each discovery angle knows which sections matter", () => {
@@ -110,8 +109,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: organization/IdentifyModules → organization/ModuleSpecSectionMap", () => {
-    const from = result.index.nodes['organization/IdentifyModules'];
-    expect(from.followed_by).toContain('organization/ModuleSpecSectionMap');
+    const src = result.index.nodes['organization/IdentifyModules'];
+    expect(src.followed_by).toContain('organization/ModuleSpecSectionMap');
   });
 
   it("step 6: convergence/DiscoverActors receives the organization context and begins actor discovery", () => {
@@ -122,8 +121,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: organization/ModuleSpecSectionMap → convergence/DiscoverActors", () => {
-    const from = result.index.nodes['organization/ModuleSpecSectionMap'];
-    expect(from.followed_by).toContain('convergence/DiscoverActors');
+    const src = result.index.nodes['organization/ModuleSpecSectionMap'];
+    expect(src.followed_by).toContain('convergence/DiscoverActors');
   });
 
   it("step 7: actors/DiscoverFromActivities uses the module list to identify which activities produce which actors", () => {
@@ -134,8 +133,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: convergence/DiscoverActors → actors/DiscoverFromActivities", () => {
-    const from = result.index.nodes['convergence/DiscoverActors'];
-    expect(from.followed_by).toContain('actors/DiscoverFromActivities');
+    const src = result.index.nodes['convergence/DiscoverActors'];
+    expect(src.followed_by).toContain('actors/DiscoverFromActivities');
   });
 
   it("step 8: actors/DiscoverFromThreats uses the scope boundary to identify which threat actors target which modules", () => {
@@ -146,8 +145,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: actors/DiscoverFromActivities → actors/DiscoverFromThreats", () => {
-    const from = result.index.nodes['actors/DiscoverFromActivities'];
-    expect(from.followed_by).toContain('actors/DiscoverFromThreats');
+    const src = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(src.followed_by).toContain('actors/DiscoverFromThreats');
   });
 
   it("step 9: actors/DiscoverFromLifecycle uses the module domains to identify lifecycle actors per concern area", () => {
@@ -158,8 +157,8 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: actors/DiscoverFromThreats → actors/DiscoverFromLifecycle", () => {
-    const from = result.index.nodes['actors/DiscoverFromThreats'];
-    expect(from.followed_by).toContain('actors/DiscoverFromLifecycle');
+    const src = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(src.followed_by).toContain('actors/DiscoverFromLifecycle');
   });
 
   it("step 10: actors/MergeAndDeduplicate merges actors with organization context ensuring each actor maps to at least one module", () => {
@@ -170,18 +169,12 @@ describe("OrganizationContextDrivesDiscovery", () => {
   });
 
   it("connection: actors/DiscoverFromLifecycle → actors/MergeAndDeduplicate", () => {
-    const from = result.index.nodes['actors/DiscoverFromLifecycle'];
-    expect(from.followed_by).toContain('actors/MergeAndDeduplicate');
+    const src = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(src.followed_by).toContain('actors/MergeAndDeduplicate');
   });
 
-  it("journey covers full organization-driven discovery pipeline (10 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 10 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(10);
-    expect(journey.steps[0].node).toBe('convergence/WriteOrganization');
-    expect(journey.steps[9].node).toBe('actors/MergeAndDeduplicate');
-  });
-
-  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

@@ -74,7 +74,7 @@ describe("ValidateGeneratedCodeCompiles", () => {
   });
 
   it("step 7: codegen/ValidateFilledSyntax confirms the filled module has valid syntax and no compilation errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: confirms the filled module has valid syntax and no compilation errors
     // TODO: agent fills assertion
   });

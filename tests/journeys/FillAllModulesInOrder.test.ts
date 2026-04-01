@@ -71,7 +71,7 @@ describe("FillAllModulesInOrder", () => {
   });
 
   it("step 7: codegen/ValidateFilledSyntax checks the filled file for syntax and type errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: checks the filled file for syntax and type errors
     // TODO: agent fills assertion
   });
@@ -137,7 +137,7 @@ describe("FillAllModulesInOrder", () => {
   });
 
   it("step 13: codegen/ValidateFilledSyntax checks each subsequent filled file for errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: checks each subsequent filled file for errors
     // TODO: agent fills assertion
   });

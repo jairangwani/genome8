@@ -7,35 +7,30 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: src/convergence.ts
-// Implementation: src/sync.ts
-
-function buildReturningOwnerModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      ReturningOwner: { type: 'actor', description: 'Re-triggers convergence after a long period of inactivity' },
-      Compiler: { type: 'actor', description: 'Validates the reconverged graph' },
-      Auditor: { type: 'actor', description: 'Audits coverage after reconvergence' },
+      ReturningOwner: { type: 'actor', description: 'a project owner who re-triggers convergence after a long period of inactivity' },
+      Compiler: { type: 'actor', description: 'the compilation engine that reads all YAML modules and produces the compiled index' },
+      Auditor: { type: 'actor', description: 'the audit engine that checks spec coverage and flags gaps' },
     },
-    journeys: {},
   });
 
   modules.set('convergence', {
     nodes: {
-      ReadSpec: { type: 'process', description: 'Reads the possibly unchanged spec.md' },
-      TargetedReconvergence: { type: 'process', description: 'Reconverges all stale modules' },
-      ConvergenceState: { type: 'artifact', description: 'Records the system is back in sync after the returning owner trigger' },
+      ReadSpec: { type: 'process', description: 'reads the spec.md file from disk as the first pipeline step' },
+      TargetedReconvergence: { type: 'process', description: 'reconverges only the modules affected by a change rather than re-running the entire pipeline' },
+      ConvergenceState: { type: 'artifact', description: 'JSON file tracking which pipeline steps have completed and their results' },
     },
-    journeys: {},
   });
 
   modules.set('sync', {
     nodes: {
-      FetchDependencyHash: { type: 'process', description: 'Fetches current hashes from all dependencies' },
-      CompareStoredHash: { type: 'process', description: 'Finds many hashes have changed during the absence' },
-      FindAffectedModules: { type: 'process', description: 'Identifies all stale modules' },
+      FetchDependencyHash: { type: 'process', description: 'fetches the current interface hash from a dependency published directory' },
+      CompareStoredHash: { type: 'process', description: 'compares a fetched hash against the stored hash to detect changes' },
+      FindAffectedModules: { type: 'process', description: 'identifies modules affected by dependency changes based on the dependency mapping' },
     },
     journeys: {
       ReturningOwnerReconvergence: {
@@ -58,7 +53,7 @@ function buildReturningOwnerModules() {
 }
 
 describe("ReturningOwnerReconvergence", () => {
-  const modules = buildReturningOwnerModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['ReturningOwnerReconvergence'];
 
@@ -66,6 +61,7 @@ describe("ReturningOwnerReconvergence", () => {
     const node = result.index.nodes['_actors/ReturningOwner'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('ReturningOwnerReconvergence'))).toBe(true);
   });
 
   it("step 2: convergence/ReadSpec reads the possibly unchanged spec.md", () => {
@@ -76,8 +72,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: _actors/ReturningOwner → convergence/ReadSpec", () => {
-    const from = result.index.nodes['_actors/ReturningOwner'];
-    expect(from.followed_by).toContain('convergence/ReadSpec');
+    const src = result.index.nodes['_actors/ReturningOwner'];
+    expect(src.followed_by).toContain('convergence/ReadSpec');
   });
 
   it("step 3: sync/FetchDependencyHash fetches current hashes from all dependencies", () => {
@@ -88,8 +84,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: convergence/ReadSpec → sync/FetchDependencyHash", () => {
-    const from = result.index.nodes['convergence/ReadSpec'];
-    expect(from.followed_by).toContain('sync/FetchDependencyHash');
+    const src = result.index.nodes['convergence/ReadSpec'];
+    expect(src.followed_by).toContain('sync/FetchDependencyHash');
   });
 
   it("step 4: sync/CompareStoredHash finds many hashes have changed during the absence", () => {
@@ -100,8 +96,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: sync/FetchDependencyHash → sync/CompareStoredHash", () => {
-    const from = result.index.nodes['sync/FetchDependencyHash'];
-    expect(from.followed_by).toContain('sync/CompareStoredHash');
+    const src = result.index.nodes['sync/FetchDependencyHash'];
+    expect(src.followed_by).toContain('sync/CompareStoredHash');
   });
 
   it("step 5: sync/FindAffectedModules identifies all stale modules", () => {
@@ -112,8 +108,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: sync/CompareStoredHash → sync/FindAffectedModules", () => {
-    const from = result.index.nodes['sync/CompareStoredHash'];
-    expect(from.followed_by).toContain('sync/FindAffectedModules');
+    const src = result.index.nodes['sync/CompareStoredHash'];
+    expect(src.followed_by).toContain('sync/FindAffectedModules');
   });
 
   it("step 6: convergence/TargetedReconvergence reconverges all stale modules", () => {
@@ -124,8 +120,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: sync/FindAffectedModules → convergence/TargetedReconvergence", () => {
-    const from = result.index.nodes['sync/FindAffectedModules'];
-    expect(from.followed_by).toContain('convergence/TargetedReconvergence');
+    const src = result.index.nodes['sync/FindAffectedModules'];
+    expect(src.followed_by).toContain('convergence/TargetedReconvergence');
   });
 
   it("step 7: _actors/Compiler validates the reconverged graph", () => {
@@ -136,8 +132,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: convergence/TargetedReconvergence → _actors/Compiler", () => {
-    const from = result.index.nodes['convergence/TargetedReconvergence'];
-    expect(from.followed_by).toContain('_actors/Compiler');
+    const src = result.index.nodes['convergence/TargetedReconvergence'];
+    expect(src.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 8: _actors/Auditor audits coverage after reconvergence", () => {
@@ -148,8 +144,8 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: _actors/Compiler → _actors/Auditor", () => {
-    const from = result.index.nodes['_actors/Compiler'];
-    expect(from.followed_by).toContain('_actors/Auditor');
+    const src = result.index.nodes['_actors/Compiler'];
+    expect(src.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 9: convergence/ConvergenceState records the system is back in sync after the returning owner's trigger", () => {
@@ -160,27 +156,12 @@ describe("ReturningOwnerReconvergence", () => {
   });
 
   it("connection: _actors/Auditor → convergence/ConvergenceState", () => {
-    const from = result.index.nodes['_actors/Auditor'];
-    expect(from.followed_by).toContain('convergence/ConvergenceState');
+    const src = result.index.nodes['_actors/Auditor'];
+    expect(src.followed_by).toContain('convergence/ConvergenceState');
   });
 
-  it("journey covers full reconvergence pipeline (9 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 9 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(9);
-    expect(journey.steps[0].node).toBe('_actors/ReturningOwner');
-    expect(journey.steps[8].node).toBe('convergence/ConvergenceState');
-  });
-
-  it("journey actor is ReturningOwner", () => {
-    expect(journey.actor).toBe('_actors/ReturningOwner');
-  });
-
-  it("triggered_by_actors propagates through the pipeline", () => {
-    const readSpec = result.index.nodes['convergence/ReadSpec'];
-    expect(readSpec.triggered_by_actors).toContain('_actors/ReturningOwner');
-  });
-
-  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
   });

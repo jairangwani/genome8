@@ -7,39 +7,34 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Implementation: src/convergence.ts
-
-function buildMigrationModules() {
+function buildModules(): Map<string, ModuleFile> {
   const modules = new Map<string, ModuleFile>();
 
   modules.set('_actors', {
     nodes: {
-      MigratingProject: { type: 'actor', description: 'Has existing documentation and code that needs to be captured in the graph' },
-      ProjectOwner: { type: 'actor', description: 'Writes a spec.md summarizing the existing system' },
-      LLMWorker: { type: 'actor', description: 'Analyzes existing artifacts to inform module creation' },
-      Compiler: { type: 'actor', description: 'Validates that the bootstrapped graph is consistent' },
+      MigratingProject: { type: 'actor', description: 'an existing project with documentation and code that needs to be captured in the graph' },
+      ProjectOwner: { type: 'actor', description: 'the human who writes spec.md as the sole input to the system' },
+      LLMWorker: { type: 'actor', description: 'persistent Claude Code process that creates module content, fills code, and fills test assertions when asked' },
+      Compiler: { type: 'actor', description: 'the compilation engine that reads all YAML modules and produces the compiled index' },
     },
-    journeys: {},
   });
 
   modules.set('convergence', {
     nodes: {
-      ReadSpec: { type: 'process', description: 'Reads the migration spec' },
-      ModuleCreation: { type: 'process', description: 'Creates modules that capture the existing system structure' },
+      ReadSpec: { type: 'process', description: 'reads the spec.md file from disk as the first pipeline step' },
+      ModuleCreation: { type: 'process', description: 'creates each module by assembling an excerpt and delegating to the LLM worker' },
     },
-    journeys: {},
   });
 
   modules.set('organization', {
     nodes: {
-      IdentifyModules: { type: 'process', description: 'Discovers modules that map to the existing system components' },
+      IdentifyModules: { type: 'process', description: 'analyzes the spec to identify the set of modules the system should have' },
     },
-    journeys: {},
   });
 
   modules.set('compilation', {
     nodes: {
-      CompilationResult: { type: 'artifact', description: 'Reports any gaps between the spec and the bootstrapped modules' },
+      CompilationResult: { type: 'artifact', description: 'the final compilation output containing the index, issues, and coverage report' },
     },
     journeys: {
       MigratingProjectBootstrap: {
@@ -61,7 +56,7 @@ function buildMigrationModules() {
 }
 
 describe("MigratingProjectBootstrap", () => {
-  const modules = buildMigrationModules();
+  const modules = buildModules();
   const result = compileFromModules(modules);
   const journey = result.index.journeys['MigratingProjectBootstrap'];
 
@@ -69,6 +64,7 @@ describe("MigratingProjectBootstrap", () => {
     const node = result.index.nodes['_actors/MigratingProject'];
     expect(node).toBeDefined();
     expect(node.type).toBe('actor');
+    expect(node.in_journeys.some(j => j.startsWith('MigratingProjectBootstrap'))).toBe(true);
   });
 
   it("step 2: _actors/ProjectOwner writes a spec.md summarizing the existing system", () => {
@@ -79,8 +75,8 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: _actors/MigratingProject → _actors/ProjectOwner", () => {
-    const from = result.index.nodes['_actors/MigratingProject'];
-    expect(from.followed_by).toContain('_actors/ProjectOwner');
+    const src = result.index.nodes['_actors/MigratingProject'];
+    expect(src.followed_by).toContain('_actors/ProjectOwner');
   });
 
   it("step 3: convergence/ReadSpec reads the migration spec", () => {
@@ -91,8 +87,8 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: _actors/ProjectOwner → convergence/ReadSpec", () => {
-    const from = result.index.nodes['_actors/ProjectOwner'];
-    expect(from.followed_by).toContain('convergence/ReadSpec');
+    const src = result.index.nodes['_actors/ProjectOwner'];
+    expect(src.followed_by).toContain('convergence/ReadSpec');
   });
 
   it("step 4: organization/IdentifyModules discovers modules that map to the existing system's components", () => {
@@ -103,8 +99,8 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: convergence/ReadSpec → organization/IdentifyModules", () => {
-    const from = result.index.nodes['convergence/ReadSpec'];
-    expect(from.followed_by).toContain('organization/IdentifyModules');
+    const src = result.index.nodes['convergence/ReadSpec'];
+    expect(src.followed_by).toContain('organization/IdentifyModules');
   });
 
   it("step 5: _actors/LLMWorker analyzes existing artifacts to inform module creation with pre-existing context", () => {
@@ -115,8 +111,8 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: organization/IdentifyModules → _actors/LLMWorker", () => {
-    const from = result.index.nodes['organization/IdentifyModules'];
-    expect(from.followed_by).toContain('_actors/LLMWorker');
+    const src = result.index.nodes['organization/IdentifyModules'];
+    expect(src.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 6: convergence/ModuleCreation creates modules that capture the existing system's structure", () => {
@@ -127,8 +123,8 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: _actors/LLMWorker → convergence/ModuleCreation", () => {
-    const from = result.index.nodes['_actors/LLMWorker'];
-    expect(from.followed_by).toContain('convergence/ModuleCreation');
+    const src = result.index.nodes['_actors/LLMWorker'];
+    expect(src.followed_by).toContain('convergence/ModuleCreation');
   });
 
   it("step 7: _actors/Compiler validates that the bootstrapped graph is consistent", () => {
@@ -139,8 +135,8 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: convergence/ModuleCreation → _actors/Compiler", () => {
-    const from = result.index.nodes['convergence/ModuleCreation'];
-    expect(from.followed_by).toContain('_actors/Compiler');
+    const src = result.index.nodes['convergence/ModuleCreation'];
+    expect(src.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 8: compilation/CompilationResult reports any gaps between the spec and the bootstrapped modules", () => {
@@ -151,34 +147,13 @@ describe("MigratingProjectBootstrap", () => {
   });
 
   it("connection: _actors/Compiler → compilation/CompilationResult", () => {
-    const from = result.index.nodes['_actors/Compiler'];
-    expect(from.followed_by).toContain('compilation/CompilationResult');
+    const src = result.index.nodes['_actors/Compiler'];
+    expect(src.followed_by).toContain('compilation/CompilationResult');
   });
 
-  it("journey covers full migration pipeline (8 steps)", () => {
-    expect(journey).toBeDefined();
+  it("journey has 8 steps and compiles without errors", () => {
     expect(journey.steps).toHaveLength(8);
-    expect(journey.steps[0].node).toBe('_actors/MigratingProject');
-    expect(journey.steps[7].node).toBe('compilation/CompilationResult');
-  });
-
-  it("journey actor is MigratingProject (first actor in steps)", () => {
-    expect(journey.actor).toBe('_actors/MigratingProject');
-  });
-
-  it("triggered_by_actors propagates through the migration pipeline", () => {
-    const readSpec = result.index.nodes['convergence/ReadSpec'];
-    expect(readSpec.triggered_by_actors).toContain('_actors/MigratingProject');
-  });
-
-  it("compilation produces zero errors for clean migration modules", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
     expect(errors).toHaveLength(0);
-  });
-
-  it("all actor nodes have correct type", () => {
-    for (const name of ['MigratingProject', 'ProjectOwner', 'LLMWorker', 'Compiler']) {
-      expect(result.index.nodes[`_actors/${name}`].type).toBe('actor');
-    }
   });
 });

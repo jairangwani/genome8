@@ -181,7 +181,7 @@ describe("EndToEndCodegenPipeline", () => {
   });
 
   it("step 17: codegen/ValidateFilledSyntax checks each filled file for syntax and type errors", () => {
-    // Node: codegen/ValidateFilledSyntax (process)
+    // Node: codegen/ValidateFilledSyntax (process) — has code: src/codegen.ts
     // Action: checks each filled file for syntax and type errors
     // TODO: agent fills assertion
   });
