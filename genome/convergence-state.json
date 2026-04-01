@@ -1,7 +1,6 @@
 {
   "status": "sleeping",
-  "tests_passed": true,
-  "converged_at": "2026-04-01T04:03:42.695Z",
+  "converged_at": "2026-04-01T04:18:38.362Z",
   "stats": {
     "total_nodes": 760,
     "total_journeys": 608,
