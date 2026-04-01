@@ -17,10 +17,20 @@ describe("EnforceDeterministicStaleModuleOrder", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/FindAffectedModules → sync/MarkModulesStale", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/StaleModuleList receives the unordered set of stale modules", () => {
     // Node: sync/StaleModuleList (artifact)
     // Action: receives the unordered set of stale modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/MarkModulesStale → sync/StaleModuleList", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/EnforceDeterministicStaleOrder reads the stale module list and sorts entries alphabetically by module name", () => {
@@ -29,10 +39,20 @@ describe("EnforceDeterministicStaleModuleOrder", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/StaleModuleList → sync/EnforceDeterministicStaleOrder", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/EnforceDeterministicStaleOrder writes the sorted list back ensuring reconvergence processes modules in the same order on every run", () => {
     // Node: sync/EnforceDeterministicStaleOrder (process)
     // Action: writes the sorted list back ensuring reconvergence processes modules in the same order on every run
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/EnforceDeterministicStaleOrder → sync/EnforceDeterministicStaleOrder", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/StaleModuleList updated with the canonically ordered stale modules", () => {
@@ -41,10 +61,20 @@ describe("EnforceDeterministicStaleModuleOrder", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/EnforceDeterministicStaleOrder → sync/StaleModuleList", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/TargetedReconvergence receives the deterministically ordered stale list for reproducible processing", () => {
     // Node: convergence/TargetedReconvergence (process)
     // Action: receives the deterministically ordered stale list for reproducible processing
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/StaleModuleList → convergence/TargetedReconvergence", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

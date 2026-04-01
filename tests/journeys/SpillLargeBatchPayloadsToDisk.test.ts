@@ -17,10 +17,20 @@ describe("SpillLargeBatchPayloadsToDisk", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DebounceEvents → events/ReadEventFilesInParallel", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/ValidateEventFileFormat validates each event file in the batch", () => {
     // Node: events/ValidateEventFileFormat (process)
     // Action: validates each event file in the batch
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ReadEventFilesInParallel → events/ValidateEventFileFormat", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: events/SpillBatchPayloadsToDisk checks the parsed payload count against the configured in-memory threshold", () => {
@@ -29,10 +39,20 @@ describe("SpillLargeBatchPayloadsToDisk", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ValidateEventFileFormat → events/SpillBatchPayloadsToDisk", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: events/SpillBatchPayloadsToDisk writes the lowest-priority parsed payloads to a temporary file on disk freeing heap memory", () => {
     // Node: events/SpillBatchPayloadsToDisk (process)
     // Action: writes the lowest-priority parsed payloads to a temporary file on disk freeing heap memory
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/SpillBatchPayloadsToDisk → events/SpillBatchPayloadsToDisk", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: events/SpillBatchPayloadsToDisk retains only the highest-priority payloads in memory up to the threshold", () => {
@@ -41,10 +61,20 @@ describe("SpillLargeBatchPayloadsToDisk", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/SpillBatchPayloadsToDisk → events/SpillBatchPayloadsToDisk", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: events/DelegateToSync processes the in-memory payloads first passing them to sync.ts", () => {
     // Node: events/DelegateToSync (process)
     // Action: processes the in-memory payloads first passing them to sync.ts
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/SpillBatchPayloadsToDisk → events/DelegateToSync", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: events/SpillBatchPayloadsToDisk reads the spilled payloads back from disk in chunks as sync.ts is ready for more", () => {
@@ -53,10 +83,20 @@ describe("SpillLargeBatchPayloadsToDisk", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DelegateToSync → events/SpillBatchPayloadsToDisk", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: events/DelegateToSync processes each chunk of restored payloads from disk", () => {
     // Node: events/DelegateToSync (process)
     // Action: processes each chunk of restored payloads from disk
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/SpillBatchPayloadsToDisk → events/DelegateToSync", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: events/LogEventReceived records the spill event with total payload count, spilled count, and temporary file size", () => {
@@ -65,16 +105,31 @@ describe("SpillLargeBatchPayloadsToDisk", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DelegateToSync → events/LogEventReceived", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: events/EventLog persists the payload spill log entry", () => {
     // Node: events/EventLog (artifact)
     // Action: persists the payload spill log entry
     // TODO: agent fills assertion
   });
 
+  it("connection: events/LogEventReceived → events/EventLog", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
+  });
+
   it("step 12: events/EnterSleep returns to sleep after all payloads including spilled ones are processed", () => {
     // Node: events/EnterSleep (process)
     // Action: returns to sleep after all payloads including spilled ones are processed
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/EventLog → events/EnterSleep", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
   });
 
 });

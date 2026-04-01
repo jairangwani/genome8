@@ -19,10 +19,20 @@ describe("DeduplicateCacheWriteOnStore", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/AssembleExcerpt → excerpt/ExcerptOutput", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: excerpt/CacheExcerptByState looks up the cache key for this module at the current compiled index hash", () => {
     // Node: excerpt/CacheExcerptByState (process)
     // Action: looks up the cache key for this module at the current compiled index hash
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/ExcerptOutput → excerpt/CacheExcerptByState", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/DeduplicateCacheWrite checks if an entry already exists at this cache key", () => {
@@ -31,10 +41,20 @@ describe("DeduplicateCacheWriteOnStore", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/CacheExcerptByState → excerpt/DeduplicateCacheWrite", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: excerpt/DeduplicateCacheWrite compares the existing cached content against the new excerpt byte-for-byte", () => {
     // Node: excerpt/DeduplicateCacheWrite (process)
     // Action: compares the existing cached content against the new excerpt byte-for-byte
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/DeduplicateCacheWrite → excerpt/DeduplicateCacheWrite", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: excerpt/DeduplicateCacheWrite skips the write if the content is identical, preventing redundant cache updates", () => {
@@ -43,10 +63,20 @@ describe("DeduplicateCacheWriteOnStore", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/DeduplicateCacheWrite → excerpt/DeduplicateCacheWrite", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: excerpt/CacheExcerptByState writes the excerpt to cache only if no identical entry existed", () => {
     // Node: excerpt/CacheExcerptByState (process)
     // Action: writes the excerpt to cache only if no identical entry existed
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/DeduplicateCacheWrite → excerpt/CacheExcerptByState", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

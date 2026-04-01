@@ -145,6 +145,18 @@ nodes:
   ValidateSplitDecision:
     type: process
     description: validates the LLM-produced split decision for semantic correctness including that every module from ORGANIZATION.md is assigned to exactly one child, no module is duplicated across children, and no child group is empty
+  DetectChildPreparationFailure:
+    type: process
+    description: detects when CreateChildDirectory, GenerateScopedSpec, GenerateChildOrganization, or DistributeSharedActors fails due to disk I/O error during the child preparation phase, captures which children were fully prepared and which were not, and removes any partially created directories to prevent stale state
+  DetectOrphanedChildState:
+    type: process
+    description: on engine startup before hierarchy decision, scans for existing child directories from a previous hierarchy run and checks each for a published interface.yaml to determine whether completed child results can be adopted or stale incomplete directories must be cleaned up before re-preparing
+  IdentifyChildrenAffectedBySpecChange:
+    type: process
+    description: when the parent's spec changes, diffs old vs new spec to find changed section numbers, maps those sections to modules via spec_sections metadata, then maps affected modules to children using the stored split decision to produce the list of children whose scoped specs need regeneration
+  TerminateChildEngines:
+    type: process
+    description: sends a shutdown signal to all running child engine subprocesses, waits for each to exit within the configured timeout, and force-kills any child that fails to exit gracefully before the parent proceeds with its own shutdown
 
 journeys:
   DecideHierarchySplit:
@@ -899,7 +911,7 @@ journeys:
       - node: convergence/TargetedReconvergence
         action: reconverges only the parent modules affected by the child's interface change
 
-  ProvideExcerptForChildModuleCreation:
+  RequestExcerptForChildModuleCreation:
     steps:
       - node: GenerateScopedSpec
         action: creates the scoped spec for a child engine from the parent's organization
@@ -941,3 +953,132 @@ journeys:
         action: generates TypeScript skeletons for cross-engine bridge nodes
       - node: codegen/WriteGeneratedFile
         action: writes the cross-engine skeleton files to disk
+
+  ConfirmValidSplitDecision:
+    steps:
+      - node: _actors/LLMWorker
+        action: produces a split decision with child groupings that parse correctly
+      - node: DecideSplit
+        action: parses the LLM output into a structured split decision with module-to-child mappings
+      - node: organization/ModuleList
+        action: provides the complete list of modules from ORGANIZATION.md as the expected set
+      - node: ValidateSplitDecision
+        action: collects all module names assigned across every child group into a combined set
+      - node: ValidateSplitDecision
+        action: compares the combined set against the complete module list and confirms every module appears exactly once
+      - node: ValidateSplitDecision
+        action: confirms no module is duplicated across child groups
+      - node: ValidateSplitDecision
+        action: confirms every child group contains at least one module
+      - node: AssignModulesToChildren
+        action: proceeds to map the validated module-to-child assignments for directory preparation
+      - node: convergence/ConvergenceState
+        action: records the validated split decision ready for child engine execution
+
+  HandleChildPreparationFailure:
+    steps:
+      - node: convergence/ConvergenceState
+        action: provides the validated split decision with module-to-child assignments
+      - node: AssignModulesToChildren
+        action: maps modules to child groups and begins the preparation phase
+      - node: CreateChildDirectory
+        action: creates the directory structure for the first child successfully
+      - node: GenerateScopedSpec
+        action: writes the scoped spec for the first child
+      - node: DistributeSharedActors
+        action: copies _actors.yaml into the first child directory
+      - node: CreateChildDirectory
+        action: attempts to create the directory for the next child but encounters a disk I/O error
+      - node: DetectChildPreparationFailure
+        action: catches the disk I/O error and identifies which child directory failed to create
+      - node: DetectChildPreparationFailure
+        action: records which children were fully prepared and which remain unprepared
+      - node: DetectChildPreparationFailure
+        action: removes the partially created directory for the failed child to prevent stale state on retry
+      - node: DetectChildPreparationFailure
+        action: removes the successfully prepared child directories since the split cannot proceed with an incomplete set
+      - node: FallbackToNoSplitOnFailure
+        action: determines that the split cannot proceed safely and defaults to no-split
+      - node: ContinueWithoutSplit
+        action: bypasses the remaining hierarchy pipeline and proceeds to bounded module creation
+      - node: convergence/ConvergenceState
+        action: records the preparation failure and fallback to no-split with the specific I/O error details
+
+  RecoverOrphanedChildrenAfterParentCrash:
+    steps:
+      - node: _actors/ParentEngine
+        action: restarts after a crash and enters the convergence pipeline at the hierarchy decision step
+      - node: DetectOrphanedChildState
+        action: scans the engine's directory for child directories left over from a previous hierarchy run
+      - node: DetectOrphanedChildState
+        action: finds existing child directories and checks each for a published interface.yaml on disk
+      - node: ChildConvergenceStatus
+        action: records which orphaned children have published interfaces and which do not
+      - node: DetectOrphanedChildState
+        action: removes incomplete child directories that have no published interface since their state is unreliable
+      - node: DetectOrphanedChildState
+        action: determines that all remaining orphaned children have published interfaces available for adoption
+      - node: CollectChildInterfaces
+        action: reads the published interface.yaml from each adoptable orphaned child directory
+      - node: ValidateChildInterfaceIntegrity
+        action: validates each orphaned child's interface is parseable YAML with expected node and journey structure
+      - node: ChildInterfaceCollection
+        action: stores the adopted child interfaces for cross-engine validation
+      - node: ValidateCrossEngineRefs
+        action: checks cross-engine refs across the adopted child interfaces
+      - node: PromoteExternalRefsToErrors
+        action: converts any unresolved external refs to errors at the parent level
+      - node: CreateCrossEngineJourneys
+        action: creates parent-level journeys connecting the adopted children's interface nodes
+      - node: MergeChildGraphsIntoParent
+        action: incorporates adopted child graphs into the parent compiled index
+      - node: convergence/ConvergenceState
+        action: records successful adoption of orphaned child results, skipping re-preparation and re-spawn
+
+  PropagateSpecChangeToChildren:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers a spec.md change notification to the parent engine via fs.watch
+      - node: convergence/ConvergenceState
+        action: provides the stored split decision with module-to-child assignments from the original hierarchy run
+      - node: IdentifyChildrenAffectedBySpecChange
+        action: diffs the old spec against the new to identify which section numbers changed
+      - node: IdentifyChildrenAffectedBySpecChange
+        action: maps changed section numbers to modules using each module's spec_sections metadata
+      - node: IdentifyChildrenAffectedBySpecChange
+        action: maps affected modules to children using the stored split decision, producing the list of children that need updated scoped specs
+      - node: GenerateScopedSpec
+        action: regenerates the scoped spec for the first affected child incorporating the changed sections from the parent's updated spec
+      - node: ScopedSpecFile
+        action: overwrites the affected child's scoped spec.md with the updated version on disk
+      - node: GenerateScopedSpec
+        action: repeats scoped spec regeneration for each additional affected child
+      - node: _actors/ChildEngine
+        action: detects the scoped spec.md change via its own fs.watch and begins targeted reconvergence on modules affected by the changed sections
+      - node: _actors/ChildEngine
+        action: publishes an updated interface if its graph changed after reconvergence
+      - node: events/DetectEventFileChange
+        action: parent's watcher detects the child's new event file indicating an interface change
+      - node: sync/CompareStoredHash
+        action: parent compares the child's new hash against its stored hash to trigger parent-level targeted reconvergence
+
+  ShutdownHierarchyOnParentExit:
+    steps:
+      - node: _actors/HumanDeveloper
+        action: sends a shutdown signal to the parent engine process
+      - node: ChildConvergenceStatus
+        action: provides the list of currently running child engine subprocesses
+      - node: TerminateChildEngines
+        action: sends a shutdown signal to each running child engine subprocess
+      - node: SameCodeEveryLevel
+        action: confirms each child handles its own shutdown including terminating any grandchildren it may have spawned
+      - node: TerminateChildEngines
+        action: waits for each child process to exit within the configured timeout threshold
+      - node: DetectChildTimeout
+        action: flags any child that does not exit within the allowed shutdown time
+      - node: TerminateChildEngines
+        action: force-kills children that failed to exit gracefully after the timeout
+      - node: events/DeregisterEventWatchers
+        action: parent tears down its own event watchers on child directories
+      - node: ChildConvergenceStatus
+        action: updated to show all children terminated and the hierarchy is fully shut down

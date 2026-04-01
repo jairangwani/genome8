@@ -1,69 +1,124 @@
-// Auto-generated from journey: TrackAuditFixProgress
-// Module: audit
-// Modules touched: convergence, audit
-
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
+
+function buildTrackAuditFixProgressModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('convergence', {
+    nodes: {
+      ConvergenceState: { type: 'artifact', description: 'Provides current pipeline step showing audit in progress' },
+      DataDecidesWhenToStop: { type: 'rule', description: 'Evaluates whether progress is being made' },
+    },
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      TrackAuditRound: { type: 'artifact', description: 'Provides current round number and cumulative gaps fixed' },
+      AuditFindingsList: { type: 'artifact', description: 'Provides current gap count remaining' },
+    },
+    journeys: {
+      TrackAuditFixProgress: {
+        steps: [
+          { node: 'convergence/ConvergenceState', action: 'provides current pipeline step showing audit in progress' },
+          { node: 'TrackAuditRound', action: 'provides current round number and cumulative gaps fixed' },
+          { node: 'AuditFindingsList', action: 'provides current gap count remaining' },
+          { node: 'convergence/DataDecidesWhenToStop', action: 'evaluates whether progress is being made' },
+          { node: 'TrackAuditRound', action: 'records gap count delta' },
+          { node: 'convergence/ConvergenceState', action: 'updates with audit progress metrics' },
+        ],
+      },
+    },
+  });
+
+  return modules;
+}
 
 describe("TrackAuditFixProgress", () => {
-  it("step 1: convergence/ConvergenceState provides the current pipeline step showing audit is in progress", () => {
-    const state = { step: 'AUDIT', round: 2, status: 'IN_PROGRESS' };
-    expect(state.step).toBe('AUDIT');
-    expect(state.status).toBe('IN_PROGRESS');
+  const modules = buildTrackAuditFixProgressModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['TrackAuditFixProgress'];
+
+  it("step 1: convergence/ConvergenceState provides current pipeline step showing audit in progress", () => {
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
   });
 
-  it("step 2: audit/TrackAuditRound provides the current round number and cumulative gaps fixed", () => {
-    const tracker = {
-      round: 2,
-      gapsFixedThisRound: 3,
-      gapsFixedTotal: 5,
-    };
-    expect(tracker.round).toBe(2);
-    expect(tracker.gapsFixedTotal).toBe(5);
-    expect(tracker.gapsFixedThisRound).toBeLessThanOrEqual(tracker.gapsFixedTotal);
+  it("step 2: audit/TrackAuditRound provides current round number and cumulative gaps fixed", () => {
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/ConvergenceState');
   });
 
-  it("step 3: audit/AuditFindingsList provides the current gap count remaining", () => {
-    const findingsList = { round: 2, total_gaps: 2, gaps: [
-      { type: 'spec_gap', module: 'billing', detail: 'Section 3 not covered' },
-      { type: 'actor_orphan', module: 'admin', detail: 'Operator not in journeys' },
-    ]};
-    expect(findingsList.total_gaps).toBe(2);
-    expect(findingsList.gaps.length).toBe(findingsList.total_gaps);
+  it("connection: convergence/ConvergenceState -> audit/TrackAuditRound", () => {
+    const from = result.index.nodes['convergence/ConvergenceState'];
+    expect(from.followed_by).toContain('audit/TrackAuditRound');
   });
 
-  it("step 4: convergence/DataDecidesWhenToStop evaluates whether progress is being made based on gap count trending toward zero", () => {
-    const history = [
-      { round: 1, gapCount: 8 },
-      { round: 2, gapCount: 2 },
-    ];
-    const isProgressing = history[history.length - 1].gapCount < history[history.length - 2].gapCount;
-    expect(isProgressing).toBe(true);
-    // Gap count is trending downward
-    const delta = history[history.length - 2].gapCount - history[history.length - 1].gapCount;
-    expect(delta).toBeGreaterThan(0);
+  it("step 3: audit/AuditFindingsList provides current gap count remaining", () => {
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/TrackAuditRound');
   });
 
-  it("step 5: audit/TrackAuditRound records the gap count delta between this round and the previous round", () => {
-    const prevGapCount = 8;
-    const currentGapCount = 2;
-    const delta = prevGapCount - currentGapCount;
-    expect(delta).toBe(6);
-    expect(delta).toBeGreaterThan(0); // positive delta = progress
+  it("connection: audit/TrackAuditRound -> audit/AuditFindingsList", () => {
+    const from = result.index.nodes['audit/TrackAuditRound'];
+    expect(from.followed_by).toContain('audit/AuditFindingsList');
   });
 
-  it("step 6: convergence/ConvergenceState updates with the audit progress metrics for the current round", () => {
-    const state = {
-      step: 'AUDIT',
-      round: 2,
-      gapsRemaining: 2,
-      gapsFixedTotal: 6,
-      progressDelta: 6,
-      isProgressing: true,
-    };
-    expect(state.round).toBe(2);
-    expect(state.gapsRemaining).toBe(2);
-    expect(state.isProgressing).toBe(true);
-    expect(state.progressDelta).toBeGreaterThan(0);
+  it("step 4: convergence/DataDecidesWhenToStop evaluates whether progress is being made", () => {
+    const node = result.index.nodes['convergence/DataDecidesWhenToStop'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
   });
 
+  it("connection: audit/AuditFindingsList -> convergence/DataDecidesWhenToStop", () => {
+    const from = result.index.nodes['audit/AuditFindingsList'];
+    expect(from.followed_by).toContain('convergence/DataDecidesWhenToStop');
+  });
+
+  it("step 5: audit/TrackAuditRound records gap count delta (self-loop)", () => {
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/DataDecidesWhenToStop');
+  });
+
+  it("connection: convergence/DataDecidesWhenToStop -> audit/TrackAuditRound", () => {
+    const from = result.index.nodes['convergence/DataDecidesWhenToStop'];
+    expect(from.followed_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("step 6: convergence/ConvergenceState updates with audit progress metrics (revisited)", () => {
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("connection: audit/TrackAuditRound -> convergence/ConvergenceState", () => {
+    const from = result.index.nodes['audit/TrackAuditRound'];
+    expect(from.followed_by).toContain('convergence/ConvergenceState');
+  });
+
+  it("journey covers full pipeline (6 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(6);
+    expect(journey.steps[0].node).toBe('convergence/ConvergenceState');
+    expect(journey.steps[5].node).toBe('convergence/ConvergenceState');
+  });
+
+  it("journey has no actor (no actor nodes in steps)", () => {
+    expect(journey.actor).toBeNull();
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

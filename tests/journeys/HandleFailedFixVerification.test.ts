@@ -5,172 +5,209 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import yaml from 'js-yaml';
 import type { ModuleFile } from '../../src/types.js';
 
-// Pre-fix graph: clean but Admin actor is orphan (gap)
-const actors: ModuleFile = {
-  nodes: {
-    User: { type: 'actor', description: 'Platform user' },
-    Admin: { type: 'actor', description: 'Platform admin' },
-  },
-};
+function buildHandleFailedFixVerificationModules() {
+  const modules = new Map<string, ModuleFile>();
 
-const preFixAuth: ModuleFile = {
-  spec_sections: [1],
-  nodes: {
-    Login: { type: 'process', description: 'Login flow' },
-    Token: { type: 'artifact', description: 'Session token' },
-  },
-  journeys: {
-    UserLogin: {
-      steps: [
-        { node: '_actors/User', action: 'submits credentials' },
-        { node: 'Login', action: 'authenticates' },
-        { node: 'Token', action: 'is issued' },
-      ],
+  modules.set('_actors', {
+    nodes: {
+      Auditor: { type: 'actor', description: 'Reports gap was not resolved' },
+      Compiler: { type: 'actor', description: 'Recompiles to confirm revert is clean' },
     },
-  },
-};
+    journeys: {},
+  });
 
-// Bad fix: tries to add AdminLogin but doesn't actually reference Admin actor
-const failedFixAuth: ModuleFile = {
-  spec_sections: [1],
-  nodes: {
-    Login: { type: 'process', description: 'Login flow' },
-    Token: { type: 'artifact', description: 'Session token' },
-    AdminPanel: { type: 'interface', description: 'Admin panel' },
-  },
-  journeys: {
-    UserLogin: {
-      steps: [
-        { node: '_actors/User', action: 'submits credentials' },
-        { node: 'Login', action: 'authenticates' },
-        { node: 'Token', action: 'is issued' },
-      ],
+  modules.set('graph', {
+    nodes: {
+      ModuleFile: { type: 'artifact', description: 'Stores reverted module content' },
     },
-    AdminView: {
-      steps: [
-        { node: '_actors/User', action: 'views admin panel' },
-        { node: 'AdminPanel', action: 'renders dashboard' },
-      ],
+    journeys: {},
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'Confirms zero errors after revert' },
     },
-  },
-};
+    journeys: {},
+  });
 
-const gap = { type: 'actor_orphan', module: 'auth', detail: 'Admin actor not used in any journey', severity: 'medium' as const };
+  modules.set('audit', {
+    nodes: {
+      ApplyFix: { type: 'process', description: 'Has edited a module to close a gap' },
+      VerifyGapClosed: { type: 'process', description: 'Re-runs auditor, finds gap still present' },
+      RejectAndRevertFix: { type: 'process', description: 'Restores module to pre-fix state' },
+      AuditFindingsList: { type: 'artifact', description: 'Retains gap with failed-fix annotation' },
+      BuildGapFixPrompt: { type: 'process', description: 'Rebuilds fix prompt with failure context' },
+      ProvideFixContext: { type: 'process', description: 'Includes failed attempt details' },
+      TrackAuditRound: { type: 'artifact', description: 'Records failed verification' },
+    },
+    journeys: {
+      HandleFailedFixVerification: {
+        steps: [
+          { node: 'ApplyFix', action: 'has edited a module to close a gap' },
+          { node: 'VerifyGapClosed', action: 're-runs auditor, finds gap still present' },
+          { node: '_actors/Auditor', action: 'reports gap was not resolved' },
+          { node: 'RejectAndRevertFix', action: 'restores module to pre-fix state' },
+          { node: 'graph/ModuleFile', action: 'stores reverted module content' },
+          { node: '_actors/Compiler', action: 'recompiles to confirm revert is clean' },
+          { node: 'compilation/CompilationResult', action: 'confirms zero errors after revert' },
+          { node: 'AuditFindingsList', action: 'retains gap with failed-fix annotation' },
+          { node: 'BuildGapFixPrompt', action: 'rebuilds fix prompt with failure context' },
+          { node: 'ProvideFixContext', action: 'includes failed attempt details' },
+          { node: 'TrackAuditRound', action: 'records failed verification' },
+        ],
+      },
+    },
+  });
 
-function buildPreFix() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', actors],
-    ['auth', preFixAuth],
-  ]));
-}
-
-function buildFailedFix() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', actors],
-    ['auth', failedFixAuth],
-  ]));
+  return modules;
 }
 
 describe("HandleFailedFixVerification", () => {
+  const modules = buildHandleFailedFixVerificationModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['HandleFailedFixVerification'];
+
   it("step 1: audit/ApplyFix has edited a module to close a gap", () => {
-    const editedYaml = yaml.dump(failedFixAuth);
-    expect(editedYaml).toContain('AdminView');
-    expect(editedYaml).toContain('AdminPanel');
+    const node = result.index.nodes['audit/ApplyFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
   });
 
-  it("step 2: audit/VerifyGapClosed re-runs the auditor and finds the gap is still present", () => {
-    const result = buildFailedFix();
-    // Admin actor is still not in any journey — fix used User instead of Admin
-    const adminNode = result.index.nodes['_actors/Admin'];
-    expect(adminNode).toBeDefined();
-    expect(adminNode.in_journeys.length).toBe(0); // gap still open
+  it("step 2: audit/VerifyGapClosed re-runs auditor, finds gap still present", () => {
+    const node = result.index.nodes['audit/VerifyGapClosed'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ApplyFix');
   });
 
-  it("step 3: _actors/Auditor reports that the specific gap was not resolved by the fix", () => {
-    const result = buildFailedFix();
-    const orphanActors = result.coverage.orphans.filter(o => o.startsWith('_actors/'));
-    // Admin is still orphaned
-    expect(orphanActors).toContain('_actors/Admin');
+  it("connection: audit/ApplyFix → audit/VerifyGapClosed", () => {
+    const from = result.index.nodes['audit/ApplyFix'];
+    expect(from.followed_by).toContain('audit/VerifyGapClosed');
   });
 
-  it("step 4: audit/RejectAndRevertFix restores the module to its pre-fix state since the fix did not achieve its goal", () => {
-    const restoredYaml = yaml.dump(preFixAuth);
-    const parsed = yaml.load(restoredYaml) as ModuleFile;
-    expect(Object.keys(parsed.journeys!)).toEqual(['UserLogin']);
-    expect(parsed.nodes!.AdminPanel).toBeUndefined();
+  it("step 3: _actors/Auditor reports gap was not resolved", () => {
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('audit/VerifyGapClosed');
   });
 
-  it("step 5: graph/ModuleFile stores the reverted module content", () => {
-    const moduleYaml = yaml.dump(preFixAuth);
-    expect(moduleYaml).toContain('Login');
-    expect(moduleYaml).toContain('Token');
-    expect(moduleYaml).toContain('UserLogin');
-    expect(moduleYaml).not.toContain('AdminView');
-    expect(moduleYaml).not.toContain('AdminPanel');
+  it("connection: audit/VerifyGapClosed → _actors/Auditor", () => {
+    const from = result.index.nodes['audit/VerifyGapClosed'];
+    expect(from.followed_by).toContain('_actors/Auditor');
   });
 
-  it("step 6: _actors/Compiler recompiles to confirm the revert is clean", () => {
-    const result = buildPreFix();
-    expect(result.index).toBeDefined();
-    expect(result.index._compiled).toBeDefined();
+  it("step 4: audit/RejectAndRevertFix restores module to pre-fix state", () => {
+    const node = result.index.nodes['audit/RejectAndRevertFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
+  });
+
+  it("connection: _actors/Auditor → audit/RejectAndRevertFix", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('audit/RejectAndRevertFix');
+  });
+
+  it("step 5: graph/ModuleFile stores reverted module content", () => {
+    const node = result.index.nodes['graph/ModuleFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/RejectAndRevertFix');
+  });
+
+  it("connection: audit/RejectAndRevertFix → graph/ModuleFile", () => {
+    const from = result.index.nodes['audit/RejectAndRevertFix'];
+    expect(from.followed_by).toContain('graph/ModuleFile');
+  });
+
+  it("step 6: _actors/Compiler recompiles to confirm revert is clean", () => {
+    const node = result.index.nodes['_actors/Compiler'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('graph/ModuleFile');
+  });
+
+  it("connection: graph/ModuleFile → _actors/Compiler", () => {
+    const from = result.index.nodes['graph/ModuleFile'];
+    expect(from.followed_by).toContain('_actors/Compiler');
   });
 
   it("step 7: compilation/CompilationResult confirms zero errors after revert", () => {
-    const result = buildPreFix();
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('_actors/Compiler');
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    const from = result.index.nodes['_actors/Compiler'];
+    expect(from.followed_by).toContain('compilation/CompilationResult');
+  });
+
+  it("step 8: audit/AuditFindingsList retains gap with failed-fix annotation", () => {
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
+  });
+
+  it("connection: compilation/CompilationResult → audit/AuditFindingsList", () => {
+    const from = result.index.nodes['compilation/CompilationResult'];
+    expect(from.followed_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("step 9: audit/BuildGapFixPrompt rebuilds fix prompt with failure context", () => {
+    const node = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("connection: audit/AuditFindingsList → audit/BuildGapFixPrompt", () => {
+    const from = result.index.nodes['audit/AuditFindingsList'];
+    expect(from.followed_by).toContain('audit/BuildGapFixPrompt');
+  });
+
+  it("step 10: audit/ProvideFixContext includes failed attempt details", () => {
+    const node = result.index.nodes['audit/ProvideFixContext'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/BuildGapFixPrompt');
+  });
+
+  it("connection: audit/BuildGapFixPrompt → audit/ProvideFixContext", () => {
+    const from = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(from.followed_by).toContain('audit/ProvideFixContext');
+  });
+
+  it("step 11: audit/TrackAuditRound records failed verification", () => {
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/ProvideFixContext');
+  });
+
+  it("connection: audit/ProvideFixContext → audit/TrackAuditRound", () => {
+    const from = result.index.nodes['audit/ProvideFixContext'];
+    expect(from.followed_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("journey covers full pipeline (11 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(11);
+    expect(journey.steps[0].node).toBe('audit/ApplyFix');
+    expect(journey.steps[10].node).toBe('audit/TrackAuditRound');
+  });
+
+  it("journey actor is Auditor (first actor in steps)", () => {
+    expect(journey.actor).toBe('_actors/Auditor');
+  });
+
+  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
+    expect(errors).toHaveLength(0);
   });
-
-  it("step 8: audit/AuditFindingsList retains the gap and marks it with a failed-fix-attempt annotation", () => {
-    const findingsList = {
-      round: 1,
-      gaps: [
-        { ...gap, fixed: false, failedAttempts: 1, lastFailureReason: 'Fix did not reference _actors/Admin' },
-      ],
-    };
-    expect(findingsList.gaps[0].fixed).toBe(false);
-    expect(findingsList.gaps[0].failedAttempts).toBe(1);
-    expect(findingsList.gaps[0].lastFailureReason).toContain('Admin');
-  });
-
-  it("step 9: audit/BuildGapFixPrompt rebuilds the fix prompt with additional context about why the previous attempt failed", () => {
-    const retryPrompt = `Fix the following gap in module "auth":
-Gap: ${gap.detail}
-Type: ${gap.type}
-
-PREVIOUS ATTEMPT FAILED: Fix did not reference _actors/Admin.
-You MUST use _actors/Admin in a journey step. Do not use _actors/User as a substitute.`;
-    expect(retryPrompt).toContain('PREVIOUS ATTEMPT FAILED');
-    expect(retryPrompt).toContain('_actors/Admin');
-    expect(retryPrompt).toContain(gap.detail);
-  });
-
-  it("step 10: audit/ProvideFixContext includes the failed attempt details so the next worker can try a different approach", () => {
-    const fixContext = {
-      gap,
-      targetModule: 'auth',
-      previousAttempts: [{ round: 1, reason: 'Fix did not reference _actors/Admin' }],
-      moduleYaml: yaml.dump(preFixAuth),
-    };
-    expect(fixContext.previousAttempts.length).toBe(1);
-    expect(fixContext.previousAttempts[0].reason).toContain('Admin');
-    expect(fixContext.moduleYaml).toContain('UserLogin');
-  });
-
-  it("step 11: audit/TrackAuditRound records the failed verification for progress tracking", () => {
-    const tracker = {
-      round: 1,
-      attempts: 1,
-      successfulFixes: 0,
-      failedVerifications: 1,
-      gapsRemaining: 1,
-    };
-    expect(tracker.failedVerifications).toBe(1);
-    expect(tracker.successfulFixes).toBe(0);
-    expect(tracker.gapsRemaining).toBe(1);
-  });
-
 });

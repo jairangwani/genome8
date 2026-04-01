@@ -51,14 +51,30 @@ export declare class LLMWorker {
      * Check if the worker process is alive.
      */
     isAlive(): boolean;
+    /**
+     * Health check: verify worker is alive and not stuck.
+     * Returns 'healthy', 'dead', or 'busy' (message in flight).
+     * Enables HealthCheckBeforeTaskDispatch journey.
+     */
+    healthCheck(): 'healthy' | 'dead' | 'busy';
+    /**
+     * Get worker stats for diagnostics.
+     */
+    getStats(): {
+        pid: number | undefined;
+        charsSent: number;
+        initialized: boolean;
+    } | null;
 }
 /**
- * Validate that expected output files from a worker task exist and are non-empty.
+ * Validate that expected output files from a worker task exist, are non-empty,
+ * and — for YAML module files — have valid syntax and required schema fields.
  */
 export declare function validateWorkerOutput(expectedFiles: string[], projectDir: string): {
     valid: string[];
     missing: string[];
     empty: string[];
+    malformed: string[];
 };
 export interface CrashReport {
     exitCode: number | null;

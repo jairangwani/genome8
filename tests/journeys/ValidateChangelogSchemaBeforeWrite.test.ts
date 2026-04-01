@@ -17,10 +17,20 @@ describe("ValidateChangelogSchemaBeforeWrite", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ComputeChangelogDiff → publish/ValidateChangelogYamlSchema", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/ValidateChangelogYamlSchema checks that the removed field is an array where each entry has a name and type field", () => {
     // Node: publish/ValidateChangelogYamlSchema (process)
     // Action: checks that the removed field is an array where each entry has a name and type field
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/ValidateChangelogYamlSchema → publish/ValidateChangelogYamlSchema", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/ValidateChangelogYamlSchema checks that the modified field is an array where each entry has a name and a description of what changed", () => {
@@ -29,10 +39,20 @@ describe("ValidateChangelogSchemaBeforeWrite", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ValidateChangelogYamlSchema → publish/ValidateChangelogYamlSchema", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/ValidateChangelogYamlSchema rejects the changelog if any required field is missing or has an invalid structure", () => {
     // Node: publish/ValidateChangelogYamlSchema (process)
     // Action: rejects the changelog if any required field is missing or has an invalid structure
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/ValidateChangelogYamlSchema → publish/ValidateChangelogYamlSchema", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/GenerateChangelogYaml proceeds to serialize and write changelog.yaml only after schema validation passes", () => {
@@ -41,10 +61,20 @@ describe("ValidateChangelogSchemaBeforeWrite", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ValidateChangelogYamlSchema → publish/GenerateChangelogYaml", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/ReportPublishFailure if schema validation fails, reports the specific changelog field violations preventing publish", () => {
     // Node: publish/ReportPublishFailure (process)
     // Action: if schema validation fails, reports the specific changelog field violations preventing publish
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/GenerateChangelogYaml → publish/ReportPublishFailure", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -18,10 +18,20 @@ describe("ActorDescriptionPoisoningDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/MaliciousSpecAuthor → actors/DiscoverFromActivities", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: actors/MergeAndDeduplicate merges the poisoned actors into the final set without content filtering", () => {
     // Node: actors/MergeAndDeduplicate (process)
     // Action: merges the poisoned actors into the final set without content filtering
     // TODO: agent fills assertion
+  });
+
+  it("connection: actors/DiscoverFromActivities → actors/MergeAndDeduplicate", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: actors/WriteActorsFile writes the poisoned descriptions to _actors.yaml", () => {
@@ -30,10 +40,20 @@ describe("ActorDescriptionPoisoningDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/MergeAndDeduplicate → actors/WriteActorsFile", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: actors/DetectActorDescriptionPoisoning scans each actor description for known adversarial patterns such as instruction overrides or encoded payloads", () => {
     // Node: actors/DetectActorDescriptionPoisoning (process)
     // Action: scans each actor description for known adversarial patterns such as instruction overrides or encoded payloads
     // TODO: agent fills assertion
+  });
+
+  it("connection: actors/WriteActorsFile → actors/DetectActorDescriptionPoisoning", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: actors/DetectActorDescriptionPoisoning flags descriptions exceeding the maximum length threshold as potential payload carriers", () => {
@@ -42,10 +62,20 @@ describe("ActorDescriptionPoisoningDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/DetectActorDescriptionPoisoning → actors/DetectActorDescriptionPoisoning", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: actors/ValidateActorYAMLStructure rejects actors whose descriptions fail the poisoning check", () => {
     // Node: actors/ValidateActorYAMLStructure (process)
     // Action: rejects actors whose descriptions fail the poisoning check
     // TODO: agent fills assertion
+  });
+
+  it("connection: actors/DetectActorDescriptionPoisoning → actors/ValidateActorYAMLStructure", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: compilation/ErrorReport records each flagged description with the specific adversarial pattern detected", () => {
@@ -54,10 +84,20 @@ describe("ActorDescriptionPoisoningDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/ValidateActorYAMLStructure → compilation/ErrorReport", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: convergence/AuditGapFix targeted fix sanitizes or removes the poisoned actor descriptions", () => {
     // Node: convergence/AuditGapFix (process)
     // Action: targeted fix sanitizes or removes the poisoned actor descriptions
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/ErrorReport → convergence/AuditGapFix", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

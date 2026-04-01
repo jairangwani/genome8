@@ -18,10 +18,20 @@ describe("ContinueWithoutSplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/HierarchyDecision → hierarchy/TrackHierarchyDepth", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/AnalyzeModuleIndependence reads ORGANIZATION.md independence analysis for the LLM", () => {
     // Node: hierarchy/AnalyzeModuleIndependence (process)
     // Action: reads ORGANIZATION.md independence analysis for the LLM
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/TrackHierarchyDepth → hierarchy/AnalyzeModuleIndependence", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: _actors/LLMWorker evaluates module groups and determines splitting is not beneficial", () => {
@@ -30,10 +40,20 @@ describe("ContinueWithoutSplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/AnalyzeModuleIndependence → _actors/LLMWorker", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: hierarchy/DecideSplit produces a no-split result indicating all modules stay in the current engine", () => {
     // Node: hierarchy/DecideSplit (process)
     // Action: produces a no-split result indicating all modules stay in the current engine
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/LLMWorker → hierarchy/DecideSplit", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: hierarchy/ContinueWithoutSplit bypasses child engine preparation and proceeds to the next convergence phase", () => {
@@ -42,16 +62,31 @@ describe("ContinueWithoutSplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/DecideSplit → hierarchy/ContinueWithoutSplit", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/ConvergenceState records the no-split decision and advances to bounded module creation", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records the no-split decision and advances to bounded module creation
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/ContinueWithoutSplit → convergence/ConvergenceState", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: convergence/BoundedCreationLoop begins creating modules directly in the current engine without hierarchy", () => {
     // Node: convergence/BoundedCreationLoop (process)
     // Action: begins creating modules directly in the current engine without hierarchy
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/ConvergenceState → convergence/BoundedCreationLoop", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

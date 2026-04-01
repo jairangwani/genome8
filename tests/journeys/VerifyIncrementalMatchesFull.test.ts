@@ -23,10 +23,20 @@ describe("VerifyIncrementalMatchesFull", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → _actors/Compiler", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: compilation/CompilationResult records the from-scratch full compilation result", () => {
     // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: records the from-scratch full compilation result
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: compilation/CompilationResultComparison compares the incremental compiled index against the full compilation, checking node registries, journey registries, and connection sets", () => {
@@ -35,10 +45,20 @@ describe("VerifyIncrementalMatchesFull", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/CompilationResult → compilation/CompilationResultComparison", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: compilation/ErrorReport records any structural differences as drift errors indicating merge-order sensitivity", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records any structural differences as drift errors indicating merge-order sensitivity
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResultComparison → compilation/ErrorReport", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
 });

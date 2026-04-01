@@ -17,10 +17,20 @@ describe("DiffModuleListForIncrementalUpdate", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/TargetedReconvergence → organization/ReadSpecFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: organization/IdentifyModules produces a new module list from the current spec", () => {
     // Node: organization/IdentifyModules (process)
     // Action: produces a new module list from the current spec
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ReadSpecFile → organization/IdentifyModules", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: organization/ModuleList provides the newly identified module list", () => {
@@ -29,10 +39,20 @@ describe("DiffModuleListForIncrementalUpdate", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/IdentifyModules → organization/ModuleList", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: organization/DiffModuleListAgainstExisting reads the modules/ directory to find existing module YAML files on disk", () => {
     // Node: organization/DiffModuleListAgainstExisting (process)
     // Action: reads the modules/ directory to find existing module YAML files on disk
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ModuleList → organization/DiffModuleListAgainstExisting", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: organization/DiffModuleListAgainstExisting compares new module names against existing file names to find additions", () => {
@@ -41,10 +61,20 @@ describe("DiffModuleListForIncrementalUpdate", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/DiffModuleListAgainstExisting → organization/DiffModuleListAgainstExisting", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: organization/DiffModuleListAgainstExisting identifies existing modules not in the new list as potential removals", () => {
     // Node: organization/DiffModuleListAgainstExisting (process)
     // Action: identifies existing modules not in the new list as potential removals
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/DiffModuleListAgainstExisting → organization/DiffModuleListAgainstExisting", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: organization/PreserveExistingModulesOnReorganize flags removed modules for human review rather than deleting their files", () => {
@@ -53,16 +83,31 @@ describe("DiffModuleListForIncrementalUpdate", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/DiffModuleListAgainstExisting → organization/PreserveExistingModulesOnReorganize", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: organization/PreserveExistingModulesOnReorganize retains existing module YAML files on disk even if the new list omits them", () => {
     // Node: organization/PreserveExistingModulesOnReorganize (process)
     // Action: retains existing module YAML files on disk even if the new list omits them
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/PreserveExistingModulesOnReorganize → organization/PreserveExistingModulesOnReorganize", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
+  });
+
   it("step 10: convergence/ConvergenceState records the diff result showing added, preserved, and flagged modules", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records the diff result showing added, preserved, and flagged modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/PreserveExistingModulesOnReorganize → convergence/ConvergenceState", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
 });

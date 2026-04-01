@@ -22,10 +22,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DebounceEvents → sync/ParseEventPayload", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/DetectOscillationInOriginChain checks each dependency's origin chain for this box's ID", () => {
     // Node: sync/DetectOscillationInOriginChain (process)
     // Action: checks each dependency's origin chain for this box's ID
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ParseEventPayload → sync/DetectOscillationInOriginChain", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/DetectOscillationInOriginChain filters out any dependency whose origin chain contains this box, keeping only non-oscillating dependencies", () => {
@@ -34,10 +44,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DetectOscillationInOriginChain → sync/DetectOscillationInOriginChain", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/CheckEventSequenceNumber validates sequence numbers for each remaining dependency event", () => {
     // Node: sync/CheckEventSequenceNumber (process)
     // Action: validates sequence numbers for each remaining dependency event
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/DetectOscillationInOriginChain → sync/CheckEventSequenceNumber", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/LastProcessedSequence provides stored sequences for all dependencies", () => {
@@ -46,10 +66,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/CheckEventSequenceNumber → sync/LastProcessedSequence", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: sync/DiscardStaleEvent discards any dependency events with stale sequence numbers", () => {
     // Node: sync/DiscardStaleEvent (rule)
     // Action: discards any dependency events with stale sequence numbers
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/LastProcessedSequence → sync/DiscardStaleEvent", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: sync/ReadDependencyList reads the full dependency list", () => {
@@ -58,10 +88,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DiscardStaleEvent → sync/ReadDependencyList", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: sync/FetchDependencyHash fetches current hashes from all non-discarded dependencies", () => {
     // Node: sync/FetchDependencyHash (process)
     // Action: fetches current hashes from all non-discarded dependencies
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ReadDependencyList → sync/FetchDependencyHash", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: sync/DependencyHashStore provides stored hashes for all dependencies", () => {
@@ -70,10 +110,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/FetchDependencyHash → sync/DependencyHashStore", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: sync/CompareStoredHash compares fetched hashes against stored for each dependency", () => {
-    // Node: sync/CompareStoredHash (process) — has code: test/staleness.test.ts
+    // Node: sync/CompareStoredHash (process) — has code: src/sync.ts
     // Action: compares fetched hashes against stored for each dependency
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/DependencyHashStore → sync/CompareStoredHash", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: sync/IdentifyStaleDependencies collects all changed dependencies into a merged list", () => {
@@ -82,10 +132,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/CompareStoredHash → sync/IdentifyStaleDependencies", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: sync/SyncResult records the merged set of changed dependencies", () => {
     // Node: sync/SyncResult (artifact) — has code: test/sync-loop.test.ts
     // Action: records the merged set of changed dependencies
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/IdentifyStaleDependencies → sync/SyncResult", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
   });
 
   it("step 14: graph/CompiledIndex provides the graph for tracing across all changed dependencies", () => {
@@ -94,10 +154,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/SyncResult → graph/CompiledIndex", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
+  });
+
   it("step 15: graph/ConnectionSet provides edges for reference tracing", () => {
     // Node: graph/ConnectionSet (artifact)
     // Action: provides edges for reference tracing
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → graph/ConnectionSet", () => {
+    // Assert that the output of step 14 feeds into step 15
+    // TODO: agent fills connection assertion
   });
 
   it("step 16: sync/FindAffectedModules traces connections from all changed dependencies to local modules", () => {
@@ -106,10 +176,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/ConnectionSet → sync/FindAffectedModules", () => {
+    // Assert that the output of step 15 feeds into step 16
+    // TODO: agent fills connection assertion
+  });
+
   it("step 17: sync/ComputeRippleScope intersects each dependency's changelog with local references to compute the union of relevant changes", () => {
     // Node: sync/ComputeRippleScope (process)
     // Action: intersects each dependency's changelog with local references to compute the union of relevant changes
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/FindAffectedModules → sync/ComputeRippleScope", () => {
+    // Assert that the output of step 16 feeds into step 17
+    // TODO: agent fills connection assertion
   });
 
   it("step 18: sync/FilterUnrelatedChanges narrows affected modules using the merged ripple scope", () => {
@@ -118,10 +198,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/ComputeRippleScope → sync/FilterUnrelatedChanges", () => {
+    // Assert that the output of step 17 feeds into step 18
+    // TODO: agent fills connection assertion
+  });
+
   it("step 19: sync/MarkModulesStale marks the union of affected modules from all concurrent ripples", () => {
     // Node: sync/MarkModulesStale (process)
     // Action: marks the union of affected modules from all concurrent ripples
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/FilterUnrelatedChanges → sync/MarkModulesStale", () => {
+    // Assert that the output of step 18 feeds into step 19
+    // TODO: agent fills connection assertion
   });
 
   it("step 20: sync/ComputeStaleModuleCount counts the total stale modules from the merged ripple", () => {
@@ -130,10 +220,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/MarkModulesStale → sync/ComputeStaleModuleCount", () => {
+    // Assert that the output of step 19 feeds into step 20
+    // TODO: agent fills connection assertion
+  });
+
   it("step 21: sync/StaleModuleList stores the combined stale list", () => {
     // Node: sync/StaleModuleList (artifact)
     // Action: stores the combined stale list
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ComputeStaleModuleCount → sync/StaleModuleList", () => {
+    // Assert that the output of step 20 feeds into step 21
+    // TODO: agent fills connection assertion
   });
 
   it("step 22: sync/TargetedNotFull ensures the combined set enters targeted reconvergence", () => {
@@ -142,10 +242,20 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/StaleModuleList → sync/TargetedNotFull", () => {
+    // Assert that the output of step 21 feeds into step 22
+    // TODO: agent fills connection assertion
+  });
+
   it("step 23: sync/UpdateStoredHashes persists new hashes for all changed dependencies after reconvergence", () => {
     // Node: sync/UpdateStoredHashes (process)
     // Action: persists new hashes for all changed dependencies after reconvergence
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/TargetedNotFull → sync/UpdateStoredHashes", () => {
+    // Assert that the output of step 22 feeds into step 23
+    // TODO: agent fills connection assertion
   });
 
   it("step 24: sync/LastProcessedSequence updated with the latest sequence number from each processed dependency event", () => {
@@ -154,16 +264,31 @@ describe("HandleConcurrentDependencyRipples", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/UpdateStoredHashes → sync/LastProcessedSequence", () => {
+    // Assert that the output of step 23 feeds into step 24
+    // TODO: agent fills connection assertion
+  });
+
   it("step 25: sync/AppendBoxToOriginChain merges all incoming origin chains and appends this box's ID to the combined chain", () => {
     // Node: sync/AppendBoxToOriginChain (process)
     // Action: merges all incoming origin chains and appends this box's ID to the combined chain
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/LastProcessedSequence → sync/AppendBoxToOriginChain", () => {
+    // Assert that the output of step 24 feeds into step 25
+    // TODO: agent fills connection assertion
+  });
+
   it("step 26: sync/NarrowOutgoingChangelog produces a single narrowed outgoing changelog combining locally-relevant changes from all dependencies", () => {
     // Node: sync/NarrowOutgoingChangelog (process)
     // Action: produces a single narrowed outgoing changelog combining locally-relevant changes from all dependencies
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/AppendBoxToOriginChain → sync/NarrowOutgoingChangelog", () => {
+    // Assert that the output of step 25 feeds into step 26
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -17,10 +17,20 @@ describe("NormalizeEventForIdempotentComparison", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/WriteEventFile → publish/EventFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/NormalizeEventTransientFields reads the event file and identifies transient fields like wall-clock timestamp", () => {
     // Node: publish/NormalizeEventTransientFields (process)
     // Action: reads the event file and identifies transient fields like wall-clock timestamp
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/EventFile → publish/NormalizeEventTransientFields", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/NormalizeEventTransientFields strips or zeros the transient fields to produce a normalized content representation", () => {
@@ -29,10 +39,20 @@ describe("NormalizeEventForIdempotentComparison", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/NormalizeEventTransientFields → publish/NormalizeEventTransientFields", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/NormalizeEventTransientFields computes a content hash over the normalized representation excluding transient fields", () => {
     // Node: publish/NormalizeEventTransientFields (process)
     // Action: computes a content hash over the normalized representation excluding transient fields
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/NormalizeEventTransientFields → publish/NormalizeEventTransientFields", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/DeduplicateEventFile uses the normalized content hash instead of raw file bytes to determine if the event carries new semantic information", () => {
@@ -41,10 +61,20 @@ describe("NormalizeEventForIdempotentComparison", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/NormalizeEventTransientFields → publish/DeduplicateEventFile", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/SuppressNoOpRipple suppresses event propagation if the normalized content matches the last event, preventing false ripple from timestamp differences alone", () => {
     // Node: publish/SuppressNoOpRipple (process)
     // Action: suppresses event propagation if the normalized content matches the last event, preventing false ripple from timestamp differences alone
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/DeduplicateEventFile → publish/SuppressNoOpRipple", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

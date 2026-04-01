@@ -18,16 +18,31 @@ describe("TeardownEventWatching", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/HumanDeveloper → events/EventWatcherSet", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/DeregisterEventWatchers closes each fs.watch instance and releases kernel handles", () => {
     // Node: events/DeregisterEventWatchers (process)
     // Action: closes each fs.watch instance and releases kernel handles
     // TODO: agent fills assertion
   });
 
+  it("connection: events/EventWatcherSet → events/DeregisterEventWatchers", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
+  });
+
   it("step 4: _actors/FileSystem deregisters the watch callbacks at the kernel level", () => {
     // Node: _actors/FileSystem (actor)
     // Action: deregisters the watch callbacks at the kernel level
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/DeregisterEventWatchers → _actors/FileSystem", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
   });
 
 });

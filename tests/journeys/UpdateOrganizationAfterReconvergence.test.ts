@@ -18,10 +18,20 @@ describe("UpdateOrganizationAfterReconvergence", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/TargetedReconvergence → organization/ReadSpecFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: _actors/LLMWorker re-analyzes the spec for any new or removed modules", () => {
     // Node: _actors/LLMWorker (actor)
     // Action: re-analyzes the spec for any new or removed modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ReadSpecFile → _actors/LLMWorker", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: organization/DetectNewModulesInSpec compares the current module list against the spec to find new concerns", () => {
@@ -30,10 +40,20 @@ describe("UpdateOrganizationAfterReconvergence", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → organization/DetectNewModulesInSpec", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: organization/IdentifyModules re-identifies modules from the updated spec including any new ones", () => {
     // Node: organization/IdentifyModules (process)
     // Action: re-identifies modules from the updated spec including any new ones
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/DetectNewModulesInSpec → organization/IdentifyModules", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: organization/ModuleList updates the module list with any changes", () => {
@@ -42,10 +62,20 @@ describe("UpdateOrganizationAfterReconvergence", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/IdentifyModules → organization/ModuleList", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: organization/AnalyzeDependencies re-computes dependencies for the updated module set", () => {
     // Node: organization/AnalyzeDependencies (process)
     // Action: re-computes dependencies for the updated module set
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ModuleList → organization/AnalyzeDependencies", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: organization/DependencyGraph updates the build order", () => {
@@ -54,10 +84,20 @@ describe("UpdateOrganizationAfterReconvergence", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/AnalyzeDependencies → organization/DependencyGraph", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: organization/AssignSpecSectionsToModules re-maps spec sections to the updated module set", () => {
     // Node: organization/AssignSpecSectionsToModules (process)
     // Action: re-maps spec sections to the updated module set
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/DependencyGraph → organization/AssignSpecSectionsToModules", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: organization/ModuleSpecSectionMap updates the section assignments", () => {
@@ -66,10 +106,20 @@ describe("UpdateOrganizationAfterReconvergence", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/AssignSpecSectionsToModules → organization/ModuleSpecSectionMap", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: organization/AssembleOrganization rebuilds the organization structure", () => {
     // Node: organization/AssembleOrganization (process)
     // Action: rebuilds the organization structure
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ModuleSpecSectionMap → organization/AssembleOrganization", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: organization/WriteOrganizationFile overwrites ORGANIZATION.md with the updated content", () => {
@@ -78,10 +128,20 @@ describe("UpdateOrganizationAfterReconvergence", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/AssembleOrganization → organization/WriteOrganizationFile", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: organization/OrganizationFile the updated organization is now on disk", () => {
     // Node: organization/OrganizationFile (artifact)
     // Action: the updated organization is now on disk
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/WriteOrganizationFile → organization/OrganizationFile", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
   });
 
 });

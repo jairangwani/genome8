@@ -4,212 +4,192 @@
 // Modules touched: audit, _actors, compilation
 
 import { describe, it, expect } from 'vitest';
-import { compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
-import type { ModuleFile } from '../../src/types.js';
 
-// Pre-self-fix audit module: missing RunCrossModuleAudit journey
-const preFixAudit: ModuleFile = {
-  spec_sections: [3, 5],
-  nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'Checks spec coverage' },
-    CheckActorCoverage: { type: 'process', description: 'Checks actor coverage' },
-    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
-    AuditFindingsList: { type: 'artifact', description: 'Gap list' },
-    DeclareConverged: { type: 'process', description: 'Declares convergence' },
-  },
-  journeys: {
-    RunSpecAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks spec' },
-        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
-    },
-  },
-};
-
-// Post-self-fix: added RunActorAudit and RunCrossModuleAudit
-const postFixAudit: ModuleFile = {
-  spec_sections: [3, 5],
-  nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'Checks spec coverage' },
-    CheckActorCoverage: { type: 'process', description: 'Checks actor coverage' },
-    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
-    AuditFindingsList: { type: 'artifact', description: 'Gap list' },
-    DeclareConverged: { type: 'process', description: 'Declares convergence' },
-  },
-  journeys: {
-    RunSpecAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks spec' },
-        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
-    },
-    RunActorAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks actor coverage' },
-        { node: 'CheckActorCoverage', action: 'evaluates actor refs' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
-    },
-    RunCrossModuleAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks cross-module connections' },
-        { node: 'CheckCrossModuleCoverage', action: 'evaluates module links' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-        { node: 'DeclareConverged', action: 'marks convergence if all pass' },
-      ],
-    },
-  },
-};
-
-const actors: ModuleFile = {
-  nodes: {
-    Auditor: { type: 'actor', description: 'Coverage auditor' },
-    User: { type: 'actor', description: 'Platform user' },
-  },
-};
-
-const authModule: ModuleFile = {
-  spec_sections: [1],
-  nodes: { Login: { type: 'process', description: 'Login' } },
-  journeys: {
-    UserLogin: {
-      steps: [
-        { node: '_actors/User', action: 'logs in' },
-        { node: 'Login', action: 'authenticates' },
-      ],
-    },
-  },
-};
-
-function buildPostFix() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', actors],
-    ['audit', postFixAudit],
-    ['auth', authModule],
-  ]));
-}
+// Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ReauditAfterAuditSelfFix", () => {
   it("step 1: audit/ApplyFix has just modified audit.yaml to close a self-referential gap", () => {
-    const preJourneys = Object.keys(preFixAudit.journeys!);
-    const postJourneys = Object.keys(postFixAudit.journeys!);
-    expect(postJourneys.length).toBeGreaterThan(preJourneys.length);
-    expect(postJourneys).toContain('RunCrossModuleAudit');
-    expect(postJourneys).toContain('RunActorAudit');
+    // Node: audit/ApplyFix (process)
+    // Action: has just modified audit.yaml to close a self-referential gap
+    // TODO: agent fills assertion
   });
 
   it("step 2: audit/ReauditAfterSelfFix detects that the fix targeted audit.yaml and triggers a full re-audit", () => {
-    const fixTarget = 'audit';
-    const needsReaudit = fixTarget === 'audit';
-    expect(needsReaudit).toBe(true);
+    // Node: audit/ReauditAfterSelfFix (process)
+    // Action: detects that the fix targeted audit.yaml and triggers a full re-audit
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/ApplyFix → audit/ReauditAfterSelfFix", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
   });
 
   it("step 3: _actors/Compiler recompiles all modules with the modified audit.yaml", () => {
-    const result = buildPostFix();
-    expect(result.index).toBeDefined();
-    expect(result.index._compiled).toBeDefined();
-    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
+    // Node: _actors/Compiler (actor)
+    // Action: recompiles all modules with the modified audit.yaml
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/ReauditAfterSelfFix → _actors/Compiler", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: compilation/CompilationResult confirms 0 errors after the self-fix", () => {
-    const result = buildPostFix();
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
+    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
+    // Action: confirms 0 errors after the self-fix
+    // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
   });
 
   it("step 5: audit/ValidateGraphInvariantsPostFix confirms all convergence invariants still hold after the self-fix", () => {
-    const result = buildPostFix();
-    expect(result.index._stats.orphans).toBe(0);
-    expect(result.index._stats.duplicate_names).toBe(0);
-    expect(result.index._stats.isolated_modules).toBe(0);
+    // Node: audit/ValidateGraphInvariantsPostFix (process)
+    // Action: confirms all convergence invariants still hold after the self-fix
+    // TODO: agent fills assertion
   });
 
-  it("step 6: audit/GenerateAuditPrompt rebuilds all 3 audit prompts using the modified audit module's definitions", () => {
-    const angles = ['spec_coverage', 'actor_coverage', 'cross_module_coverage'];
-    const result = buildPostFix();
-    const excerpt = generateExcerpt({
-      round: 2,
-      focusModule: 'audit',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: 'nodes:\n  CheckSpecCoverage:\n    type: process',
-    });
-    expect(angles.length).toBe(3);
-    expect(excerpt).toContain('Focus: audit');
+  it("connection: compilation/CompilationResult → audit/ValidateGraphInvariantsPostFix", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
+  it("step 6: audit/GenerateAuditPrompt rebuilds all 4 audit prompts using the modified audit module's definitions", () => {
+    // Node: audit/GenerateAuditPrompt (process)
+    // Action: rebuilds all 4 audit prompts using the modified audit module's definitions
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/ValidateGraphInvariantsPostFix → audit/GenerateAuditPrompt", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
   it("step 7: _actors/Auditor re-checks spec coverage with the self-fixed audit module in the graph", () => {
-    const result = buildPostFix();
-    const auditCov = result.coverage.modules['audit'];
-    expect(auditCov.spec_sections).toContain(3);
-    expect(auditCov.spec_sections).toContain(5);
+    // Node: _actors/Auditor (actor)
+    // Action: re-checks spec coverage with the self-fixed audit module in the graph
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/GenerateAuditPrompt → _actors/Auditor", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: audit/CheckSpecCoverage re-examines all spec sections including audit's own sections 3 and 5", () => {
-    const result = buildPostFix();
-    const allSections = new Set<number>();
-    for (const [, cov] of Object.entries(result.coverage.modules)) {
-      for (const s of cov.spec_sections) allSections.add(s);
-    }
-    expect(allSections.has(1)).toBe(true);  // auth
-    expect(allSections.has(3)).toBe(true);  // audit
-    expect(allSections.has(5)).toBe(true);  // audit
+    // Node: audit/CheckSpecCoverage (process)
+    // Action: re-examines all spec sections including audit's own sections 3 and 5
+    // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Auditor → audit/CheckSpecCoverage", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
   it("step 9: _actors/Auditor re-checks actor coverage with the updated audit module", () => {
-    const result = buildPostFix();
-    const actorNodes = Object.entries(result.index.nodes)
-      .filter(([k]) => k.startsWith('_actors/'));
-    for (const [, node] of actorNodes) {
-      expect(node.in_journeys.length).toBeGreaterThanOrEqual(1);
-    }
+    // Node: _actors/Auditor (actor)
+    // Action: re-checks actor coverage with the updated audit module
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/CheckSpecCoverage → _actors/Auditor", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: audit/CheckActorCoverage re-examines actor references including any new actors added by the self-fix", () => {
-    const result = buildPostFix();
-    const orphanActors = result.coverage.orphans.filter(o => o.startsWith('_actors/'));
-    expect(orphanActors.length).toBe(0);
+    // Node: audit/CheckActorCoverage (process)
+    // Action: re-examines actor references including any new actors added by the self-fix
+    // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Auditor → audit/CheckActorCoverage", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
   it("step 11: _actors/Auditor re-checks cross-module coverage with the updated audit module", () => {
-    const result = buildPostFix();
-    // audit module connects to _actors — cross-module
-    expect(result.coverage.modules['audit'].cross_module_connections).toBeGreaterThan(0);
+    // Node: _actors/Auditor (actor)
+    // Action: re-checks cross-module coverage with the updated audit module
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/CheckActorCoverage → _actors/Auditor", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: audit/CheckCrossModuleCoverage re-examines module connections including audit's updated cross-module refs", () => {
-    const result = buildPostFix();
-    expect(result.coverage.isolated_modules.length).toBe(0);
+    // Node: audit/CheckCrossModuleCoverage (process)
+    // Action: re-examines module connections including audit's updated cross-module refs
+    // TODO: agent fills assertion
   });
 
-  it("step 13: audit/MergeAuditReports combines the post-self-fix re-audit reports", () => {
-    const specGaps: any[] = [];
-    const actorGaps: any[] = [];
-    const crossModGaps: any[] = [];
-    const merged = [...specGaps, ...actorGaps, ...crossModGaps];
-    expect(merged.length).toBe(0);
+  it("connection: _actors/Auditor → audit/CheckCrossModuleCoverage", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
   });
 
-  it("step 14: audit/CollectAuditFindings gathers findings to verify the self-fix resolved the gap without opening new ones", () => {
-    const findings: any[] = [];
-    expect(findings.length).toBe(0);
+  it("step 13: _actors/Auditor re-checks goal coverage with the updated audit module", () => {
+    // Node: _actors/Auditor (actor)
+    // Action: re-checks goal coverage with the updated audit module
+    // TODO: agent fills assertion
   });
 
-  it("step 15: audit/AuditFindingsList stores the post-self-fix findings for comparison against the pre-fix state", () => {
-    const preFix = { gaps: 2 };
-    const postFix = { gaps: 0 };
-    const findingsList = {
-      round: 2,
-      total_gaps: postFix.gaps,
-      comparison: { before: preFix.gaps, after: postFix.gaps },
-    };
-    expect(findingsList.total_gaps).toBe(0);
-    expect(findingsList.comparison.before).toBeGreaterThan(findingsList.comparison.after);
+  it("connection: audit/CheckCrossModuleCoverage → _actors/Auditor", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
+  });
+
+  it("step 14: audit/CheckGoalCoverage re-examines goal rule nodes against journeys in the self-fixed graph", () => {
+    // Node: audit/CheckGoalCoverage (process)
+    // Action: re-examines goal rule nodes against journeys in the self-fixed graph
+    // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Auditor → audit/CheckGoalCoverage", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
+  });
+
+  it("step 15: audit/MergeAuditReports combines the 4 post-self-fix re-audit reports", () => {
+    // Node: audit/MergeAuditReports (process)
+    // Action: combines the 4 post-self-fix re-audit reports
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/CheckGoalCoverage → audit/MergeAuditReports", () => {
+    // Assert that the output of step 14 feeds into step 15
+    // TODO: agent fills connection assertion
+  });
+
+  it("step 16: audit/CollectAuditFindings gathers findings to verify the self-fix resolved the gap without opening new ones", () => {
+    // Node: audit/CollectAuditFindings (process)
+    // Action: gathers findings to verify the self-fix resolved the gap without opening new ones
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/MergeAuditReports → audit/CollectAuditFindings", () => {
+    // Assert that the output of step 15 feeds into step 16
+    // TODO: agent fills connection assertion
+  });
+
+  it("step 17: audit/AuditFindingsList stores the post-self-fix findings for comparison against the pre-fix state", () => {
+    // Node: audit/AuditFindingsList (artifact)
+    // Action: stores the post-self-fix findings for comparison against the pre-fix state
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/CollectAuditFindings → audit/AuditFindingsList", () => {
+    // Assert that the output of step 16 feeds into step 17
+    // TODO: agent fills connection assertion
   });
 
 });

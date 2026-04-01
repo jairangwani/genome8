@@ -214,3 +214,99 @@ export function writeGeneratedFile(filePath: string, content: string, maxRetries
     }
   }
 }
+
+/**
+ * Scan filled function bodies for placeholder patterns that indicate
+ * the LLM did not produce real implementations.
+ * Returns names of functions containing only placeholder code.
+ * Enables RejectPlaceholderFill journey.
+ */
+export function detectPlaceholderFill(content: string): string[] {
+  const placeholders: string[] = [];
+  const placeholderPatterns = [
+    /throw\s+new\s+Error\s*\(\s*['"]Not implemented['"]\s*\)/,
+    /throw\s+new\s+Error\s*\(\s*['"]TODO['"]\s*\)/,
+    /return\s+undefined\s*;?\s*$/,
+    /\/\/\s*TODO:\s*implement/,
+  ];
+
+  // Match function/method declarations and their bodies
+  const funcMatches = content.matchAll(
+    /(?:async\s+)?(?:function\s+(\w+)|(\w+)\s*\([^)]*\)\s*(?::\s*[^{]+)?\s*)\{([\s\S]*?)\n\s*\}/g
+  );
+
+  for (const match of funcMatches) {
+    const name = match[1] || match[2];
+    if (!name) continue;
+    const body = match[3].trim();
+
+    // Empty body
+    if (!body) {
+      placeholders.push(name);
+      continue;
+    }
+
+    // Only placeholder patterns
+    const lines = body.split('\n').filter(l => l.trim() && !l.trim().startsWith('//'));
+    const allPlaceholder = lines.length > 0 && lines.every(line =>
+      placeholderPatterns.some(p => p.test(line.trim()))
+    );
+    if (allPlaceholder) {
+      placeholders.push(name);
+    }
+  }
+  return placeholders;
+}
+
+/**
+ * Compare exported functions/classes in a filled file against the module's
+ * node list to detect added or removed stubs that violate CodeComesFromNodes.
+ * Returns {added, removed} stub names.
+ * Enables RecoverFromNodeStubMismatch journey.
+ */
+export function detectNodeStubMismatch(
+  content: string,
+  expectedNodes: string[]
+): { added: string[]; removed: string[] } {
+  // Extract exported class/function names from content
+  const exportedNames = new Set<string>();
+  const exportMatches = content.matchAll(
+    /export\s+(?:class|function|async\s+function)\s+(\w+)/g
+  );
+  for (const m of exportMatches) {
+    exportedNames.add(m[1]);
+  }
+
+  const expectedSet = new Set(expectedNodes);
+  const added = [...exportedNames].filter(n => !expectedSet.has(n));
+  const removed = expectedNodes.filter(n => !exportedNames.has(n));
+
+  return { added, removed };
+}
+
+/**
+ * Compare the current graph node metadata against an existing source file
+ * to determine if the code has drifted and needs a Mode 2 edit-based update.
+ * Returns true if the file needs updating.
+ * Enables UpdateExistingCodeFromGraph journey.
+ */
+export function detectCodeNeedsUpdate(
+  existingContent: string,
+  node: CompiledNode
+): boolean {
+  // Check if the JSDoc description matches
+  const descMatch = existingContent.match(/\*\s+(.+)\n\s+\*/);
+  if (descMatch && descMatch[1] !== node.description) {
+    return true;
+  }
+
+  // Check if journey participation changed
+  for (const journey of node.in_journeys) {
+    const journeyName = journey.split(' (')[0];
+    if (!existingContent.includes(journeyName)) {
+      return true;
+    }
+  }
+
+  return false;
+}

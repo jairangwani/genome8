@@ -11,7 +11,7 @@ nodes:
   CompareStoredHash:
     type: process
     description: compares each fetched dependency hash against the locally stored hash from the last sync
-    files: [test/staleness.test.ts]
+    files: [src/sync.ts, test/staleness.test.ts]
   IdentifyStaleDependencies:
     type: process
     description: collects all dependencies whose hash has changed since the last sync
@@ -168,6 +168,12 @@ nodes:
   RejectMalformedEvent:
     type: rule
     description: requires that incoming event files contain valid YAML with all mandatory fields including interface hash, sequence number, and origin chain, and rejects sync when parsing fails
+  ReleaseSyncLockOnError:
+    type: process
+    description: ensures the SyncLock is released in a finally block when any step in the sync pipeline throws an unexpected error after lock acquisition, preventing permanent lock deadlock that would block all future sync cycles
+  DetectStaleMarkingWriteFailure:
+    type: process
+    description: after MarkModulesStale runs, reads back each expected stale marker from the module files on disk and identifies any modules where the marker write silently failed or was lost due to I/O error
   RetryDeferredSync:
     type: process
     description: re-queues a sync cycle that was blocked by GuardAgainstConcurrentSync so it runs after the active sync releases the lock, preventing silently lost dependency changes that would leave modules stale
@@ -920,7 +926,7 @@ journeys:
       - node: StaleModuleList
         action: stores the final narrowed stale list after chunked tracing completes
 
-  EnforceRippleDepthLimit:
+  EnforceSyncRippleDepthLimit:
     files: [test/journeys/EnforceRippleDepthLimit.test.ts]
     steps:
       - node: _actors/FileSystem
@@ -1294,3 +1300,90 @@ journeys:
         action: reads the changelog to detect that content changed even though the hash did not
       - node: MarkModulesStale
         action: marks modules stale based on changelog evidence overriding the hash match
+
+  SkipReconvergenceOnIrrelevantDependencyChange:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification via fs.watch
+      - node: events/ReadEventFile
+        action: reads the incoming event file from the changed dependency
+      - node: ParseEventPayload
+        action: extracts the changelog, interface hash, origin chain, and sequence number from the event
+      - node: CheckEventSequenceNumber
+        action: validates the event sequence number is newer than the last processed
+      - node: LastProcessedSequence
+        action: provides the last processed sequence for comparison
+      - node: DetectOscillationInOriginChain
+        action: checks the origin chain and finds no oscillation
+      - node: ReadDependencyList
+        action: reads the dependency configuration
+      - node: FetchDependencyHash
+        action: fetches the current hash from the changed dependency's interface.yaml
+      - node: DependencyHashStore
+        action: provides the stored hash for comparison
+      - node: CompareStoredHash
+        action: confirms a hash mismatch indicating the dependency changed
+      - node: IdentifyStaleDependencies
+        action: records the changed dependency
+      - node: SyncResult
+        action: stores the changed dependency with its changelog
+      - node: graph/CompiledIndex
+        action: provides the graph for cross-reference tracing
+      - node: graph/ConnectionSet
+        action: provides edges showing which local nodes reference the changed dependency
+      - node: FindAffectedModules
+        action: traces connections from the changed dependency nodes to local modules
+      - node: FilterUnrelatedChanges
+        action: compares each affected module's references against the changelog and finds no local module references any of the changed nodes
+      - node: ComputeStaleModuleCount
+        action: counts zero stale modules and records the count in the sync result
+      - node: UpdateStoredHashes
+        action: writes the new dependency hash to local storage to prevent re-triggering on the next event
+      - node: DependencyHashStore
+        action: updated with the latest hash for this dependency
+      - node: LastProcessedSequence
+        action: updated with the processed event's sequence number
+      - node: SyncResult
+        action: records that the dependency changed but no local modules were affected and no reconvergence or outgoing event was needed
+
+  ReleaseSyncLockOnPipelineError:
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification triggering a new sync cycle
+      - node: GuardAgainstConcurrentSync
+        action: checks the SyncLock and finds no active sync in progress
+      - node: SyncLock
+        action: is acquired marking this sync cycle as active
+      - node: ReadDependencyList
+        action: reads the dependency configuration to begin the sync pipeline
+      - node: FetchDependencyHash
+        action: attempts to fetch hashes but encounters an unexpected error partway through the pipeline
+      - node: ReleaseSyncLockOnError
+        action: executes in a finally block and detects the pipeline threw an error while the lock was held
+      - node: ReleaseSyncLockOnError
+        action: releases the SyncLock despite the pipeline error so deferred syncs and future events can proceed
+      - node: SyncLock
+        action: is released despite the pipeline failure
+      - node: SyncResult
+        action: records that the sync cycle failed with an unexpected error and the lock was safely released
+      - node: RetryDeferredSync
+        action: checks whether any deferred events are waiting and re-queues them for processing now that the lock is free
+
+  RecoverFromStaleMarkingWriteFailure:
+    steps:
+      - node: FindAffectedModules
+        action: identifies the set of local modules that need stale markers written
+      - node: MarkModulesStale
+        action: attempts to write stale markers on all affected modules
+      - node: DetectStaleMarkingWriteFailure
+        action: reads back each module file to verify the stale marker was persisted on disk
+      - node: DetectStaleMarkingWriteFailure
+        action: identifies modules where the stale marker is missing despite the write attempt
+      - node: MarkModulesStale
+        action: retries writing stale markers on only the modules that failed the first attempt
+      - node: DetectStaleMarkingWriteFailure
+        action: re-verifies the retried writes and confirms all markers are now persisted
+      - node: StaleModuleList
+        action: stores the verified complete stale list after all markers are confirmed written
+      - node: convergence/TargetedReconvergence
+        action: receives the verified stale list knowing all markers are confirmed on disk

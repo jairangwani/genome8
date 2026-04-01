@@ -157,6 +157,12 @@ nodes:
   WatcherCrashRetryLimit:
     type: rule
     description: enforces a maximum number of consecutive re-registration attempts for the same dependency's watcher before removing it from the active set, preventing infinite crash-reregister oscillation loops
+  DetectTotalWatcherLoss:
+    type: process
+    description: after a watcher crash or termination, checks EventWatcherSet and detects when zero active watchers remain, indicating complete event blindness requiring immediate bulk re-registration or critical escalation
+  EnforceDeterministicBatchOrder:
+    type: process
+    description: after PrioritizeEventsByImpact sorts events by impact count, breaks ties among equal-impact events by sorting on dependency name alphabetically, ensuring the same batch always produces the same processing, shedding, and spill order regardless of fs.watch arrival order
 
 journeys:
   SetupEventWatching:
@@ -1241,3 +1247,57 @@ journeys:
         action: recompiles only the stale modules to validate the graph after reconvergence
       - node: compilation/CompilationResult
         action: produces the compilation result confirming zero errors after event-driven recompilation
+
+  RecoverFromTotalWatcherLoss:
+    steps:
+      - node: DetectWatcherCrash
+        action: receives an error from the last remaining active watcher in EventWatcherSet
+      - node: ReregisterCrashedWatcher
+        action: attempts to re-register the crashed watcher but the re-registration also fails
+      - node: EventWatcherSet
+        action: reports zero active watchers after the failed re-registration
+      - node: DetectTotalWatcherLoss
+        action: checks the active watcher count and finds it is zero
+      - node: DetectTotalWatcherLoss
+        action: flags the engine as completely blind to all dependency events
+      - node: LogEventFailure
+        action: records the total watcher loss as a critical event with the list of all failed dependency paths
+      - node: EventLog
+        action: persists the critical watcher loss entry
+      - node: sync/ReadDependencyList
+        action: provides the full dependency list for a bulk re-registration attempt
+      - node: RegisterEventWatchers
+        action: attempts to re-create fs.watch instances for all dependencies in a single bulk operation
+      - node: ConfirmWatcherHealth
+        action: checks which watchers successfully registered and which failed
+      - node: EventWatcherSet
+        action: updated with whatever watchers could be restored from the bulk attempt
+      - node: DetectTotalWatcherLoss
+        action: re-checks the active watcher count after the bulk recovery attempt
+      - node: convergence/ConvergenceState
+        action: receives a critical watcher loss notification if zero watchers could be restored, requiring operator intervention
+
+  EnforceDeterministicEventBatchOrder:
+    steps:
+      - node: DebounceEvents
+        action: produces a batch of events from multiple dependencies after the debounce window closes
+      - node: ReadEventFilesInParallel
+        action: reads all event files in the batch concurrently, returning results in non-deterministic completion order
+      - node: ValidateEventFileFormat
+        action: validates each event file in the batch
+      - node: EventPayload
+        action: stores the validated payloads for all events in the batch
+      - node: graph/ConnectionSet
+        action: provides the edge set showing how many local modules each dependency affects
+      - node: PrioritizeEventsByImpact
+        action: sorts the batch by impact count, producing groups of events with equal impact scores
+      - node: EnforceDeterministicBatchOrder
+        action: detects events with equal impact counts within the sorted batch
+      - node: EnforceDeterministicBatchOrder
+        action: breaks ties by sorting equal-impact events alphabetically by dependency name, producing a fully deterministic order
+      - node: ShedLowPriorityEventsUnderLoad
+        action: applies backpressure shedding using the deterministic order so the same events are always dropped across runs
+      - node: SpillBatchPayloadsToDisk
+        action: selects payloads for disk spill using the deterministic order so the same payloads are always spilled across runs
+      - node: DelegateToSync
+        action: passes the deterministically ordered events to sync.ts ensuring consistent processing sequence

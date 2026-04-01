@@ -33,3 +33,27 @@ export declare function validateFilledSyntax(filePath: string, projectDir: strin
  * Returns true on success, throws with specific reason on failure.
  */
 export declare function writeGeneratedFile(filePath: string, content: string, maxRetries?: number): void;
+/**
+ * Scan filled function bodies for placeholder patterns that indicate
+ * the LLM did not produce real implementations.
+ * Returns names of functions containing only placeholder code.
+ * Enables RejectPlaceholderFill journey.
+ */
+export declare function detectPlaceholderFill(content: string): string[];
+/**
+ * Compare exported functions/classes in a filled file against the module's
+ * node list to detect added or removed stubs that violate CodeComesFromNodes.
+ * Returns {added, removed} stub names.
+ * Enables RecoverFromNodeStubMismatch journey.
+ */
+export declare function detectNodeStubMismatch(content: string, expectedNodes: string[]): {
+    added: string[];
+    removed: string[];
+};
+/**
+ * Compare the current graph node metadata against an existing source file
+ * to determine if the code has drifted and needs a Mode 2 edit-based update.
+ * Returns true if the file needs updating.
+ * Enables UpdateExistingCodeFromGraph journey.
+ */
+export declare function detectCodeNeedsUpdate(existingContent: string, node: CompiledNode): boolean;

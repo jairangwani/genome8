@@ -19,10 +19,20 @@ describe("HandleLargeGraphContextAssembly", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ConvergenceState → graph/CompiledIndex", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: graph/ConnectionSet provides the full edge set for determining which modules are directly connected to the target", () => {
     // Node: graph/ConnectionSet (artifact)
     // Action: provides the full edge set for determining which modules are directly connected to the target
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → graph/ConnectionSet", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/PrioritizeContextByRelevance identifies the target module and its direct cross-module dependencies as highest priority", () => {
@@ -31,10 +41,20 @@ describe("HandleLargeGraphContextAssembly", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/ConnectionSet → llm/PrioritizeContextByRelevance", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/PrioritizeContextByRelevance identifies second-degree connections as medium priority", () => {
     // Node: llm/PrioritizeContextByRelevance (process)
     // Action: identifies second-degree connections as medium priority
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/PrioritizeContextByRelevance → llm/PrioritizeContextByRelevance", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: llm/PrioritizeContextByRelevance classifies all remaining modules as low priority, eligible for exclusion", () => {
@@ -43,16 +63,31 @@ describe("HandleLargeGraphContextAssembly", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/PrioritizeContextByRelevance → llm/PrioritizeContextByRelevance", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: llm/BuildTaskContext assembles context using only high and medium priority modules", () => {
     // Node: llm/BuildTaskContext (process)
     // Action: assembles context using only high and medium priority modules
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/PrioritizeContextByRelevance → llm/BuildTaskContext", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: llm/TaskPayload stores the focused payload containing relevant context without distant module noise", () => {
     // Node: llm/TaskPayload (artifact)
     // Action: stores the focused payload containing relevant context without distant module noise
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/BuildTaskContext → llm/TaskPayload", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

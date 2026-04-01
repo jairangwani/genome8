@@ -6,6 +6,9 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/excerpt.ts
+// Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("PerspectiveEnrichmentPipeline", () => {
   it("step 1: convergence/ConvergenceState indicates all modules have been created and initial compilation passed", () => {
@@ -20,10 +23,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ConvergenceState → convergence/MapPerspectives", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: convergence/BoundedCreationRule enforces that enrichment is bounded by modules times relevant perspectives", () => {
     // Node: convergence/BoundedCreationRule (rule)
     // Action: enforces that enrichment is bounded by modules times relevant perspectives
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/MapPerspectives → convergence/BoundedCreationRule", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/SelectTargetModule selects the first module to examine", () => {
@@ -32,10 +45,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/BoundedCreationRule → excerpt/SelectTargetModule", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: excerpt/AssembleExcerpt builds a focused excerpt of the module and its cross-module connections", () => {
     // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: builds a focused excerpt of the module and its cross-module connections
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/SelectTargetModule → excerpt/AssembleExcerpt", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: excerpt/ExcerptOutput provides the assembled excerpt for the LLM to analyze", () => {
@@ -44,10 +67,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/AssembleExcerpt → excerpt/ExcerptOutput", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/ExamineFromPerspective delegates to LLM to examine the module from the first relevant perspective", () => {
     // Node: convergence/ExamineFromPerspective (process)
     // Action: delegates to LLM to examine the module from the first relevant perspective
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/ExcerptOutput → convergence/ExamineFromPerspective", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: _actors/LLMWorker reads the excerpt and perspective definition to identify missing nodes and journeys", () => {
@@ -56,10 +89,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ExamineFromPerspective → _actors/LLMWorker", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: graph/ModuleFile stores the updated module with added nodes and journeys", () => {
     // Node: graph/ModuleFile (artifact)
     // Action: stores the updated module with added nodes and journeys
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/LLMWorker → graph/ModuleFile", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: convergence/CompileCheck invokes compile.ts to validate the enriched module against the full graph", () => {
@@ -68,16 +111,31 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/ModuleFile → convergence/CompileCheck", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: _actors/Compiler runs compilation and reports any errors introduced by the enrichment", () => {
     // Node: _actors/Compiler (actor)
     // Action: runs compilation and reports any errors introduced by the enrichment
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/CompileCheck → _actors/Compiler", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
+  });
+
   it("step 12: compilation/CompilationResult provides error count and details after the perspective pass", () => {
-    // Node: compilation/CompilationResult (artifact)
+    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: provides error count and details after the perspective pass
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
   });
 
   it("step 13: convergence/ExamineFromPerspective delegates to LLM for the next relevant perspective on the same module", () => {
@@ -86,10 +144,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/CompilationResult → convergence/ExamineFromPerspective", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
+  });
+
   it("step 14: _actors/LLMWorker examines the module from the next perspective and adds further missing content", () => {
     // Node: _actors/LLMWorker (actor)
     // Action: examines the module from the next perspective and adds further missing content
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/ExamineFromPerspective → _actors/LLMWorker", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
   });
 
   it("step 15: convergence/CompileCheck recompiles after the second perspective pass", () => {
@@ -98,10 +166,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → convergence/CompileCheck", () => {
+    // Assert that the output of step 14 feeds into step 15
+    // TODO: agent fills connection assertion
+  });
+
   it("step 16: convergence/BoundedCreationLoop repeats for each remaining module-perspective pair until all are examined", () => {
     // Node: convergence/BoundedCreationLoop (process)
     // Action: repeats for each remaining module-perspective pair until all are examined
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/CompileCheck → convergence/BoundedCreationLoop", () => {
+    // Assert that the output of step 15 feeds into step 16
+    // TODO: agent fills connection assertion
   });
 
   it("step 17: convergence/NeverOpenEndedLoop ensures perspective enrichment terminates after all mapped pairs are processed", () => {
@@ -110,10 +188,20 @@ describe("PerspectiveEnrichmentPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/BoundedCreationLoop → convergence/NeverOpenEndedLoop", () => {
+    // Assert that the output of step 16 feeds into step 17
+    // TODO: agent fills connection assertion
+  });
+
   it("step 18: convergence/ConvergenceState records that perspective enrichment is complete for all modules", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records that perspective enrichment is complete for all modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/NeverOpenEndedLoop → convergence/ConvergenceState", () => {
+    // Assert that the output of step 17 feeds into step 18
+    // TODO: agent fills connection assertion
   });
 
 });

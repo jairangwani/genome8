@@ -2,16 +2,16 @@
   "llmCalls": 0,
   "totalTokens": 0,
   "stepTimings": {
-    "step1_organization": 0,
-    "step2_actors": 1426,
+    "step1_organization": 1,
+    "step2_actors": 96,
     "step3_modules": 2,
-    "step4_convergence": 4048384,
-    "step5_publish": 288,
-    "step6_codegen": 3117281
+    "step4_convergence": 14273213,
+    "step5_publish": 87,
+    "step6_codegen": 5703104
   },
-  "startedAt": "2026-03-31T06:43:32.305Z",
-  "completedAt": "2026-03-31T08:43:16.255Z",
+  "startedAt": "2026-03-31T19:48:26.989Z",
+  "completedAt": "2026-04-01T01:21:41.209Z",
   "modulesProcessed": 17,
-  "nodesCreated": 729,
-  "journeysCreated": 553
+  "nodesCreated": 759,
+  "journeysCreated": 598
 }

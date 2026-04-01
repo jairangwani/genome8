@@ -18,10 +18,20 @@ describe("DeduplicateEventBySequenceNumber", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/FileSystem → events/DetectEventFileChange", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/ReadEventFile reads the event file from disk", () => {
     // Node: events/ReadEventFile (process)
     // Action: reads the event file from disk
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/DetectEventFileChange → events/ReadEventFile", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: events/ValidateEventFileFormat validates the event file structure", () => {
@@ -30,10 +40,20 @@ describe("DeduplicateEventBySequenceNumber", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ReadEventFile → events/ValidateEventFileFormat", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: events/ExtractEventSequenceNumber reads the sequence number from the validated payload", () => {
     // Node: events/ExtractEventSequenceNumber (process)
     // Action: reads the sequence number from the validated payload
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ValidateEventFileFormat → events/ExtractEventSequenceNumber", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: events/DetectDuplicateEventSequence compares the sequence number against the last-processed sequence for this dependency", () => {
@@ -42,10 +62,20 @@ describe("DeduplicateEventBySequenceNumber", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ExtractEventSequenceNumber → events/DetectDuplicateEventSequence", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: events/DetectDuplicateEventSequence determines the event is a duplicate because the sequence number was already processed", () => {
     // Node: events/DetectDuplicateEventSequence (process)
     // Action: determines the event is a duplicate because the sequence number was already processed
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/DetectDuplicateEventSequence → events/DetectDuplicateEventSequence", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: events/LogEventReceived records the event disposition as suppressed-duplicate with the repeated sequence number", () => {
@@ -54,16 +84,31 @@ describe("DeduplicateEventBySequenceNumber", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DetectDuplicateEventSequence → events/LogEventReceived", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: events/EventLog persists the duplicate suppression log entry", () => {
     // Node: events/EventLog (artifact)
     // Action: persists the duplicate suppression log entry
     // TODO: agent fills assertion
   });
 
+  it("connection: events/LogEventReceived → events/EventLog", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
+  });
+
   it("step 10: events/EnterSleep returns to sleep without triggering sync since the event was already processed", () => {
     // Node: events/EnterSleep (process)
     // Action: returns to sleep without triggering sync since the event was already processed
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/EventLog → events/EnterSleep", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
 });

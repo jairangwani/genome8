@@ -7,6 +7,9 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/compile.ts
 // Implementation: src/types.ts
+// Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("HandlePartialParseFailure", () => {
   it("step 1: _actors/Compiler begins parsing all module YAML files", () => {
@@ -21,10 +24,20 @@ describe("HandlePartialParseFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → compilation/YAMLParsing", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: compilation/YAMLErrorReporting catches a fatal parse error in one or more modules", () => {
-    // Node: compilation/YAMLErrorReporting (process)
+    // Node: compilation/YAMLErrorReporting (process) — has code: src/compile.ts
     // Action: catches a fatal parse error in one or more modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/YAMLParsing → compilation/YAMLErrorReporting", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: compilation/ErrorReport records the parse failure with file name, line number, and error message", () => {
@@ -33,10 +46,20 @@ describe("HandlePartialParseFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/YAMLErrorReporting → compilation/ErrorReport", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: compilation/SkipMalformedModule excludes the malformed module from the compiled index", () => {
     // Node: compilation/SkipMalformedModule (process)
     // Action: excludes the malformed module from the compiled index
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/ErrorReport → compilation/SkipMalformedModule", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: graph/NodeDefinition parses node entries from only the successfully parsed modules", () => {
@@ -45,10 +68,20 @@ describe("HandlePartialParseFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/SkipMalformedModule → graph/NodeDefinition", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: graph/JourneyDefinition parses journey entries from only the successfully parsed modules", () => {
     // Node: graph/JourneyDefinition (process)
     // Action: parses journey entries from only the successfully parsed modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/NodeDefinition → graph/JourneyDefinition", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: graph/CompiledIndex builds a partial compiled index from the parseable modules", () => {
@@ -57,22 +90,42 @@ describe("HandlePartialParseFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/JourneyDefinition → graph/CompiledIndex", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: compilation/ValidationAggregation aggregates errors including the skipped module's parse failure", () => {
     // Node: compilation/ValidationAggregation (process)
     // Action: aggregates errors including the skipped module's parse failure
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → compilation/ValidationAggregation", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
+  });
+
   it("step 10: compilation/CompilationResult outputs a result with non-zero error count due to the malformed module", () => {
-    // Node: compilation/CompilationResult (artifact)
+    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: outputs a result with non-zero error count due to the malformed module
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/ValidationAggregation → compilation/CompilationResult", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
   it("step 11: compilation/ZeroErrorConvergence fails the zero-error check, blocking convergence until the module is fixed", () => {
     // Node: compilation/ZeroErrorConvergence (rule)
     // Action: fails the zero-error check, blocking convergence until the module is fixed
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → compilation/ZeroErrorConvergence", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
 });

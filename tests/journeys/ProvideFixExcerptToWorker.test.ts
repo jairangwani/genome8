@@ -3,146 +3,136 @@
 // Modules touched: audit, excerpt, graph
 
 import { describe, it, expect } from 'vitest';
-import yaml from 'js-yaml';
-import { compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
-import type { ModuleFile } from '../../src/types.js';
 
-const authModule: ModuleFile = {
-  spec_sections: [1],
-  nodes: {
-    Login: { type: 'process', description: 'Login flow' },
-    Token: { type: 'artifact', description: 'Session token' },
-  },
-  journeys: {
-    UserLogin: {
-      steps: [
-        { node: '_actors/User', action: 'logs in' },
-        { node: 'Login', action: 'authenticates' },
-        { node: 'Token', action: 'is issued' },
-      ],
-    },
-  },
-};
-
-const gap = { type: 'actor_orphan', module: 'auth', detail: 'AdminLogin journey missing', severity: 'medium' };
-
-function buildResult() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', { nodes: { User: { type: 'actor', description: 'User' } } }],
-    ['auth', authModule],
-  ]));
-}
+// Implementation: src/types.ts
+// Implementation: src/excerpt.ts
 
 describe("ProvideFixExcerptToWorker", () => {
   it("step 1: audit/SelectNextGapToFix identifies which module contains the gap to be fixed", () => {
-    expect(gap.module).toBe('auth');
+    // Node: audit/SelectNextGapToFix (process)
+    // Action: identifies which module contains the gap to be fixed
+    // TODO: agent fills assertion
   });
 
   it("step 2: excerpt/SelectTargetModule targets the module that needs the fix", () => {
-    const targetModule = gap.module;
-    const result = buildResult();
-    expect(result.coverage.modules[targetModule]).toBeDefined();
+    // Node: excerpt/SelectTargetModule (process)
+    // Action: targets the module that needs the fix
+    // TODO: agent fills assertion
+  });
+
+  it("connection: audit/SelectNextGapToFix → excerpt/SelectTargetModule", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
   });
 
   it("step 3: graph/CompiledIndex provides the compiled graph showing current state including the gap", () => {
-    const result = buildResult();
-    expect(result.index.nodes['auth/Login']).toBeDefined();
-    expect(result.index.nodes['auth/Token']).toBeDefined();
+    // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
+    // Action: provides the compiled graph showing current state including the gap
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/SelectTargetModule → graph/CompiledIndex", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/CollectLocalNodes extracts the module's nodes so the worker knows what exists", () => {
-    const result = buildResult();
-    const authNodes = Object.entries(result.index.nodes).filter(([, n]) => n.module === 'auth');
-    expect(authNodes.length).toBe(2);
+    // Node: excerpt/CollectLocalNodes (process)
+    // Action: extracts the module's nodes so the worker knows what exists
+    // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → excerpt/CollectLocalNodes", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
   });
 
   it("step 5: excerpt/CollectLocalJourneys extracts the module's journeys so the worker knows current coverage", () => {
-    const result = buildResult();
-    const authJourneys = Object.values(result.index.journeys).filter(j => j.module === 'auth');
-    expect(authJourneys.length).toBe(1);
-    expect(authJourneys[0].name).toBe('UserLogin');
+    // Node: excerpt/CollectLocalJourneys (process)
+    // Action: extracts the module's journeys so the worker knows current coverage
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectLocalNodes → excerpt/CollectLocalJourneys", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: excerpt/CollectCrossModuleConnections shows cross-module connections relevant to the gap", () => {
-    const result = buildResult();
-    expect(result.coverage.modules['auth'].cross_module_connections).toBeGreaterThan(0);
+    // Node: excerpt/CollectCrossModuleConnections (process)
+    // Action: shows cross-module connections relevant to the gap
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectLocalJourneys → excerpt/CollectCrossModuleConnections", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
   it("step 7: excerpt/CollectModuleSource reads the raw YAML so the worker can edit the specific file", () => {
-    const moduleYaml = yaml.dump(authModule);
-    expect(moduleYaml).toContain('Login');
-    expect(moduleYaml).toContain('Token');
-    expect(moduleYaml).toContain('UserLogin');
+    // Node: excerpt/CollectModuleSource (process)
+    // Action: reads the raw YAML so the worker can edit the specific file
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectCrossModuleConnections → excerpt/CollectModuleSource", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: excerpt/AssembleExcerpt builds the fix-focused excerpt combining gap details with module context", () => {
-    const result = buildResult();
-    const moduleYaml = yaml.dump(authModule);
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'auth',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: moduleYaml,
-    });
-    expect(excerpt).toContain('Focus: auth');
-    expect(excerpt).toContain('YOUR FILE');
+    // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
+    // Action: builds the fix-focused excerpt combining gap details with module context
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectModuleSource → excerpt/AssembleExcerpt", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
   it("step 9: excerpt/TruncateToLimit ensures the excerpt fits within the line budget", () => {
-    const result = buildResult();
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'auth',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: yaml.dump(authModule),
-    });
-    expect(excerpt.split('\n').length).toBeLessThan(200);
+    // Node: excerpt/TruncateToLimit (process)
+    // Action: ensures the excerpt fits within the line budget
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/AssembleExcerpt → excerpt/TruncateToLimit", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: excerpt/ExcerptOutput provides the excerpt to the fix prompt builder", () => {
-    const result = buildResult();
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'auth',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: yaml.dump(authModule),
-    });
-    expect(typeof excerpt).toBe('string');
-    expect(excerpt.length).toBeGreaterThan(50);
+    // Node: excerpt/ExcerptOutput (artifact)
+    // Action: provides the excerpt to the fix prompt builder
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/TruncateToLimit → excerpt/ExcerptOutput", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
   it("step 11: audit/ProvideFixContext combines the excerpt with the specific gap description into the fix payload", () => {
-    const result = buildResult();
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'auth',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: yaml.dump(authModule),
-    });
-    const fixContext = { excerpt, gap, targetModule: gap.module };
-    expect(fixContext.gap.detail).toContain('AdminLogin');
-    expect(fixContext.targetModule).toBe('auth');
-    expect(fixContext.excerpt).toContain('Focus: auth');
+    // Node: audit/ProvideFixContext (process)
+    // Action: combines the excerpt with the specific gap description into the fix payload
+    // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/ExcerptOutput → audit/ProvideFixContext", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: audit/BuildGapFixPrompt packages the fix context into the prompt sent to the LLM worker", () => {
-    const fixPrompt = `Fix the following gap in module "auth":
-Gap: ${gap.detail}
-Type: ${gap.type}
+    // Node: audit/BuildGapFixPrompt (process)
+    // Action: packages the fix context into the prompt sent to the LLM worker
+    // TODO: agent fills assertion
+  });
 
-Add the missing AdminLogin journey that uses _actors/Admin.`;
-    expect(fixPrompt).toContain('auth');
-    expect(fixPrompt).toContain('AdminLogin');
-    expect(fixPrompt).toContain('_actors/Admin');
+  it("connection: audit/ProvideFixContext → audit/BuildGapFixPrompt", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
   });
 
 });

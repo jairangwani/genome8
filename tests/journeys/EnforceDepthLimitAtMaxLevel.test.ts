@@ -18,10 +18,20 @@ describe("EnforceDepthLimitAtMaxLevel", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/ChildEngine → hierarchy/TrackHierarchyDepth", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/HierarchyDepthCounter reports the current depth value", () => {
     // Node: hierarchy/HierarchyDepthCounter (artifact)
     // Action: reports the current depth value
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/TrackHierarchyDepth → hierarchy/HierarchyDepthCounter", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: hierarchy/EnforceMaxDepth compares current depth against the configured maximum", () => {
@@ -30,10 +40,20 @@ describe("EnforceDepthLimitAtMaxLevel", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/HierarchyDepthCounter → hierarchy/EnforceMaxDepth", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: hierarchy/MaxDepthLimit current depth equals or exceeds the limit, forcing no-split", () => {
     // Node: hierarchy/MaxDepthLimit (rule)
     // Action: current depth equals or exceeds the limit, forcing no-split
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/EnforceMaxDepth → hierarchy/MaxDepthLimit", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: hierarchy/DecideSplit is bypassed entirely since the depth limit overrides the LLM decision", () => {
@@ -42,10 +62,20 @@ describe("EnforceDepthLimitAtMaxLevel", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/MaxDepthLimit → hierarchy/DecideSplit", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: hierarchy/ContinueWithoutSplit proceeds directly to bounded module creation at this level", () => {
     // Node: hierarchy/ContinueWithoutSplit (process)
     // Action: proceeds directly to bounded module creation at this level
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/DecideSplit → hierarchy/ContinueWithoutSplit", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: convergence/ConvergenceState records the depth-limited no-split decision", () => {
@@ -54,10 +84,20 @@ describe("EnforceDepthLimitAtMaxLevel", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/ContinueWithoutSplit → convergence/ConvergenceState", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: convergence/BoundedCreationLoop begins creating modules in the current engine without further splitting", () => {
     // Node: convergence/BoundedCreationLoop (process)
     // Action: begins creating modules in the current engine without further splitting
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/ConvergenceState → convergence/BoundedCreationLoop", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

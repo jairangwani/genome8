@@ -6,6 +6,9 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/types.ts
+// Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
 
 describe("ValidateAuditInfrastructurePresent", () => {
   it("step 1: convergence/CompileCheck triggers compilation as a prerequisite for the audit pipeline", () => {
@@ -20,10 +23,20 @@ describe("ValidateAuditInfrastructurePresent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/CompileCheck → _actors/Compiler", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: graph/CompiledIndex provides the compiled index with all registered modules", () => {
     // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: provides the compiled index with all registered modules
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → graph/CompiledIndex", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: audit/ValidateAuditModulePresence checks that audit.yaml exists as a compiled module in the index", () => {
@@ -32,10 +45,20 @@ describe("ValidateAuditInfrastructurePresent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → audit/ValidateAuditModulePresence", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: audit/ValidateAuditModulePresence verifies that key audit nodes are present in the registry including CheckSpecCoverage, CheckActorCoverage, and CheckCrossModuleCoverage", () => {
     // Node: audit/ValidateAuditModulePresence (process)
     // Action: verifies that key audit nodes are present in the registry including CheckSpecCoverage, CheckActorCoverage, and CheckCrossModuleCoverage
     // TODO: agent fills assertion
+  });
+
+  it("connection: audit/ValidateAuditModulePresence → audit/ValidateAuditModulePresence", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: audit/ValidateAuditModulePresence verifies that DeclareConverged is present since convergence cannot complete without it", () => {
@@ -44,22 +67,42 @@ describe("ValidateAuditInfrastructurePresent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: audit/ValidateAuditModulePresence → audit/ValidateAuditModulePresence", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: compilation/ValidateModuleCompleteness confirms audit is included in the expected module list from ORGANIZATION.md", () => {
     // Node: compilation/ValidateModuleCompleteness (process)
     // Action: confirms audit is included in the expected module list from ORGANIZATION.md
     // TODO: agent fills assertion
   });
 
+  it("connection: audit/ValidateAuditModulePresence → compilation/ValidateModuleCompleteness", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: compilation/CompilationResult confirms the audit module compiled without errors", () => {
-    // Node: compilation/CompilationResult (artifact)
+    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: confirms the audit module compiled without errors
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/ValidateModuleCompleteness → compilation/CompilationResult", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
   it("step 9: audit/AuditAfterZeroErrors proceeds to the audit phase now that audit infrastructure is confirmed present", () => {
     // Node: audit/AuditAfterZeroErrors (rule)
     // Action: proceeds to the audit phase now that audit infrastructure is confirmed present
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → audit/AuditAfterZeroErrors", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

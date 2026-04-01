@@ -22,10 +22,20 @@ describe("VerifyCompilationIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: _actors/Compiler runs full compilation a second time on the same unmodified module files", () => {
     // Node: _actors/Compiler (actor)
     // Action: runs full compilation a second time on the same unmodified module files
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → _actors/Compiler", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: compilation/CompilationResult records the second compilation output", () => {
@@ -34,10 +44,20 @@ describe("VerifyCompilationIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: compilation/DeterministicOrdering confirms both results have identically sorted error, warning, orphan, and duplicate lists", () => {
     // Node: compilation/DeterministicOrdering (rule)
     // Action: confirms both results have identically sorted error, warning, orphan, and duplicate lists
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → compilation/DeterministicOrdering", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: compilation/CompilationResultComparison compares the two results field by field and flags any difference as a non-determinism defect", () => {
@@ -46,10 +66,20 @@ describe("VerifyCompilationIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/DeterministicOrdering → compilation/CompilationResultComparison", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: compilation/ErrorReport records any differences found between the two compilation runs", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records any differences found between the two compilation runs
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResultComparison → compilation/ErrorReport", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

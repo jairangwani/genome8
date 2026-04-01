@@ -384,3 +384,55 @@ export function updateProcessedSequence(
   state.last_processed_sequence[dependency] = sequenceNumber;
   fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
 }
+
+/**
+ * Check if the ripple origin chain exceeds the configured depth limit.
+ * Returns true if the chain is too deep and propagation should be suppressed.
+ * Enables EnforceSyncRippleDepthLimit journey.
+ */
+export function checkRippleDepthLimit(
+  originChain: string[],
+  maxDepth: number
+): boolean {
+  return originChain.length >= maxDepth;
+}
+
+/**
+ * Release the sync lock unconditionally — used in error recovery paths
+ * to prevent permanent lock deadlock after unexpected failures.
+ * Enables ReleaseSyncLockOnPipelineError journey.
+ */
+export function releaseSyncLockOnError(syncStatePath: string): void {
+  if (!fs.existsSync(syncStatePath)) return;
+  try {
+    const state: SyncState = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+    if (state.sync_in_progress) {
+      state.sync_in_progress = false;
+      fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+    }
+  } catch { /* nothing to release */ }
+}
+
+/**
+ * After markModulesStale runs, reads back each expected stale marker
+ * to verify the writes succeeded. Returns modules where the marker is missing.
+ * Enables RecoverInterruptedStaleMarkingOnRestart journey.
+ */
+export function detectStaleMarkingWriteFailure(
+  modulesDir: string,
+  expectedStale: string[]
+): string[] {
+  const failed: string[] = [];
+  for (const mod of expectedStale) {
+    const filePath = path.join(modulesDir, `${mod}.yaml`);
+    if (!fs.existsSync(filePath)) {
+      failed.push(mod);
+      continue;
+    }
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (!content.includes('_stale: true')) {
+      failed.push(mod);
+    }
+  }
+  return failed;
+}

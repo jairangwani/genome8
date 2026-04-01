@@ -19,10 +19,20 @@ describe("ProvideSpecSectionsForModuleCreation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ModuleCreation → organization/ModuleSpecSectionMap", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: organization/ProvideSpecSectionsToExcerpt passes the assigned spec sections to the excerpt generator", () => {
     // Node: organization/ProvideSpecSectionsToExcerpt (process)
     // Action: passes the assigned spec sections to the excerpt generator
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ModuleSpecSectionMap → organization/ProvideSpecSectionsToExcerpt", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/SelectTargetModule receives the target module identity including its spec_sections", () => {
@@ -31,16 +41,31 @@ describe("ProvideSpecSectionsForModuleCreation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/ProvideSpecSectionsToExcerpt → excerpt/SelectTargetModule", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: excerpt/AssembleExcerpt includes the relevant spec sections in the excerpt context for the LLM worker", () => {
     // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: includes the relevant spec sections in the excerpt context for the LLM worker
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/SelectTargetModule → excerpt/AssembleExcerpt", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
   it("step 6: llm/TaskPayload packages the excerpt with spec_sections into the creation task sent to the worker", () => {
     // Node: llm/TaskPayload (artifact)
     // Action: packages the excerpt with spec_sections into the creation task sent to the worker
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/AssembleExcerpt → llm/TaskPayload", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
 });

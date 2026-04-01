@@ -1,10 +1,10 @@
-_compiled: '2026-03-31T08:03:03.707Z'
+_compiled: '2026-03-31T15:47:31.860Z'
 _stats:
-  total_nodes: 729
-  total_journeys: 553
-  total_connections: 2753
+  total_nodes: 740
+  total_journeys: 560
+  total_connections: 2811
   modules: 17
-  orphans: 3
+  orphans: 0
   isolated_modules: 0
   duplicate_names: 0
 nodes:
@@ -21,11 +21,13 @@ nodes:
       - organization/IdentifyModules
       - _actors/MaliciousSpecAuthor
       - _actors/ResourceExhauster
+      - llm/ValidateWorkerOutput
     followed_by:
       - actors/ActivitiesActorList
       - _actors/LLMWorker
       - actors/DiscoverFromThreats
       - actors/MergeAndDeduplicate
+      - llm/SendTask
     in_journeys:
       - DiscoverActorsFromSpec (step 6)
       - RediscoverActorsAfterSpecChange (step 5)
@@ -35,6 +37,8 @@ nodes:
       - ActorDescriptionPoisoningDefense (step 2)
       - DiscoveryAngleBiasDefense (step 2)
       - ActorCountInflationDefense (step 2)
+      - LLMDrivenActorDiscovery (step 7)
+      - OrganizationContextDrivesDiscovery (step 7)
       - ProvideOrganizationForActorDiscovery (step 5)
     triggered_by_actors:
       - _actors/LLMWorker
@@ -49,11 +53,14 @@ nodes:
       - organization/IdentifyModules
       - _actors/MaliciousSpecAuthor
       - _actors/ResourceExhauster
+      - llm/ValidateWorkerOutput
+      - llm/SendTask
     referenced_in_modules:
       - actors
       - _actors
       - convergence
       - organization
+      - llm
   actors/DiscoverFromThreats:
     module: actors
     type: process
@@ -61,10 +68,12 @@ nodes:
     preceded_by:
       - _actors/LLMWorker
       - actors/DiscoverFromActivities
+      - llm/ReceiveResult
     followed_by:
       - actors/ThreatsActorList
       - _actors/LLMWorker
       - actors/DiscoverFromLifecycle
+      - llm/SendTask
     in_journeys:
       - DiscoverActorsFromSpec (step 9)
       - RediscoverActorsAfterSpecChange (step 7)
@@ -72,6 +81,8 @@ nodes:
       - NewProjectAdoption (step 7)
       - DiscoveryAngleBiasDefense (step 3)
       - ActorCountInflationDefense (step 3)
+      - LLMDrivenActorDiscovery (step 10)
+      - OrganizationContextDrivesDiscovery (step 8)
     triggered_by_actors:
       - _actors/LLMWorker
       - _actors/ProjectOwner
@@ -80,9 +91,12 @@ nodes:
       - _actors/ResourceExhauster
     cross_module_connections:
       - _actors/LLMWorker
+      - llm/ReceiveResult
+      - llm/SendTask
     referenced_in_modules:
       - actors
       - _actors
+      - llm
   actors/DiscoverFromLifecycle:
     module: actors
     type: process
@@ -90,6 +104,7 @@ nodes:
     preceded_by:
       - _actors/LLMWorker
       - actors/DiscoverFromThreats
+      - llm/ReceiveResult
     followed_by:
       - actors/LifecycleActorList
       - actors/MergeAndDeduplicate
@@ -102,6 +117,8 @@ nodes:
       - NewProjectAdoption (step 8)
       - DiscoveryAngleBiasDefense (step 4)
       - ActorCountInflationDefense (step 4)
+      - LLMDrivenActorDiscovery (step 13)
+      - OrganizationContextDrivesDiscovery (step 9)
     triggered_by_actors:
       - _actors/LLMWorker
       - _actors/ProjectOwner
@@ -111,10 +128,12 @@ nodes:
     cross_module_connections:
       - _actors/LLMWorker
       - convergence/ConvergenceState
+      - llm/ReceiveResult
     referenced_in_modules:
       - actors
       - _actors
       - convergence
+      - llm
   actors/MergeAndDeduplicate:
     module: actors
     type: process
@@ -137,6 +156,8 @@ nodes:
       - ActorDescriptionPoisoningDefense (step 3)
       - ActorCountInflationDefense (step 5)
       - RejectInvalidActorName (step 7)
+      - LLMDrivenActorDiscovery (step 14)
+      - OrganizationContextDrivesDiscovery (step 10)
     triggered_by_actors:
       - _actors/LLMWorker
       - _actors/ProjectOwner
@@ -217,17 +238,22 @@ nodes:
     description: checks that every discovered actor appears in at least one journey across all modules
     preceded_by:
       - actors/ActorsFile
+      - _actors/LLMWorker
     followed_by:
       - compilation/OrphanDetection
     in_journeys:
       - RogueWorkerDefense (step 4)
+      - ActorExcerptRoundTrip (step 9)
     triggered_by_actors:
       - _actors/RogueWorker
+      - _actors/LLMWorker
     cross_module_connections:
       - compilation/OrphanDetection
+      - _actors/LLMWorker
     referenced_in_modules:
       - actors
       - compilation
+      - _actors
   actors/ValidateThreeAngleCompleteness:
     module: actors
     type: process
@@ -269,8 +295,10 @@ nodes:
     in_journeys:
       - ProvideActorsForExcerptContext (step 3)
       - EndToEndActorDiscoveryToModuleCreation (step 14)
+      - ActorExcerptRoundTrip (step 2)
     triggered_by_actors:
       - _actors/ProjectOwner
+      - _actors/LLMWorker
     cross_module_connections:
       - excerpt/CollectReferencedActors
       - convergence/ModuleCreation
@@ -384,6 +412,7 @@ nodes:
       - RediscoverActorsAfterSpecChange (step 14)
       - YAMLTamperingDefense (step 2)
       - RogueWorkerDefense (step 3)
+      - ActorExcerptRoundTrip (step 1)
       - CheckActorCoverageAgainstActorList (step 1)
       - ValidateAfterActorDiscovery (step 2)
       - RecoverFromActorDiscoveryFailure (step 3)
@@ -781,7 +810,7 @@ nodes:
       - audit/CrossModuleCoverageReport
       - audit/MergeAuditReports
       - audit/DetectFixInducedGaps
-      - _goals/ProductionReady
+      - convergence/ProductionReadyNoShortcuts
       - audit/CollectAuditFindings
     in_journeys:
       - DepthAudit (step 18)
@@ -798,12 +827,12 @@ nodes:
       - _actors/ProjectOwner
     cross_module_connections:
       - _actors/Auditor
-      - _goals/ProductionReady
+      - convergence/ProductionReadyNoShortcuts
       - hierarchy/PromoteExternalRefsToErrors
     referenced_in_modules:
       - audit
       - _actors
-      - _goals
+      - convergence
       - hierarchy
   audit/GenerateAuditPrompt:
     module: audit
@@ -828,6 +857,7 @@ nodes:
       - _actors/Auditor
       - audit/CheckSpecCoverage
       - excerpt/SelectTargetModule
+      - _goals/SolveContextProblem
     in_journeys:
       - DepthAudit (step 7)
       - DepthAudit (step 12)
@@ -854,6 +884,7 @@ nodes:
       - actors/MergedActorList
       - organization/ModuleSpecSectionMap
       - graph/CompiledIndex
+      - _goals/SolveContextProblem
     referenced_in_modules:
       - audit
       - excerpt
@@ -862,6 +893,7 @@ nodes:
       - actors
       - organization
       - graph
+      - _goals
   audit/CollectAuditFindings:
     module: audit
     type: process
@@ -889,7 +921,7 @@ nodes:
       - ReauditAfterAuditSelfFix (step 14)
       - CheckActorCoverageAgainstActorList (step 7)
       - CheckSpecCoverageAgainstOrganization (step 7)
-      - CheckGoalCoverageAgainstGoals (step 8)
+      - CheckGoalCoverageAgainstGoals (step 13)
       - VerifyAuditFindingsAreRepeatable (step 9)
       - VerifyAuditFindingsAreRepeatable (step 16)
       - ValidateCrossEngineRefsAfterMerge (step 6)
@@ -1075,7 +1107,7 @@ nodes:
       - EndToEndAuditToConvergence (step 22)
       - AuditCompletionTriggersPublish (step 3)
       - AuditPassTriggersCodegen (step 2)
-      - FinalConvergenceGate (step 19)
+      - FinalCompilationGate (step 19)
       - FinalConvergenceGate (step 15)
     triggered_by_actors:
       - _actors/Compiler
@@ -1172,7 +1204,7 @@ nodes:
       - AuditFixReauditCycle (step 16)
       - EndToEndAuditToConvergence (step 11)
       - ReauditAfterAuditSelfFix (step 13)
-      - CheckGoalCoverageAgainstGoals (step 9)
+      - CheckGoalCoverageAgainstGoals (step 14)
       - VerifyAuditFindingsAreRepeatable (step 8)
       - VerifyAuditFindingsAreRepeatable (step 15)
       - ProveProductionReady (step 3)
@@ -1760,8 +1792,8 @@ nodes:
       - audit/CheckGoalCoverage
       - audit/GoalCoverageReport
     in_journeys:
-      - CheckGoalCoverageAgainstGoals (step 5)
-      - CheckGoalCoverageAgainstGoals (step 6)
+      - CheckGoalCoverageAgainstGoals (step 10)
+      - CheckGoalCoverageAgainstGoals (step 11)
     triggered_by_actors:
       - _actors/Auditor
     cross_module_connections:
@@ -1780,7 +1812,7 @@ nodes:
     followed_by:
       - audit/CollectAuditFindings
     in_journeys:
-      - CheckGoalCoverageAgainstGoals (step 7)
+      - CheckGoalCoverageAgainstGoals (step 12)
     triggered_by_actors:
       - _actors/Auditor
     cross_module_connections: []
@@ -2020,8 +2052,8 @@ nodes:
     preceded_by:
       - codegen/GenerateProcessSkeletons
       - _actors/LLMWorker
+      - codegen/BuildFillPrompt
       - codegen/SkeletonFile
-      - codegen/ProvideCodegenExcerpt
       - codegen/SelectNextModuleToFill
       - codegen/RetryFillWithErrorFeedback
     followed_by:
@@ -2031,11 +2063,11 @@ nodes:
       - excerpt/SelectTargetModule
     in_journeys:
       - AuditPassTriggersCodegen (step 6)
-      - FillSkeletonsWithLLM (step 7)
-      - FillAllModulesInOrder (step 4)
-      - FillAllModulesInOrder (step 11)
+      - FillSkeletonsWithLLM (step 8)
+      - FillAllModulesInOrder (step 5)
+      - FillAllModulesInOrder (step 12)
       - ValidateAndStageFilledModule (step 1)
-      - EndToEndCodegenPipeline (step 14)
+      - EndToEndCodegenPipeline (step 15)
       - RecoverFromFillSyntaxError (step 1)
       - RecoverFromFillSyntaxError (step 10)
       - RecoverFromWorkerCrashDuringFill (step 13)
@@ -2089,12 +2121,12 @@ nodes:
       - convergence/CompileCheck
     in_journeys:
       - GenerateSkeletonsFromGraph (step 13)
-      - FillSkeletonsWithLLM (step 11)
-      - FillAllModulesInOrder (step 7)
-      - FillAllModulesInOrder (step 13)
+      - FillSkeletonsWithLLM (step 12)
+      - FillAllModulesInOrder (step 8)
+      - FillAllModulesInOrder (step 14)
       - ValidateAndStageFilledModule (step 8)
       - EndToEndCodegenPipeline (step 10)
-      - EndToEndCodegenPipeline (step 18)
+      - EndToEndCodegenPipeline (step 19)
       - ResumePartialCodegen (step 11)
       - HandleCascadeFillFailure (step 9)
       - HandleWriteFailure (step 2)
@@ -2141,12 +2173,12 @@ nodes:
       - codegen/EnforceFillRetryLimit
       - _actors/Compiler
     in_journeys:
-      - FillSkeletonsWithLLM (step 10)
-      - FillAllModulesInOrder (step 6)
-      - FillAllModulesInOrder (step 12)
+      - FillSkeletonsWithLLM (step 11)
+      - FillAllModulesInOrder (step 7)
+      - FillAllModulesInOrder (step 13)
       - ValidateAndStageFilledModule (step 3)
       - ValidateAndStageFilledModule (step 4)
-      - EndToEndCodegenPipeline (step 16)
+      - EndToEndCodegenPipeline (step 17)
       - RecoverFromFillSyntaxError (step 3)
       - RecoverFromFillSyntaxError (step 4)
       - RecoverFromFillSyntaxError (step 13)
@@ -2181,7 +2213,7 @@ nodes:
       - codegen/WriteGeneratedFile
     in_journeys:
       - ValidateAndStageFilledModule (step 6)
-      - EndToEndCodegenPipeline (step 17)
+      - EndToEndCodegenPipeline (step 18)
       - UpdateExistingCodeFromGraph (step 14)
     triggered_by_actors:
       - _actors/LLMWorker
@@ -2210,7 +2242,7 @@ nodes:
       - codegen/FillImplementation
     in_journeys:
       - FillAllModulesInOrder (step 2)
-      - FillAllModulesInOrder (step 8)
+      - FillAllModulesInOrder (step 9)
       - ProvideCodegenExcerptContext (step 1)
       - EndToEndCodegenPipeline (step 12)
       - ResumePartialCodegen (step 7)
@@ -2243,8 +2275,8 @@ nodes:
       - codegen/ConfirmAllModulesFilled
       - convergence/TriggerTestgen
     in_journeys:
-      - FillAllModulesInOrder (step 15)
-      - EndToEndCodegenPipeline (step 19)
+      - FillAllModulesInOrder (step 16)
+      - EndToEndCodegenPipeline (step 20)
       - HandoffToTestgen (step 1)
       - ResumePartialCodegen (step 12)
       - SkipCodegenWhenFullyConverged (step 8)
@@ -2261,6 +2293,35 @@ nodes:
       - codegen
       - convergence
       - organization
+  codegen/BuildFillPrompt:
+    module: codegen
+    type: process
+    description: >-
+      builds a structured fill prompt from the skeleton content, node name, description, and connection context
+      (preceded_by, followed_by, triggered_by_actors) with rules instructing the LLM to replace stubs with working code
+      while preserving signatures
+    preceded_by:
+      - excerpt/ExcerptOutput
+      - codegen/SkeletonFile
+      - codegen/ProvideCodegenExcerpt
+    followed_by:
+      - llm/TaskPayload
+      - codegen/FillImplementation
+    in_journeys:
+      - FillSkeletonsWithLLM (step 4)
+      - FillAllModulesInOrder (step 4)
+      - EndToEndCodegenPipeline (step 14)
+    triggered_by_actors:
+      - _actors/LLMWorker
+    cross_module_connections:
+      - excerpt/ExcerptOutput
+      - llm/TaskPayload
+    referenced_in_modules:
+      - codegen
+      - excerpt
+      - llm
+    files:
+      - src/codegen.ts
   codegen/ProvideCodegenExcerpt:
     module: codegen
     type: process
@@ -2274,7 +2335,7 @@ nodes:
       - codegen/GenerateUpdateContext
     followed_by:
       - excerpt/ExcerptOutput
-      - codegen/FillImplementation
+      - codegen/BuildFillPrompt
       - llm/SendTask
       - _actors/LLMWorker
     in_journeys:
@@ -2441,18 +2502,19 @@ nodes:
     followed_by:
       - codegen/CodegenResultSummary
       - codegen/ProvideCodegenExcerpt
-      - codegen/FillImplementation
+      - codegen/BuildFillPrompt
       - _actors/LLMWorker
       - codegen/SelectNextModuleToFill
       - codegen/RetryFillWithErrorFeedback
       - llm/SpawnWorkerProcess
+      - codegen/FillImplementation
       - llm/SendTask
       - organization/DependencyGraph
     in_journeys:
       - GenerateSkeletonsFromGraph (step 14)
       - FillSkeletonsWithLLM (step 1)
       - FillAllModulesInOrder (step 3)
-      - FillAllModulesInOrder (step 9)
+      - FillAllModulesInOrder (step 10)
       - EndToEndCodegenPipeline (step 11)
       - RecoverFromFillSyntaxError (step 6)
       - RecoverFromWorkerCrashDuringFill (step 8)
@@ -2504,10 +2566,10 @@ nodes:
       - llm/SendTask
       - convergence/TriggerTestgen
     in_journeys:
-      - FillSkeletonsWithLLM (step 9)
-      - FillAllModulesInOrder (step 5)
+      - FillSkeletonsWithLLM (step 10)
+      - FillAllModulesInOrder (step 6)
       - ValidateAndStageFilledModule (step 2)
-      - EndToEndCodegenPipeline (step 15)
+      - EndToEndCodegenPipeline (step 16)
       - HandoffToTestgen (step 3)
       - RecoverFromFillSyntaxError (step 2)
       - RecoverFromFillSyntaxError (step 12)
@@ -2563,10 +2625,10 @@ nodes:
       - codegen/WriteGeneratedFile
       - testgen/DetectMissingImplementation
     in_journeys:
-      - FillSkeletonsWithLLM (step 12)
-      - FillAllModulesInOrder (step 14)
+      - FillSkeletonsWithLLM (step 13)
+      - FillAllModulesInOrder (step 15)
       - ValidateAndStageFilledModule (step 9)
-      - EndToEndCodegenPipeline (step 20)
+      - EndToEndCodegenPipeline (step 21)
       - HandoffToTestgen (step 2)
       - ResumePartialCodegen (step 2)
       - HandleWriteFailure (step 4)
@@ -2976,6 +3038,7 @@ nodes:
       - graph/CompiledIndex
       - _actors/YAMLTamperer
       - convergence/RecoverFromCorruptState
+      - _actors/LLMWorker
       - convergence/ModuleCreation
     followed_by:
       - graph/NodeDefinition
@@ -2985,6 +3048,7 @@ nodes:
       - compilation/SchemaViolationDetection
       - compilation/ConcurrentWriteDetection
       - convergence/DetectPartialModuleWrite
+      - compilation/ErrorReport
       - graph/CompiledIndex
     in_journeys:
       - ProvideActorsToCompilation (step 3)
@@ -2997,7 +3061,7 @@ nodes:
       - HandlePartialParseFailure (step 2)
       - RecoverFromLLMCreatedErrors (step 3)
       - RecoverFromLLMCreatedErrors (step 13)
-      - FinalConvergenceGate (step 3)
+      - FinalCompilationGate (step 3)
       - ScaledParallelValidation (step 2)
       - TerminateOnExcessiveErrors (step 2)
       - RevalidateChangedModulesOnly (step 4)
@@ -3006,6 +3070,7 @@ nodes:
       - DetectConcurrentWrite (step 7)
       - DetectYAMLTamperingDuringCompilation (step 2)
       - RecoverFromCorruptConvergenceState (step 6)
+      - RecoverFromGoalExtractionFailure (step 3)
       - BreakSystemIntoScopedPieces (step 6)
     triggered_by_actors:
       - _actors/Compiler
@@ -3023,6 +3088,7 @@ nodes:
       - _actors/YAMLTamperer
       - convergence/RecoverFromCorruptState
       - convergence/DetectPartialModuleWrite
+      - _actors/LLMWorker
       - convergence/ModuleCreation
     referenced_in_modules:
       - compilation
@@ -3059,7 +3125,7 @@ nodes:
       - FullCompilation (step 7)
       - CompileAfterAuditFix (step 8)
       - RecoverFromLLMCreatedErrors (step 17)
-      - FinalConvergenceGate (step 9)
+      - FinalCompilationGate (step 9)
       - ScaledParallelValidation (step 8)
       - TerminateOnExcessiveErrors (step 6)
       - RevalidateChangedModulesOnly (step 7)
@@ -3092,7 +3158,7 @@ nodes:
       - graph/CompiledIndex
       - compilation/IncrementalValidation
       - graph/AllRefsResolveRule
-      - compilation/NodeTypeValidation
+      - compilation/NodeNameValidation
       - compilation/YAMLErrorReporting
     followed_by:
       - compilation/CompilationResult
@@ -3114,10 +3180,10 @@ nodes:
       - CompileAfterModuleCreation (step 8)
       - CompileAfterAuditFix (step 9)
       - RecoverFromLLMCreatedErrors (step 16)
-      - FinalConvergenceGate (step 11)
+      - FinalCompilationGate (step 11)
       - ScaledParallelValidation (step 9)
       - RevalidateChangedModulesOnly (step 8)
-      - CompileFromInMemoryModules (step 6)
+      - CompileFromInMemoryModules (step 7)
       - DetectYAMLTamperingDuringCompilation (step 4)
       - ValidateFullGraphAfterReconvergence (step 6)
     triggered_by_actors:
@@ -3163,10 +3229,10 @@ nodes:
       - DetectOrphans (step 2)
       - FullCompilation (step 10)
       - CompileAfterAuditFix (step 10)
-      - FinalConvergenceGate (step 13)
+      - FinalCompilationGate (step 13)
       - ScaledParallelValidation (step 10)
       - RevalidateChangedModulesOnly (step 9)
-      - CompileFromInMemoryModules (step 10)
+      - CompileFromInMemoryModules (step 11)
       - DetectDeprecatedModuleDuringCompilation (step 2)
       - ValidateFullGraphAfterReconvergence (step 7)
     triggered_by_actors:
@@ -3207,7 +3273,7 @@ nodes:
       - ValidateGraphInvariantsAfterFixRound (step 7)
       - DetectIsolatedModules (step 2)
       - FullCompilation (step 11)
-      - FinalConvergenceGate (step 14)
+      - FinalCompilationGate (step 14)
       - ScaledParallelValidation (step 11)
       - DetectDeprecatedModuleDuringCompilation (step 3)
     triggered_by_actors:
@@ -3240,7 +3306,7 @@ nodes:
       - DetectDanglingRefs (step 4)
       - FullCompilation (step 9)
       - CompileAfterModuleCreation (step 9)
-      - CompileFromInMemoryModules (step 8)
+      - CompileFromInMemoryModules (step 9)
       - DetectStaleBoxDuringCompilation (step 2)
     triggered_by_actors:
       - _actors/Compiler
@@ -3282,7 +3348,7 @@ nodes:
       - HandlePartialParseFailure (step 3)
       - RecoverFromLLMCreatedErrors (step 4)
       - RecoverFromLLMCreatedErrors (step 14)
-      - FinalConvergenceGate (step 4)
+      - FinalCompilationGate (step 4)
       - ScaledParallelValidation (step 3)
       - TerminateOnExcessiveErrors (step 3)
       - RevalidateChangedModulesOnly (step 5)
@@ -3311,7 +3377,7 @@ nodes:
     description: collects all errors and warnings from all validation checks into a single compilation result
     preceded_by:
       - compilation/DanglingRefDetection
-      - compilation/NodeTypeValidation
+      - compilation/NodeNameValidation
       - compilation/ExternalRefClassification
       - compilation/StaleConnectionDetection
       - graph/CompiledIndex
@@ -3326,12 +3392,12 @@ nodes:
       - compilation/DeterministicOrdering
     in_journeys:
       - ValidateGeneratedCodeCompiles (step 5)
-      - FullCompilation (step 14)
+      - FullCompilation (step 15)
       - CompileAfterModuleCreation (step 10)
       - CompileAfterAuditFix (step 12)
       - HandlePartialParseFailure (step 9)
       - RecoverFromLLMCreatedErrors (step 18)
-      - FinalConvergenceGate (step 16)
+      - FinalCompilationGate (step 16)
       - ScaledParallelValidation (step 14)
       - TerminateOnExcessiveErrors (step 9)
       - RevalidateChangedModulesOnly (step 11)
@@ -3413,7 +3479,7 @@ nodes:
     in_journeys:
       - ValidateAuditInfrastructurePresent (step 7)
       - DetectMissingModules (step 3)
-      - FinalConvergenceGate (step 6)
+      - FinalCompilationGate (step 6)
       - ValidateCreationComplete (step 4)
       - FinalConvergenceGate (step 10)
       - ProvideModuleListForCompletenessCheck (step 3)
@@ -3453,7 +3519,7 @@ nodes:
       - DetectStaleConnections (step 3)
       - FullCompilation (step 12)
       - CompileAfterAuditFix (step 11)
-      - FinalConvergenceGate (step 15)
+      - FinalCompilationGate (step 15)
       - ScaledParallelValidation (step 12)
       - RevalidateChangedModulesOnly (step 10)
       - DetectStaleBoxDuringCompilation (step 3)
@@ -3465,6 +3531,8 @@ nodes:
     referenced_in_modules:
       - compilation
       - graph
+    files:
+      - src/compile.ts
   compilation/CompilationResultComparison:
     module: compilation
     type: process
@@ -3571,6 +3639,8 @@ nodes:
     referenced_in_modules:
       - compilation
       - graph
+    files:
+      - src/compile.ts
   compilation/FieldLossDetection:
     module: compilation
     type: process
@@ -3598,10 +3668,14 @@ nodes:
     referenced_in_modules:
       - compilation
       - graph
+    files:
+      - src/compile.ts
   compilation/ValidateDescriptionQuality:
     module: compilation
     type: process
-    description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions
+    description: >-
+      checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions as
+      errors and descriptions exceeding 500 characters as warnings to prevent context window exhaustion
     preceded_by:
       - graph/NodeRegistry
       - compilation/ValidateDescriptionQuality
@@ -3618,6 +3692,33 @@ nodes:
     referenced_in_modules:
       - compilation
       - graph
+    files:
+      - src/compile.ts
+  compilation/NodeNameValidation:
+    module: compilation
+    type: process
+    description: >-
+      validates that each node name follows PascalCase format (uppercase letter followed by letters and digits only) and
+      emits a warning for names containing special characters or path separators
+    preceded_by:
+      - compilation/NodeTypeValidation
+    followed_by:
+      - graph/JourneyDefinition
+      - compilation/ValidationAggregation
+      - compilation/DanglingRefDetection
+    in_journeys:
+      - ParseAllModules (step 9)
+      - FullCompilation (step 14)
+      - CompileFromInMemoryModules (step 6)
+    triggered_by_actors:
+      - _actors/Compiler
+    cross_module_connections:
+      - graph/JourneyDefinition
+    referenced_in_modules:
+      - compilation
+      - graph
+    files:
+      - src/compile.ts
   compilation/CompilationResult:
     module: compilation
     type: artifact
@@ -3703,14 +3804,14 @@ nodes:
       - ValidateAuditInfrastructurePresent (step 8)
       - ReauditAfterAuditSelfFix (step 4)
       - ValidateGeneratedCodeCompiles (step 6)
-      - FullCompilation (step 18)
+      - FullCompilation (step 19)
       - CompileFromCLI (step 4)
       - CompileAfterModuleCreation (step 11)
       - CompileAfterAuditFix (step 13)
       - HandlePartialParseFailure (step 10)
       - RecoverFromLLMCreatedErrors (step 7)
       - RecoverFromLLMCreatedErrors (step 19)
-      - FinalConvergenceGate (step 17)
+      - FinalCompilationGate (step 17)
       - ValidateActionDescriptions (step 2)
       - VerifyCompilationIdempotency (step 2)
       - VerifyCompilationIdempotency (step 4)
@@ -3723,7 +3824,7 @@ nodes:
       - HandleFileReadFailure (step 6)
       - ComputeModuleCoverage (step 6)
       - CompileAndPersistFromCLI (step 4)
-      - CompileFromInMemoryModules (step 13)
+      - CompileFromInMemoryModules (step 14)
       - ModuleCreationPipeline (step 11)
       - PerspectiveEnrichmentPipeline (step 12)
       - AuditFixCycle (step 6)
@@ -3875,7 +3976,7 @@ nodes:
       - organization/ValidateLLMOrganizationOutput
       - convergence/ValidateActorCompleteness
       - hierarchy/ValidateSplitDecision
-      - _goals/SolveContextProblem
+      - compilation/YAMLParsing
       - codegen/GenerateProcessSkeletons
       - publish/GenerateInterfaceYaml
       - convergence/VerifyCreationOrderIndependence
@@ -3999,7 +4100,6 @@ nodes:
       - organization/ValidateLLMOrganizationOutput
       - convergence/ValidateActorCompleteness
       - hierarchy/ValidateSplitDecision
-      - _goals/SolveContextProblem
       - codegen/GenerateProcessSkeletons
       - publish/GenerateInterfaceYaml
       - convergence/VerifyCreationOrderIndependence
@@ -4025,7 +4125,6 @@ nodes:
       - graph
       - audit
       - organization
-      - _goals
       - codegen
       - publish
       - llm
@@ -4119,10 +4218,10 @@ nodes:
     in_journeys:
       - DeclareConvergence (step 4)
       - ValidateGraphInvariantsAfterFixRound (step 9)
-      - FullCompilation (step 19)
+      - FullCompilation (step 20)
       - CompileAfterAuditFix (step 14)
       - HandlePartialParseFailure (step 11)
-      - FinalConvergenceGate (step 18)
+      - FinalCompilationGate (step 18)
       - HandleEmptyModuleDirectory (step 5)
       - ConvergenceCheck (step 4)
       - FinalConvergenceGate (step 14)
@@ -4158,7 +4257,7 @@ nodes:
       - compilation/CompilationResult
       - compilation/CompilationResultComparison
     in_journeys:
-      - FullCompilation (step 17)
+      - FullCompilation (step 18)
       - VerifyCompilationIdempotency (step 5)
       - ScaledParallelValidation (step 15)
     triggered_by_actors:
@@ -4271,6 +4370,8 @@ nodes:
     referenced_in_modules:
       - compilation
       - _actors
+    files:
+      - src/compile.ts
   compilation/FileReadFailureHandling:
     module: compilation
     type: process
@@ -4290,6 +4391,8 @@ nodes:
     referenced_in_modules:
       - compilation
       - _actors
+    files:
+      - src/compile.ts
   compilation/UnlistedModuleDetection:
     module: compilation
     type: process
@@ -4389,10 +4492,10 @@ nodes:
       - compilation/ModuleCoverageReport
       - compilation/CompilationResult
     in_journeys:
-      - FullCompilation (step 16)
+      - FullCompilation (step 17)
       - ComputeModuleCoverage (step 3)
       - ComputeModuleCoverage (step 4)
-      - CompileFromInMemoryModules (step 12)
+      - CompileFromInMemoryModules (step 13)
     triggered_by_actors:
       - _actors/Compiler
     cross_module_connections:
@@ -4428,8 +4531,8 @@ nodes:
     description: >-
       in-memory compilation pipeline that accepts a pre-loaded module map and optional external interfaces, first
       collecting parse errors from malformed modules, then orchestrating node collection, journey resolution, connection
-      computation, validation, stats, and coverage, merging issues from all four phases into a single flat array and
-      stamping a compiled timestamp on the index
+      computation, validation, stale connection detection, stats, and coverage, merging issues from all five phases into
+      a deterministically sorted flat array and stamping a compiled timestamp on the index
     preceded_by:
       - sync/MarkModulesStale
       - _goals/ProductionReady
@@ -4465,9 +4568,7 @@ nodes:
       - compilation/StaleConnectionDetection
       - compilation/DuplicateDetection
     followed_by:
-      - graph/JourneyDefinition
-      - compilation/ValidationAggregation
-      - compilation/DanglingRefDetection
+      - compilation/NodeNameValidation
     in_journeys:
       - ParseAllModules (step 8)
       - FullCompilation (step 13)
@@ -4476,7 +4577,6 @@ nodes:
       - _actors/Compiler
     cross_module_connections:
       - graph/NodeDefinition
-      - graph/JourneyDefinition
     referenced_in_modules:
       - compilation
       - graph
@@ -4495,7 +4595,7 @@ nodes:
       - compilation/ExternalRefClassification
     in_journeys:
       - DetectDanglingRefs (step 3)
-      - CompileFromInMemoryModules (step 7)
+      - CompileFromInMemoryModules (step 8)
     triggered_by_actors: []
     cross_module_connections: []
     referenced_in_modules:
@@ -4535,8 +4635,8 @@ nodes:
     followed_by:
       - compilation/CoverageComputation
     in_journeys:
-      - FullCompilation (step 15)
-      - CompileFromInMemoryModules (step 11)
+      - FullCompilation (step 16)
+      - CompileFromInMemoryModules (step 12)
     triggered_by_actors:
       - _actors/Compiler
     cross_module_connections: []
@@ -4672,12 +4772,14 @@ nodes:
       - organization/SpecSectionIndex
     followed_by:
       - convergence/DiscoverActors
+      - organization/OrganizationFile
       - _actors/LLMWorker
       - convergence/ModuleCreation
       - convergence/HierarchyDecision
       - metrics/StartStepTimer
     in_journeys:
       - EndToEndActorDiscoveryToModuleCreation (step 3)
+      - OrganizationContextDrivesDiscovery (step 1)
       - ProjectConvergence (step 6)
       - HandleLargeSpec (step 7)
       - RecoverFromOrganizationFailure (step 1)
@@ -4692,31 +4794,36 @@ nodes:
       - _actors/ProjectOwner
       - _actors/LLMWorker
     cross_module_connections:
+      - organization/OrganizationFile
       - _actors/LLMWorker
       - metrics/StartStepTimer
       - organization/SpecSectionIndex
     referenced_in_modules:
       - convergence
+      - organization
       - _actors
       - metrics
-      - organization
   convergence/DiscoverActors:
     module: convergence
     type: process
     description: delegates to LLM to discover actors from 3 angles (activities, threats, lifecycle) and write _actors.yaml
     preceded_by:
       - convergence/WriteOrganization
+      - organization/ModuleSpecSectionMap
       - _actors/LLMWorker
       - organization/IdentifyModules
     followed_by:
       - organization/OrganizationFile
       - actors/DiscoverFromActivities
+      - llm/BuildTaskContext
       - _actors/LLMWorker
       - actors/ActorsFile
       - convergence/ModuleCreation
     in_journeys:
       - DiscoverActorsFromSpec (step 1)
       - EndToEndActorDiscoveryToModuleCreation (step 4)
+      - LLMDrivenActorDiscovery (step 1)
+      - OrganizationContextDrivesDiscovery (step 6)
       - ProjectConvergence (step 8)
       - ValidateAfterActorDiscovery (step 1)
       - RecoverFromActorDiscoveryFailure (step 1)
@@ -4728,6 +4835,8 @@ nodes:
     cross_module_connections:
       - organization/OrganizationFile
       - actors/DiscoverFromActivities
+      - llm/BuildTaskContext
+      - organization/ModuleSpecSectionMap
       - _actors/LLMWorker
       - actors/ActorsFile
       - organization/IdentifyModules
@@ -4735,6 +4844,7 @@ nodes:
       - convergence
       - organization
       - actors
+      - llm
       - _actors
   convergence/HierarchyDecision:
     module: convergence
@@ -5397,7 +5507,7 @@ nodes:
       - convergence/ExecuteTests
       - graph/CompiledIndex
     in_journeys:
-      - EndToEndCodegenPipeline (step 21)
+      - EndToEndCodegenPipeline (step 22)
       - HandoffToTestgen (step 5)
       - CodeGenerationPipeline (step 9)
       - SafeCodegenForSelf (step 10)
@@ -5573,6 +5683,7 @@ nodes:
       - _actors/HumanDeveloper
       - sync/ReadDependencyList
       - events/DetectEventFileChange
+      - convergence/SelfSustainingWithoutHumans
     in_journeys:
       - SleepWakeCycle (step 2)
       - SleepWakeCycle (step 10)
@@ -6248,6 +6359,7 @@ nodes:
       - convergence/ValidateSelfConsistency
       - compilation/CompilationResult
       - hierarchy/SameCodeEveryLevel
+      - convergence/GenomeIsProtocolNotTool
     in_journeys:
       - ValidateGraphDescribesItself (step 3)
       - ValidateGraphDescribesItself (step 4)
@@ -6869,6 +6981,7 @@ nodes:
       - _actors/LLMWorker
       - convergence/ClassifyBlockerType
       - convergence/VerifySelfAuditDeterminism
+      - convergence/CreateTemporaryTestProject
     in_journeys:
       - SelfAuditAfterConvergence (step 2)
       - SelfAuditAfterConvergence (step 4)
@@ -6877,8 +6990,11 @@ nodes:
       - VerifySelfAuditIsRepeatable (step 6)
       - VerifySelfAuditIsRepeatable (step 8)
       - HandleSelfHealingCycleExhaustion (step 2)
+      - IntegrationSelfTestSpecToCode (step 1)
+      - EndToEndIntegrationSelfTest (step 1)
     triggered_by_actors:
       - _actors/LLMWorker
+      - _actors/FileSystem
     cross_module_connections:
       - _actors/LLMWorker
     referenced_in_modules:
@@ -7222,13 +7338,13 @@ nodes:
       - EnforceAuditTermination (step 6)
       - ValidateGraphInvariantsAfterFixRound (step 10)
       - DetectSpecChangeToAuditDomain (step 9)
-      - FillAllModulesInOrder (step 16)
+      - FillAllModulesInOrder (step 17)
       - HandoffToTestgen (step 4)
       - ResumePartialCodegen (step 1)
       - HandleWriteFailure (step 7)
       - ExhaustFillRetriesAndSkip (step 9)
       - SkipCodegenWhenFullyConverged (step 10)
-      - FinalConvergenceGate (step 1)
+      - FinalCompilationGate (step 1)
       - ProjectConvergence (step 15)
       - ModuleCreationPipeline (step 1)
       - ModuleCreationPipeline (step 14)
@@ -7254,6 +7370,7 @@ nodes:
       - ValidateAfterActorDiscovery (step 7)
       - ValidateCreationComplete (step 8)
       - ValidatePerspectivesComplete (step 8)
+      - FinalConvergenceGate (step 1)
       - FinalConvergenceGate (step 16)
       - HandleCompactionDuringCreation (step 4)
       - HandleCompactionDuringCreation (step 16)
@@ -7324,6 +7441,7 @@ nodes:
       - SerializeStateUpdatesInParallelCreation (step 8)
       - SerializeStateUpdatesInParallelCreation (step 11)
       - SerializeStateUpdatesInParallelCreation (step 15)
+      - EndToEndIntegrationSelfTest (step 12)
       - EventTriggeredReconvergence (step 10)
       - RipplePropagation (step 1)
       - FullEventLifecycle (step 27)
@@ -7369,7 +7487,7 @@ nodes:
       - RollbackAfterPartialPublish (step 9)
       - DetectAndPreventOscillation (step 8)
       - SuppressNoOpAfterReconvergence (step 13)
-      - EnforceRippleDepthLimit (step 8)
+      - EnforcePublishRippleDepthLimit (step 8)
       - DiagnosePublishInterruptionOnRestart (step 11)
       - RecoverMissedNotificationAfterCrash (step 8)
       - ResumePublishFromInterruption (step 9)
@@ -7378,7 +7496,7 @@ nodes:
       - ValidateDependenciesBeforeSync (step 7)
       - DetectAndBlockOscillation (step 9)
       - EndToEndRipplePropagation (step 24)
-      - EnforceRippleDepthLimit (step 9)
+      - EnforceSyncRippleDepthLimit (step 9)
       - RejectExcessiveDependencyFanOut (step 7)
       - RejectMalformedEventPayload (step 7)
       - FixFailingTests (step 13)
@@ -7784,7 +7902,7 @@ nodes:
       - hierarchy/DecideSplit
       - convergence/ConvergenceState
       - convergence/MapPerspectives
-      - _goals/ProductionReady
+      - convergence/ProductionReadyNoShortcuts
       - _actors/LLMWorker
       - convergence/NeverOpenEndedLoop
     followed_by:
@@ -7808,13 +7926,11 @@ nodes:
     cross_module_connections:
       - hierarchy/DecideSplit
       - excerpt/SelectTargetModule
-      - _goals/ProductionReady
       - _actors/LLMWorker
     referenced_in_modules:
       - convergence
       - hierarchy
       - excerpt
-      - _goals
       - _actors
   convergence/NeverOpenEndedLoop:
     module: convergence
@@ -7926,6 +8042,7 @@ nodes:
     description: spec.md is the only human-written input, everything else is auto-generated
     preceded_by:
       - convergence/ReadSpec
+      - convergence/SelfSustainingWithoutHumans
       - _goals/SelfSustaining
     followed_by:
       - convergence/WriteOrganization
@@ -7938,12 +8055,12 @@ nodes:
     triggered_by_actors:
       - _actors/ProjectOwner
     cross_module_connections:
-      - _goals/SelfSustaining
       - _actors/ProjectOwner
+      - _goals/SelfSustaining
     referenced_in_modules:
       - convergence
-      - _goals
       - _actors
+      - _goals
   convergence/BoundedRetryRule:
     module: convergence
     type: rule
@@ -7958,6 +8075,7 @@ nodes:
       - convergence/ExecuteTests
       - convergence/DataDecidesWhenToStop
       - convergence/HandleStalledChildEngine
+      - convergence/CleanupTemporaryTestProject
       - convergence/ConvergenceState
       - testgen/SelectNextFailureToFix
       - testgen/FailureFixList
@@ -7999,6 +8117,7 @@ nodes:
       - RecoverFromReconciliationFailure (step 11)
       - HandleStalledChildEngineResult (step 6)
       - SafeSelfHealingForSelf (step 17)
+      - EndToEndIntegrationSelfTest (step 11)
       - ConfirmTestSuiteComplete (step 7)
       - HandleFixRetryExhaustion (step 3)
       - EscalateGraphBugToConvergence (step 2)
@@ -8089,36 +8208,64 @@ nodes:
     description: >-
       genome8 is a self-describing protocol that manages itself — same convergence.ts runs at every level, the graph
       describes its own architecture, and the protocol applies to any system
-    preceded_by: []
-    followed_by: []
-    in_journeys: []
-    triggered_by_actors: []
-    cross_module_connections: []
+    preceded_by:
+      - convergence/ValidateSelfConsistency
+    followed_by:
+      - _actors/ProjectOwner
+    in_journeys:
+      - AchieveGoalGenomeIsProtocol (step 1)
+      - AchieveGoalBuildPandoValidatesProtocol (step 1)
+      - ProveGenomeIsTheProduct (step 8)
+    triggered_by_actors:
+      - _actors/ProjectOwner
+      - _actors/NewProjectAdopter
+    cross_module_connections:
+      - _actors/ProjectOwner
     referenced_in_modules:
       - convergence
+      - _actors
   convergence/ProductionReadyNoShortcuts:
     module: convergence
     type: rule
     description: >-
       no hacks or shortcuts — every change is validated by compilation, tested by journey tests, protected by
       destructive edit detection, bounded by retry limits, and staged before deployment
-    preceded_by: []
-    followed_by: []
-    in_journeys: []
-    triggered_by_actors: []
-    cross_module_connections: []
+    preceded_by:
+      - audit/CheckCrossModuleCoverage
+      - llm/ValidateWorkerOutput
+    followed_by:
+      - convergence/BoundedCreationRule
+      - convergence/SelfSustainingWithoutHumans
+    in_journeys:
+      - AchieveGoalProductionReady (step 1)
+      - AchieveGoalBuildPandoValidatesProtocol (step 6)
+      - ProveProductionReady (step 9)
+    triggered_by_actors:
+      - _actors/ProjectOwner
+    cross_module_connections:
+      - audit/CheckCrossModuleCoverage
+      - llm/ValidateWorkerOutput
     referenced_in_modules:
       - convergence
+      - audit
+      - llm
   convergence/SelfSustainingWithoutHumans:
     module: convergence
     type: rule
     description: >-
       the system runs autonomously after initial spec — sleep/wake cycle monitors for changes at zero cost, event-driven
       ripple propagates updates, and reconvergence restores consistency without human intervention
-    preceded_by: []
-    followed_by: []
-    in_journeys: []
-    triggered_by_actors: []
+    preceded_by:
+      - convergence/ProductionReadyNoShortcuts
+      - convergence/EnterSleepMode
+    followed_by:
+      - convergence/OnlyHumanInputIsSpec
+    in_journeys:
+      - AchieveGoalSelfSustaining (step 1)
+      - AchieveGoalBuildPandoValidatesProtocol (step 7)
+      - ProveSelfSustaining (step 9)
+    triggered_by_actors:
+      - _actors/ProjectOwner
     cross_module_connections: []
     referenced_in_modules:
       - convergence
@@ -8215,12 +8362,14 @@ nodes:
       - convergence/ExecuteTests
       - convergence/PrioritizeMixedWakeEvents
     followed_by:
+      - _actors/ProjectOwner
       - convergence/EveryChangeStartsInSpec
       - convergence/ExecuteTests
       - convergence/DetectSelfModification
       - convergence/ReadSpec
       - convergence/WakeOnSpecChange
     in_journeys:
+      - AchieveGoalSolveContextProblem (step 1)
       - ResolveGraphSpecConflict (step 2)
       - ResolveCodeGraphConflict (step 2)
       - ResolveDirectCodeEdit (step 4)
@@ -8795,6 +8944,201 @@ nodes:
     referenced_in_modules:
       - convergence
       - _actors
+  convergence/CreateTemporaryTestProject:
+    module: convergence
+    type: process
+    description: >-
+      creates a temporary directory with a minimal spec.md describing a small system (e.g., greeting app) for
+      integration self-testing
+    preceded_by:
+      - convergence/SelfAuditOwnCode
+    followed_by:
+      - _actors/FileSystem
+      - convergence/RunConvergenceOnTestProject
+    in_journeys:
+      - IntegrationSelfTestSpecToCode (step 2)
+      - IntegrationSelfTestSpecChangeWake (step 1)
+      - IntegrationSelfTestCodeChangeSync (step 1)
+      - EndToEndIntegrationSelfTest (step 2)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections:
+      - _actors/FileSystem
+    referenced_in_modules:
+      - convergence
+      - _actors
+  convergence/RunConvergenceOnTestProject:
+    module: convergence
+    type: process
+    description: spawns a child convergence process on the temporary test project and waits for it to reach CONVERGED status
+    preceded_by:
+      - _actors/FileSystem
+      - _actors/LLMWorker
+      - convergence/CreateTemporaryTestProject
+    followed_by:
+      - _actors/LLMWorker
+      - convergence/VerifyTestProjectProducesCode
+      - convergence/EditTestProjectSpec
+      - convergence/EditTestProjectCode
+    in_journeys:
+      - IntegrationSelfTestSpecToCode (step 4)
+      - IntegrationSelfTestSpecToCode (step 6)
+      - IntegrationSelfTestSpecChangeWake (step 2)
+      - IntegrationSelfTestCodeChangeSync (step 2)
+      - EndToEndIntegrationSelfTest (step 3)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections:
+      - _actors/FileSystem
+      - _actors/LLMWorker
+    referenced_in_modules:
+      - convergence
+      - _actors
+  convergence/VerifyTestProjectProducesCode:
+    module: convergence
+    type: process
+    description: checks that the temporary test project has generated working code by verifying output files exist and compile
+    preceded_by:
+      - convergence/RunConvergenceOnTestProject
+      - convergence/VerifyTestProjectProducesCode
+    followed_by:
+      - convergence/VerifyTestProjectProducesCode
+      - convergence/IntegrationSelfTestResult
+      - convergence/EditTestProjectSpec
+    in_journeys:
+      - IntegrationSelfTestSpecToCode (step 7)
+      - IntegrationSelfTestSpecToCode (step 8)
+      - EndToEndIntegrationSelfTest (step 4)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections: []
+    referenced_in_modules:
+      - convergence
+  convergence/EditTestProjectSpec:
+    module: convergence
+    type: process
+    description: modifies the temporary test project's spec.md to trigger a spec-change wake event
+    preceded_by:
+      - convergence/RunConvergenceOnTestProject
+      - convergence/VerifyTestProjectProducesCode
+    followed_by:
+      - _actors/FileSystem
+      - convergence/VerifyWatchModeWakes
+    in_journeys:
+      - IntegrationSelfTestSpecChangeWake (step 3)
+      - EndToEndIntegrationSelfTest (step 5)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections:
+      - _actors/FileSystem
+    referenced_in_modules:
+      - convergence
+      - _actors
+  convergence/VerifyWatchModeWakes:
+    module: convergence
+    type: process
+    description: confirms the convergence process on the test project detected the spec change and performed targeted reconvergence
+    preceded_by:
+      - _actors/FileSystem
+      - convergence/VerifyWatchModeWakes
+      - convergence/EditTestProjectSpec
+    followed_by:
+      - convergence/VerifyWatchModeWakes
+      - convergence/IntegrationSelfTestResult
+      - convergence/EditTestProjectCode
+    in_journeys:
+      - IntegrationSelfTestSpecChangeWake (step 5)
+      - IntegrationSelfTestSpecChangeWake (step 6)
+      - IntegrationSelfTestSpecChangeWake (step 7)
+      - EndToEndIntegrationSelfTest (step 6)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections:
+      - _actors/FileSystem
+    referenced_in_modules:
+      - convergence
+      - _actors
+  convergence/EditTestProjectCode:
+    module: convergence
+    type: process
+    description: modifies a generated source file in the temporary test project to trigger a code-change wake event
+    preceded_by:
+      - convergence/RunConvergenceOnTestProject
+      - convergence/VerifyWatchModeWakes
+    followed_by:
+      - _actors/FileSystem
+      - convergence/VerifyCodeToGraphSyncWorks
+    in_journeys:
+      - IntegrationSelfTestCodeChangeSync (step 3)
+      - EndToEndIntegrationSelfTest (step 7)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections:
+      - _actors/FileSystem
+    referenced_in_modules:
+      - convergence
+      - _actors
+  convergence/VerifyCodeToGraphSyncWorks:
+    module: convergence
+    type: process
+    description: confirms the convergence process detected the code change and reconciled it back to the graph
+    preceded_by:
+      - _actors/FileSystem
+      - convergence/VerifyCodeToGraphSyncWorks
+      - convergence/EditTestProjectCode
+    followed_by:
+      - convergence/VerifyCodeToGraphSyncWorks
+      - convergence/IntegrationSelfTestResult
+    in_journeys:
+      - IntegrationSelfTestCodeChangeSync (step 5)
+      - IntegrationSelfTestCodeChangeSync (step 6)
+      - IntegrationSelfTestCodeChangeSync (step 7)
+      - EndToEndIntegrationSelfTest (step 8)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections:
+      - _actors/FileSystem
+    referenced_in_modules:
+      - convergence
+      - _actors
+  convergence/CleanupTemporaryTestProject:
+    module: convergence
+    type: process
+    description: removes the temporary test project directory and kills any child processes spawned for it
+    preceded_by:
+      - convergence/IntegrationSelfTestResult
+    followed_by:
+      - convergence/BoundedRetryRule
+    in_journeys:
+      - IntegrationSelfTestSpecToCode (step 10)
+      - IntegrationSelfTestSpecChangeWake (step 9)
+      - IntegrationSelfTestCodeChangeSync (step 9)
+      - EndToEndIntegrationSelfTest (step 10)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections: []
+    referenced_in_modules:
+      - convergence
+  convergence/IntegrationSelfTestResult:
+    module: convergence
+    type: artifact
+    description: records PASS or FAIL for each integration self-test scenario with failure details if any behavior broke
+    preceded_by:
+      - convergence/VerifyTestProjectProducesCode
+      - convergence/VerifyWatchModeWakes
+      - convergence/VerifyCodeToGraphSyncWorks
+    followed_by:
+      - convergence/CleanupTemporaryTestProject
+    in_journeys:
+      - IntegrationSelfTestSpecToCode (step 9)
+      - IntegrationSelfTestSpecChangeWake (step 8)
+      - IntegrationSelfTestCodeChangeSync (step 8)
+      - EndToEndIntegrationSelfTest (step 9)
+    triggered_by_actors:
+      - _actors/FileSystem
+    cross_module_connections: []
+    referenced_in_modules:
+      - convergence
   events/RegisterEventWatchers:
     module: events
     type: process
@@ -8966,7 +9310,7 @@ nodes:
       - DiscardOutOfOrderEvent (step 2)
       - EndToEndRipplePropagation (step 2)
       - CrossValidateEventAndInterfaceHash (step 2)
-      - EnforceRippleDepthLimit (step 2)
+      - EnforceSyncRippleDepthLimit (step 2)
       - RejectMalformedEventPayload (step 2)
       - SyncWhenThingsChange (step 7)
     triggered_by_actors:
@@ -10654,6 +10998,7 @@ nodes:
       - actors/ActorsFile
     in_journeys:
       - ProvideActorsForExcerptContext (step 4)
+      - ActorExcerptRoundTrip (step 3)
       - GenerateModuleExcerpt (step 7)
       - ProvideExcerptForModuleCreation (step 5)
       - ProvideExcerptForPerspectiveEnrichment (step 7)
@@ -10662,6 +11007,7 @@ nodes:
       - CollectActorContextForExcerpt (step 2)
       - CollectActorContextForExcerpt (step 5)
     triggered_by_actors:
+      - _actors/LLMWorker
       - _actors/Compiler
       - _actors/HumanDeveloper
     cross_module_connections:
@@ -10719,6 +11065,7 @@ nodes:
     preceded_by:
       - excerpt/CollectReferencedActors
       - actors/ProvideActorsForModuleCreation
+      - excerpt/CollectTriggeredByActors
       - excerpt/CollectWarnings
       - excerpt/CollectModuleSource
       - excerpt/CollectLocalJourneys
@@ -10733,14 +11080,15 @@ nodes:
       - excerpt/RankCrossModuleByRelevance
     followed_by:
       - llm/TaskPayload
-      - excerpt/TruncateToLimit
       - excerpt/ExcerptOutput
+      - excerpt/TruncateToLimit
       - excerpt/ExcerptLineLimit
       - excerpt/ValidateExcerptCompleteness
       - hierarchy/ChildDirectory
     in_journeys:
       - ProvideActorsForExcerptContext (step 5)
       - EndToEndActorDiscoveryToModuleCreation (step 15)
+      - ActorExcerptRoundTrip (step 5)
       - ProvideAuditExcerptContext (step 8)
       - ProvideFixExcerptToWorker (step 8)
       - AuditAuditsItself (step 6)
@@ -10787,8 +11135,8 @@ nodes:
       - ProvideTestgenExcerptContext (step 9)
     triggered_by_actors:
       - _actors/ProjectOwner
-      - _actors/Auditor
       - _actors/LLMWorker
+      - _actors/Auditor
       - _actors/Compiler
       - _actors/HumanDeveloper
     cross_module_connections:
@@ -10937,12 +11285,15 @@ nodes:
     preceded_by:
       - excerpt/CollectReferencedActors
     followed_by:
+      - excerpt/AssembleExcerpt
       - excerpt/CollectWarnings
       - excerpt/CollectGlobalStats
     in_journeys:
+      - ActorExcerptRoundTrip (step 4)
       - GenerateModuleExcerpt (step 8)
       - ProvideExcerptForPerspectiveEnrichment (step 8)
     triggered_by_actors:
+      - _actors/LLMWorker
       - _actors/Compiler
     cross_module_connections: []
     referenced_in_modules:
@@ -11499,9 +11850,9 @@ nodes:
     type: artifact
     description: the final ~200 line focused context document for a single module
     preceded_by:
+      - excerpt/AssembleExcerpt
       - audit/GenerateAuditPrompt
       - excerpt/TruncateToLimit
-      - excerpt/AssembleExcerpt
       - codegen/ProvideCodegenExcerpt
       - convergence/RetryModuleCreation
       - excerpt/CacheExcerptByState
@@ -11512,10 +11863,11 @@ nodes:
       - llm/RouteTaskToAvailableWorker
       - testgen/ProvideTestgenExcerpt
     followed_by:
+      - llm/TaskPayload
       - _actors/Auditor
       - audit/GenerateAuditPrompt
       - audit/ProvideFixContext
-      - llm/TaskPayload
+      - codegen/BuildFillPrompt
       - codegen/ProvideCodegenExcerpt
       - _actors/LLMWorker
       - convergence/ExamineFromPerspective
@@ -11530,6 +11882,7 @@ nodes:
       - codegen/FilledSourceFile
       - testgen/ProvideTestgenExcerpt
     in_journeys:
+      - ActorExcerptRoundTrip (step 6)
       - DepthAudit (step 8)
       - ProvideAuditExcerptContext (step 10)
       - ProvideFixExcerptToWorker (step 10)
@@ -11577,16 +11930,17 @@ nodes:
       - FillTestAssertionsWithLLM (step 3)
       - ProvideTestgenExcerptContext (step 11)
     triggered_by_actors:
-      - _actors/Auditor
       - _actors/LLMWorker
+      - _actors/Auditor
       - _actors/Compiler
       - _actors/HumanDeveloper
     cross_module_connections:
+      - llm/TaskPayload
       - audit/GenerateAuditPrompt
       - _actors/Auditor
       - audit/ProvideFixContext
       - codegen/ProvideCodegenExcerpt
-      - llm/TaskPayload
+      - codegen/BuildFillPrompt
       - _actors/LLMWorker
       - convergence/ExamineFromPerspective
       - convergence/RetryModuleCreation
@@ -11600,10 +11954,10 @@ nodes:
       - codegen/FilledSourceFile
     referenced_in_modules:
       - excerpt
+      - llm
       - audit
       - _actors
       - codegen
-      - llm
       - convergence
       - graph
       - testgen
@@ -11756,7 +12110,7 @@ nodes:
     type: process
     description: defines a journey as an ordered sequence of steps, each with a node reference and an action description
     preceded_by:
-      - compilation/NodeTypeValidation
+      - compilation/NodeNameValidation
       - graph/NodeDefinition
       - _actors/HumanDeveloper
       - graph/NodeTypeSchema
@@ -11773,7 +12127,7 @@ nodes:
       - graph/ValidateJourneyNameFormat
       - graph/DetectSelfLoopStep
     in_journeys:
-      - ParseAllModules (step 9)
+      - ParseAllModules (step 10)
       - HandlePartialParseFailure (step 7)
       - DefineJourney (step 2)
       - AutomatedModuleCreation (step 5)
@@ -11793,7 +12147,7 @@ nodes:
       - _actors/Auditor
       - _actors/YAMLTamperer
     cross_module_connections:
-      - compilation/NodeTypeValidation
+      - compilation/NodeNameValidation
       - _actors/HumanDeveloper
       - _actors/LLMWorker
       - _actors/YAMLTamperer
@@ -11858,7 +12212,7 @@ nodes:
       - FullCompilation (step 4)
       - CompileAfterAuditFix (step 7)
       - ScaledParallelValidation (step 4)
-      - CompileFromInMemoryModules (step 9)
+      - CompileFromInMemoryModules (step 10)
       - IncrementalGraphBuild (step 7)
       - ComputeConnections (step 4)
       - BuildCompiledIndex (step 7)
@@ -12282,7 +12636,7 @@ nodes:
       - graph/CompiledIndex
       - compilation/CompilationResult
     in_journeys:
-      - FinalConvergenceGate (step 12)
+      - FinalCompilationGate (step 12)
       - FinalConvergenceGate (step 13)
       - EnforceNoIsolation (step 2)
       - VerifyGraphIntegrity (step 10)
@@ -12319,7 +12673,7 @@ nodes:
       - graph/StepFormatRule
       - _actors/Compiler
     in_journeys:
-      - FinalConvergenceGate (step 8)
+      - FinalCompilationGate (step 8)
       - FinalConvergenceGate (step 11)
       - VerifyGraphIntegrity (step 4)
       - ScopedRevalidation (step 4)
@@ -12353,7 +12707,7 @@ nodes:
       - graph/ConnectionSet
       - _actors/Compiler
     in_journeys:
-      - FinalConvergenceGate (step 10)
+      - FinalCompilationGate (step 10)
       - FinalConvergenceGate (step 12)
       - VerifyGraphIntegrity (step 7)
       - ScopedRevalidation (step 6)
@@ -12628,13 +12982,13 @@ nodes:
       - FilterAndProtectDuringSkeletonWrite (step 1)
       - SkipCodegenWhenFullyConverged (step 2)
       - UpdateExistingCodeFromGraph (step 2)
-      - ParseAllModules (step 12)
+      - ParseAllModules (step 13)
       - DetectDuplicates (step 1)
       - DetectDanglingRefs (step 1)
       - DetectOrphans (step 1)
       - DetectMissingModules (step 2)
       - HandlePartialParseFailure (step 8)
-      - FinalConvergenceGate (step 7)
+      - FinalCompilationGate (step 7)
       - VerifyIncrementalMatchesFull (step 1)
       - RevalidateChangedModulesOnly (step 3)
       - DetectDuplicateJourneyNames (step 1)
@@ -12932,7 +13286,7 @@ nodes:
     in_journeys:
       - ProvideActorsToCompilation (step 5)
       - EndToEndActorDiscoveryToModuleCreation (step 12)
-      - ParseAllModules (step 10)
+      - ParseAllModules (step 11)
       - DetectStaleConnections (step 2)
       - ValidateNodeDescriptions (step 2)
       - DefineNode (step 4)
@@ -12986,7 +13340,7 @@ nodes:
       - graph/CrossModuleRefResolution
       - graph/UniqueJourneyNameRule
     in_journeys:
-      - ParseAllModules (step 11)
+      - ParseAllModules (step 12)
       - DefineJourney (step 5)
       - IncrementalGraphBuild (step 6)
       - ComputeConnections (step 1)
@@ -13059,6 +13413,8 @@ nodes:
       - codegen
       - audit
       - convergence
+    files:
+      - src/compile.ts
   graph/DestructiveEditProtectionRule:
     module: graph
     type: rule
@@ -14802,6 +15158,9 @@ nodes:
     description: sends a structured task to the worker process via stream-json protocol with prompt, context, and expected output
     preceded_by:
       - actors/ValidateActorNameFormat
+      - llm/BuildTaskContext
+      - actors/DiscoverFromActivities
+      - actors/DiscoverFromThreats
       - audit/BuildGapFixPrompt
       - llm/TaskPayload
       - codegen/RetryFillWithErrorFeedback
@@ -14827,14 +15186,18 @@ nodes:
       - testgen/TestSkeletonFile
     followed_by:
       - _actors/LLMWorker
-      - convergence/RetryOnLLMTimeout
+      - llm/ValidateWorkerOutput
       - llm/ReceiveResult
+      - convergence/RetryOnLLMTimeout
       - llm/StreamJsonProtocol
       - llm/HandleStdinBackpressure
     in_journeys:
       - RejectInvalidActorName (step 5)
+      - LLMDrivenActorDiscovery (step 3)
+      - LLMDrivenActorDiscovery (step 8)
+      - LLMDrivenActorDiscovery (step 11)
       - FixSingleGap (step 5)
-      - FillSkeletonsWithLLM (step 5)
+      - FillSkeletonsWithLLM (step 6)
       - RecoverFromFillSyntaxError (step 8)
       - RecoverFromWorkerCrashDuringFill (step 1)
       - RecoverFromWorkerCrashDuringFill (step 11)
@@ -14874,6 +15237,8 @@ nodes:
     cross_module_connections:
       - actors/ValidateActorNameFormat
       - _actors/LLMWorker
+      - actors/DiscoverFromActivities
+      - actors/DiscoverFromThreats
       - audit/BuildGapFixPrompt
       - codegen/RetryFillWithErrorFeedback
       - codegen/SkeletonFile
@@ -14904,12 +15269,16 @@ nodes:
     type: process
     description: reads the worker's streamed response, parsing the stream-json output into structured result data
     preceded_by:
+      - llm/ValidateWorkerOutput
+      - llm/SendTask
       - _actors/LLMWorker
       - codegen/FillImplementation
-      - llm/SendTask
       - llm/StreamJsonProtocol
       - testgen/FillTestAssertions
     followed_by:
+      - llm/ValidateWorkerOutput
+      - actors/DiscoverFromThreats
+      - actors/DiscoverFromLifecycle
       - audit/ApplyFix
       - codegen/FilledSourceFile
       - codegen/DetectNodeStubMismatch
@@ -14923,8 +15292,11 @@ nodes:
       - testgen/DetectTrivialAssertions
       - testgen/ValidateTestCaseStructure
     in_journeys:
+      - LLMDrivenActorDiscovery (step 5)
+      - LLMDrivenActorDiscovery (step 9)
+      - LLMDrivenActorDiscovery (step 12)
       - FixSingleGap (step 7)
-      - FillSkeletonsWithLLM (step 8)
+      - FillSkeletonsWithLLM (step 9)
       - RecoverFromFillSyntaxError (step 11)
       - RecoverFromWorkerCrashDuringFill (step 14)
       - RecoverFromNodeStubMismatch (step 11)
@@ -14943,6 +15315,8 @@ nodes:
     triggered_by_actors:
       - _actors/LLMWorker
     cross_module_connections:
+      - actors/DiscoverFromThreats
+      - actors/DiscoverFromLifecycle
       - _actors/LLMWorker
       - audit/ApplyFix
       - codegen/FillImplementation
@@ -14956,6 +15330,7 @@ nodes:
       - testgen/ValidateTestCaseStructure
     referenced_in_modules:
       - llm
+      - actors
       - _actors
       - audit
       - codegen
@@ -14968,6 +15343,7 @@ nodes:
       assembles task-specific context from excerpt output, compiled state snapshot, and cross-module relationship data
       before packaging into the payload
     preceded_by:
+      - convergence/DiscoverActors
       - graph/CompiledIndex
       - llm/DetectPromptInjection
       - excerpt/ExcerptOutput
@@ -14975,10 +15351,12 @@ nodes:
       - convergence/ConvergenceState
       - llm/ValidateWorkerHealthBeforeTask
     followed_by:
+      - llm/SendTask
       - llm/TaskPayload
       - llm/PayloadSizeBudget
       - llm/EstimateTaskContextCost
     in_journeys:
+      - LLMDrivenActorDiscovery (step 2)
       - SendTaskToWorker (step 4)
       - SanitizeContextBeforeSend (step 4)
       - TruncateOversizedPayload (step 3)
@@ -14991,14 +15369,15 @@ nodes:
     triggered_by_actors:
       - _actors/LLMWorker
     cross_module_connections:
+      - convergence/DiscoverActors
       - graph/CompiledIndex
       - excerpt/ExcerptOutput
       - convergence/ConvergenceState
     referenced_in_modules:
       - llm
+      - convergence
       - graph
       - excerpt
-      - convergence
   llm/ValidateWorkerOutput:
     module: llm
     type: process
@@ -15006,17 +15385,24 @@ nodes:
       confirms the worker produced expected output by checking that files exist on disk, content is valid YAML or
       TypeScript, and task requirements are met
     preceded_by:
+      - llm/SendTask
+      - llm/ReceiveResult
       - llm/TaskResult
       - llm/ValidateWorkerOutput
       - llm/DrainPartialOutput
       - _actors/LLMWorker
       - convergence/RollbackFailedFix
     followed_by:
+      - llm/ReceiveResult
+      - actors/DiscoverFromActivities
       - llm/ValidateWorkerOutput
       - convergence/ConvergenceState
       - llm/TaskResult
       - llm/DetectMalformedYAMLOutput
+      - convergence/ProductionReadyNoShortcuts
     in_journeys:
+      - LLMDrivenActorDiscovery (step 4)
+      - LLMDrivenActorDiscovery (step 6)
       - ValidateAndAcceptResult (step 2)
       - ValidateAndAcceptResult (step 3)
       - ValidateAndAcceptResult (step 4)
@@ -15027,11 +15413,14 @@ nodes:
     triggered_by_actors:
       - _actors/LLMWorker
     cross_module_connections:
+      - actors/DiscoverFromActivities
       - convergence/ConvergenceState
       - _actors/LLMWorker
       - convergence/RollbackFailedFix
+      - convergence/ProductionReadyNoShortcuts
     referenced_in_modules:
       - llm
+      - actors
       - convergence
       - _actors
   llm/WriteFile:
@@ -16080,6 +16469,7 @@ nodes:
     preceded_by:
       - excerpt/AssembleExcerpt
       - excerpt/ExcerptOutput
+      - codegen/BuildFillPrompt
       - llm/BuildTaskContext
       - llm/DetectProcessExit
       - llm/DrainPartialOutput
@@ -16090,13 +16480,15 @@ nodes:
       - codegen/FilledSourceFile
       - testgen/GenerateFixPrompt
     followed_by:
+      - _actors/LLMWorker
       - llm/SendTask
       - llm/DrainPartialOutput
       - llm/CrashReport
       - llm/SystemPrompt
     in_journeys:
       - ProvideActorsForExcerptContext (step 6)
-      - FillSkeletonsWithLLM (step 4)
+      - ActorExcerptRoundTrip (step 7)
+      - FillSkeletonsWithLLM (step 5)
       - ProvideExcerptForModuleCreation (step 12)
       - SendTaskToWorker (step 5)
       - DetectAndReportProcessCrash (step 3)
@@ -16120,11 +16512,14 @@ nodes:
     cross_module_connections:
       - excerpt/AssembleExcerpt
       - excerpt/ExcerptOutput
+      - _actors/LLMWorker
+      - codegen/BuildFillPrompt
       - codegen/FilledSourceFile
       - testgen/GenerateFixPrompt
     referenced_in_modules:
       - llm
       - excerpt
+      - _actors
       - codegen
       - testgen
   llm/TaskResult:
@@ -16990,10 +17385,12 @@ nodes:
     type: process
     description: extracts a 1-2 sentence scope statement describing what the project is and does
     preceded_by:
+      - organization/OrganizationFile
       - _actors/LLMWorker
     followed_by:
       - organization/IdentifyModules
     in_journeys:
+      - OrganizationContextDrivesDiscovery (step 3)
       - AnalyzeSpecAndWriteOrganization (step 8)
     triggered_by_actors:
       - _actors/LLMWorker
@@ -17009,8 +17406,8 @@ nodes:
     preceded_by:
       - _actors/ResourceExhauster
       - convergence/ReadSpec
-      - organization/ReadSpecFile
       - organization/IdentifyScope
+      - organization/ReadSpecFile
       - organization/DetectNewModulesInSpec
       - organization/ModuleList
       - _actors/LLMWorker
@@ -17019,6 +17416,7 @@ nodes:
       - organization/ModuleList
       - actors/DiscoverFromActivities
       - _actors/LLMWorker
+      - organization/ModuleSpecSectionMap
       - sync/FindAffectedModules
       - convergence/DiscoverActors
       - organization/HandleEmptyModuleList
@@ -17030,6 +17428,7 @@ nodes:
       - ResourceExhaustionDefense (step 2)
       - NewProjectAdoption (step 5)
       - MigratingProjectBootstrap (step 4)
+      - OrganizationContextDrivesDiscovery (step 4)
       - SpecChangeOnSelf (step 5)
       - AnalyzeSpecAndWriteOrganization (step 9)
       - UpdateOrganizationAfterReconvergence (step 5)
@@ -17566,11 +17965,13 @@ nodes:
     description: the ORGANIZATION.md file containing scope, module list, dependency order, and independence analysis
     preceded_by:
       - convergence/DiscoverActors
+      - convergence/WriteOrganization
       - convergence/ChunkLargeSpec
       - _actors/LLMWorker
       - organization/WriteOrganizationFile
     followed_by:
       - convergence/SpecFile
+      - organization/IdentifyScope
       - convergence/ConvergenceState
       - organization/ValidateLLMOrganizationOutput
       - organization/ModuleList
@@ -17579,6 +17980,7 @@ nodes:
       - organization/SpecSectionIndex
     in_journeys:
       - DiscoverActorsFromSpec (step 2)
+      - OrganizationContextDrivesDiscovery (step 2)
       - HandleLargeSpec (step 11)
       - RecoverFromOrganizationFailure (step 3)
       - RecoverFromOrganizationFailure (step 9)
@@ -17600,6 +18002,7 @@ nodes:
     cross_module_connections:
       - convergence/DiscoverActors
       - convergence/SpecFile
+      - convergence/WriteOrganization
       - convergence/ChunkLargeSpec
       - convergence/ConvergenceState
       - _actors/LLMWorker
@@ -17678,7 +18081,7 @@ nodes:
     in_journeys:
       - ResourceExhaustionDefense (step 3)
       - DetectMissingModules (step 1)
-      - FinalConvergenceGate (step 5)
+      - FinalCompilationGate (step 5)
       - DetectUnlistedModules (step 2)
       - ValidateCreationComplete (step 2)
       - RecoverFromCorruptConvergenceState (step 13)
@@ -17839,12 +18242,14 @@ nodes:
     type: artifact
     description: the mapping from each module name to its assigned spec section numbers used in each module's spec_sections field
     preceded_by:
+      - organization/IdentifyModules
       - organization/SpecSectionIndex
       - organization/AssignSpecSectionsToModules
       - organization/DependencyGraph
       - convergence/ModuleCreation
       - organization/DetectSpecChangeToOwnSections
     followed_by:
+      - convergence/DiscoverActors
       - audit/GenerateAuditPrompt
       - organization/AssembleOrganization
       - convergence/ModuleCreation
@@ -17856,6 +18261,7 @@ nodes:
       - organization/DetectUngroundedModules
       - audit/CheckSpecCoverage
     in_journeys:
+      - OrganizationContextDrivesDiscovery (step 5)
       - CheckSpecCoverageAgainstOrganization (step 2)
       - AnalyzeSpecAndWriteOrganization (step 16)
       - ProvideModuleListForCreation (step 4)
@@ -17871,14 +18277,15 @@ nodes:
       - _actors/Auditor
       - _actors/LLMWorker
     cross_module_connections:
+      - convergence/DiscoverActors
       - audit/GenerateAuditPrompt
       - convergence/ModuleCreation
       - convergence/TargetedReconvergence
       - audit/CheckSpecCoverage
     referenced_in_modules:
       - organization
-      - audit
       - convergence
+      - audit
   organization/DetectDuplicateModuleNames:
     module: organization
     type: process
@@ -18545,7 +18952,7 @@ nodes:
       - DetectAndPreventOscillation (step 7)
       - DeduplicateRedundantEvent (step 8)
       - SuppressNoOpAfterReconvergence (step 12)
-      - EnforceRippleDepthLimit (step 7)
+      - EnforcePublishRippleDepthLimit (step 7)
       - DetectEventInterfaceHashDivergence (step 8)
       - ReconcileHashStateAfterCrash (step 11)
       - VerifyFullPublishIdempotency (step 12)
@@ -18654,7 +19061,7 @@ nodes:
       - HandleEventWriteFailure (step 8)
       - HandleValidationFailure (step 5)
       - RollbackAfterPartialPublish (step 8)
-      - EnforceRippleDepthLimit (step 6)
+      - EnforcePublishRippleDepthLimit (step 6)
       - VerifyPublishedHashAfterWrite (step 8)
       - DetectEventInterfaceHashDivergence (step 7)
       - VerifyFullPublishIdempotency (step 11)
@@ -18712,7 +19119,7 @@ nodes:
       - FirstTimePublish (step 18)
       - RepublishAfterReconvergence (step 18)
       - PublishParentInterface (step 14)
-      - EnforceRippleDepthLimit (step 2)
+      - EnforcePublishRippleDepthLimit (step 2)
     triggered_by_actors:
       - _actors/Compiler
       - _actors/ParentEngine
@@ -18791,7 +19198,7 @@ nodes:
       - DetectAndPreventOscillation (step 6)
       - DeduplicateRedundantEvent (step 7)
       - SuppressNoOpAfterReconvergence (step 10)
-      - EnforceRippleDepthLimit (step 5)
+      - EnforcePublishRippleDepthLimit (step 5)
       - NormalizeEventForIdempotentComparison (step 7)
     triggered_by_actors:
       - _actors/DependentBox
@@ -19559,7 +19966,7 @@ nodes:
       - RecoverFromCorruptedHash (step 9)
       - DetectAndPreventOscillation (step 2)
       - PropagateChangelogForTargetedReconvergence (step 8)
-      - EnforceRippleDepthLimit (step 1)
+      - EnforcePublishRippleDepthLimit (step 1)
       - DetectEventInterfaceHashDivergence (step 2)
       - ReconcileHashStateAfterCrash (step 4)
       - NormalizeEventForIdempotentComparison (step 2)
@@ -19660,8 +20067,8 @@ nodes:
       - publish/SuppressNoOpRipple
     in_journeys:
       - RepublishAfterReconvergence (step 21)
-      - EnforceRippleDepthLimit (step 3)
-      - EnforceRippleDepthLimit (step 4)
+      - EnforcePublishRippleDepthLimit (step 3)
+      - EnforcePublishRippleDepthLimit (step 4)
     triggered_by_actors:
       - _actors/Compiler
     cross_module_connections: []
@@ -19972,6 +20379,7 @@ nodes:
       - organization
       - graph
     files:
+      - src/sync.ts
       - test/staleness.test.ts
   sync/IdentifyStaleDependencies:
     module: sync
@@ -20273,7 +20681,7 @@ nodes:
       - EndToEndRipplePropagation (step 3)
       - HandleConcurrentDependencyRipples (step 2)
       - CrossValidateEventAndInterfaceHash (step 3)
-      - EnforceRippleDepthLimit (step 3)
+      - EnforceSyncRippleDepthLimit (step 3)
       - RejectMalformedEventPayload (step 3)
       - RejectMalformedEventPayload (step 4)
     triggered_by_actors:
@@ -20434,7 +20842,7 @@ nodes:
       - sync/SyncResult
     in_journeys:
       - DetectAndBlockOscillation (step 7)
-      - EnforceRippleDepthLimit (step 7)
+      - EnforceSyncRippleDepthLimit (step 7)
     triggered_by_actors:
       - _actors/FileSystem
     cross_module_connections: []
@@ -20793,9 +21201,9 @@ nodes:
       - sync/CheckRippleDepthLimit
       - sync/SuppressSyncOnOscillation
     in_journeys:
-      - EnforceRippleDepthLimit (step 4)
-      - EnforceRippleDepthLimit (step 5)
-      - EnforceRippleDepthLimit (step 6)
+      - EnforceSyncRippleDepthLimit (step 4)
+      - EnforceSyncRippleDepthLimit (step 5)
+      - EnforceSyncRippleDepthLimit (step 6)
     triggered_by_actors:
       - _actors/FileSystem
     cross_module_connections: []
@@ -21192,7 +21600,7 @@ nodes:
       - FetchHashesInParallelForManyDependencies (step 10)
       - BatchMarkStaleModulesAtScale (step 1)
       - ChunkLargeGraphTracingForAffectedModules (step 1)
-      - EnforceRippleDepthLimit (step 8)
+      - EnforceSyncRippleDepthLimit (step 8)
       - RejectExcessiveDependencyFanOut (step 6)
       - ClearOrphanSyncLockOnStartup (step 8)
       - ScanForMissedEventsOnWake (step 11)
@@ -22411,13 +22819,14 @@ nodes:
       - _actors/NewProjectAdopter
       - _actors/MigratingProject
       - convergence/ConvergenceState
-      - _goals/SolveContextProblem
-      - _goals/GenomeIsTheProduct
+      - convergence/SourceOfTruthHierarchy
+      - convergence/GenomeIsProtocolNotTool
       - convergence/OnlyHumanInputIsSpec
       - convergence/FlagSpecGap
       - convergence/EnterSleepMode
       - convergence/FlagRestartRequired
       - convergence/PreventDuplicateInstance
+      - _goals/SolveContextProblem
       - _goals/BuildPando
     followed_by:
       - convergence/ReadSpec
@@ -22485,25 +22894,25 @@ nodes:
       - convergence/ConvergenceState
       - convergence/EnterSleepMode
       - convergence/LoadProjectConfig
-      - _goals/SolveContextProblem
-      - _goals/GenomeIsTheProduct
+      - convergence/SourceOfTruthHierarchy
+      - convergence/GenomeIsProtocolNotTool
       - convergence/OnlyHumanInputIsSpec
       - hierarchy/ValidateCrossEngineRefs
       - convergence/WarmWorkersAcrossPhases
-      - convergence/SourceOfTruthHierarchy
       - convergence/NoSeparateDocumentationFiles
       - convergence/FlagSpecGap
       - convergence/FlagRestartRequired
       - convergence/TriggerPublish
       - convergence/PreventDuplicateInstance
+      - _goals/SolveContextProblem
       - organization/IdentifyModules
       - _goals/BuildPando
       - convergence/HierarchyDecision
     referenced_in_modules:
       - _actors
       - convergence
-      - _goals
       - hierarchy
+      - _goals
       - organization
   _actors/HumanDeveloper:
     module: _actors
@@ -22595,6 +23004,7 @@ nodes:
       - actors/DiscoverFromThreats
       - organization/IdentifyModules
       - llm/SendTask
+      - llm/TaskPayload
       - audit/ProvideFixContext
       - codegen/SkeletonFile
       - codegen/ProvideCodegenExcerpt
@@ -22630,6 +23040,7 @@ nodes:
       - convergence/ReconcileCodeWithGraph
       - convergence/RetryGoalExtraction
       - convergence/RetryReconciliation
+      - convergence/RunConvergenceOnTestProject
       - graph/NodeRegistry
       - hierarchy/AnalyzeModuleIndependence
       - llm/PayloadSizeBudget
@@ -22648,6 +23059,7 @@ nodes:
       - convergence/ModuleCreation
       - actors/MergedActorList
       - actors/MergeAndDeduplicate
+      - actors/ValidateActorCoverage
       - audit/ApplyFix
       - llm/ReceiveResult
       - codegen/FillImplementation
@@ -22676,10 +23088,11 @@ nodes:
       - convergence/VerifyGoalsAgainstEvidence
       - convergence/ExtractGoals
       - sync/MarkModulesStale
-      - _goals/SolveContextProblem
+      - compilation/YAMLParsing
       - codegen/WriteGeneratedFile
       - convergence/StageGeneratedCode
       - convergence/SerializeConvergenceStateWrites
+      - convergence/RunConvergenceOnTestProject
       - graph/JourneyDefinition
       - graph/FieldPreservation
       - graph/NodeDefinition
@@ -22716,11 +23129,12 @@ nodes:
       - MigratingProjectBootstrap (step 5)
       - RejectInvalidActorName (step 1)
       - RejectInvalidActorName (step 6)
+      - ActorExcerptRoundTrip (step 8)
       - FixAuditGaps (step 8)
       - FixSingleGap (step 6)
       - FixGapInAuditModule (step 8)
-      - FillSkeletonsWithLLM (step 6)
-      - FillAllModulesInOrder (step 10)
+      - FillSkeletonsWithLLM (step 7)
+      - FillAllModulesInOrder (step 11)
       - RecoverFromFillSyntaxError (step 9)
       - RecoverFromWorkerCrashDuringFill (step 2)
       - RecoverFromWorkerCrashDuringFill (step 12)
@@ -22806,6 +23220,7 @@ nodes:
       - SafeSelfHealingForSelf (step 14)
       - SerializeStateUpdatesInParallelCreation (step 5)
       - SerializeStateUpdatesInParallelCreation (step 6)
+      - IntegrationSelfTestSpecToCode (step 5)
       - AutomatedModuleCreation (step 1)
       - RemediateOrphanNode (step 5)
       - PreserveFieldsOnRewrite (step 2)
@@ -22879,6 +23294,7 @@ nodes:
       - _actors/ProjectOwner
       - _actors/ReturningOwner
       - _actors/HumanDeveloper
+      - _actors/FileSystem
       - _actors/Auditor
       - _actors/ChildEngine
     cross_module_connections:
@@ -22895,6 +23311,8 @@ nodes:
       - actors/MergedActorList
       - llm/SendTask
       - actors/MergeAndDeduplicate
+      - llm/TaskPayload
+      - actors/ValidateActorCoverage
       - audit/ProvideFixContext
       - audit/ApplyFix
       - llm/ReceiveResult
@@ -22946,12 +23364,13 @@ nodes:
       - convergence/WakeOnSpecChange
       - sync/MarkModulesStale
       - convergence/ReconcileCodeWithGraph
-      - _goals/SolveContextProblem
+      - compilation/YAMLParsing
       - convergence/RetryGoalExtraction
       - codegen/WriteGeneratedFile
       - convergence/RetryReconciliation
       - convergence/StageGeneratedCode
       - convergence/SerializeConvergenceStateWrites
+      - convergence/RunConvergenceOnTestProject
       - graph/JourneyDefinition
       - graph/FieldPreservation
       - graph/NodeRegistry
@@ -22996,7 +23415,7 @@ nodes:
       - testgen
       - hierarchy
       - sync
-      - _goals
+      - compilation
   _actors/Compiler:
     module: _actors
     type: actor
@@ -23102,7 +23521,7 @@ nodes:
       - CompileFromCLI (step 3)
       - CompileAfterAuditFix (step 2)
       - HandlePartialParseFailure (step 1)
-      - FinalConvergenceGate (step 2)
+      - FinalCompilationGate (step 2)
       - ValidateActionDescriptions (step 1)
       - VerifyCompilationIdempotency (step 1)
       - VerifyCompilationIdempotency (step 3)
@@ -23326,6 +23745,7 @@ nodes:
       - audit/VerifyGapClosed
       - audit/CheckSpecCoverage
       - audit/CheckActorCoverage
+      - _goals/SelfSustaining
       - _actors/Auditor
       - convergence/TargetedAudit
       - convergence/ReauditAfterFix
@@ -23369,7 +23789,7 @@ nodes:
       - CheckSpecCoverageAgainstOrganization (step 4)
       - AuditCompletionTriggersPublish (step 1)
       - AuditPassTriggersCodegen (step 1)
-      - CheckGoalCoverageAgainstGoals (step 4)
+      - CheckGoalCoverageAgainstGoals (step 9)
       - VerifyAuditFindingsAreRepeatable (step 4)
       - VerifyAuditFindingsAreRepeatable (step 5)
       - VerifyAuditFindingsAreRepeatable (step 6)
@@ -23428,6 +23848,7 @@ nodes:
       - audit/RejectAndRevertFix
       - audit/ConfirmAllGapsResolved
       - audit/DeclareConverged
+      - _goals/SelfSustaining
       - audit/CheckGoalCoverage
       - audit/MergeAuditReports
       - convergence/TargetedAudit
@@ -23444,6 +23865,7 @@ nodes:
       - compilation
       - excerpt
       - audit
+      - _goals
       - graph
   _actors/ParentEngine:
     module: _actors
@@ -23670,6 +24092,9 @@ nodes:
       - convergence/EnterSleepMode
       - _actors/ProjectOwner
       - _actors/HumanDeveloper
+      - convergence/CreateTemporaryTestProject
+      - convergence/EditTestProjectSpec
+      - convergence/EditTestProjectCode
       - events/RegisterEventWatchers
       - events/DeregisterEventWatchers
       - events/EnterSleep
@@ -23682,6 +24107,9 @@ nodes:
       - convergence/RecoverSleepWatcher
       - convergence/WakeOnSpecChange
       - convergence/WakeOnCodeChange
+      - convergence/RunConvergenceOnTestProject
+      - convergence/VerifyWatchModeWakes
+      - convergence/VerifyCodeToGraphSyncWorks
       - events/EventWatcherSet
       - events/DetectEventFileChange
       - events/DetectWatcherCrash
@@ -23701,6 +24129,9 @@ nodes:
       - CodeChangeWake (step 3)
       - CodeChangeWakeOnSelf (step 3)
       - HandleMixedConcurrentWakes (step 5)
+      - IntegrationSelfTestSpecToCode (step 3)
+      - IntegrationSelfTestSpecChangeWake (step 4)
+      - IntegrationSelfTestCodeChangeSync (step 4)
       - SetupEventWatching (step 4)
       - HandleIncomingEvent (step 1)
       - TeardownEventWatching (step 4)
@@ -23735,7 +24166,7 @@ nodes:
       - CrossValidateEventAndInterfaceHash (step 1)
       - PreventConcurrentSyncRuns (step 1)
       - AcquireAndReleaseSyncLock (step 1)
-      - EnforceRippleDepthLimit (step 1)
+      - EnforceSyncRippleDepthLimit (step 1)
       - RejectMalformedEventPayload (step 1)
       - RetryDeferredSyncAfterLockRelease (step 1)
     triggered_by_actors:
@@ -23753,6 +24184,12 @@ nodes:
       - convergence/RecoverSleepWatcher
       - convergence/WakeOnSpecChange
       - convergence/WakeOnCodeChange
+      - convergence/CreateTemporaryTestProject
+      - convergence/RunConvergenceOnTestProject
+      - convergence/EditTestProjectSpec
+      - convergence/VerifyWatchModeWakes
+      - convergence/EditTestProjectCode
+      - convergence/VerifyCodeToGraphSyncWorks
       - events/RegisterEventWatchers
       - events/EventWatcherSet
       - events/DetectEventFileChange
@@ -24066,35 +24503,37 @@ nodes:
     type: rule
     description: any system at any scale gets scoped, connected, synced context — no single brain required
     preceded_by:
-      - _actors/LLMWorker
+      - audit/GenerateAuditPrompt
     followed_by:
+      - _goals/BuildPando
       - _actors/ProjectOwner
-      - compilation/ErrorReport
     in_journeys:
-      - AchieveGoalSolveContextProblem (step 1)
-      - RecoverFromGoalExtractionFailure (step 3)
+      - CheckGoalCoverageAgainstGoals (step 4)
       - ProveSolveContextProblem (step 1)
     triggered_by_actors:
+      - _actors/Auditor
       - _actors/ProjectOwner
-      - _actors/LLMWorker
     cross_module_connections:
+      - audit/GenerateAuditPrompt
       - _actors/ProjectOwner
-      - _actors/LLMWorker
-      - compilation/ErrorReport
     referenced_in_modules:
       - _goals
+      - audit
       - _actors
-      - compilation
   _goals/BuildPando:
     module: _goals
     type: rule
     description: decentralized AI platform ships as the first real proof that genome works at scale
-    preceded_by: []
+    preceded_by:
+      - _goals/SolveContextProblem
     followed_by:
+      - _goals/GenomeIsTheProduct
       - _actors/ProjectOwner
     in_journeys:
+      - CheckGoalCoverageAgainstGoals (step 5)
       - ProveBuildPando (step 1)
     triggered_by_actors:
+      - _actors/Auditor
       - _actors/ProjectOwner
     cross_module_connections:
       - _actors/ProjectOwner
@@ -24105,19 +24544,18 @@ nodes:
     module: _goals
     type: rule
     description: genome is a protocol others adopt, not just an internal tool
-    preceded_by: []
+    preceded_by:
+      - _goals/BuildPando
     followed_by:
-      - _actors/ProjectOwner
+      - _goals/ProductionReady
       - _actors/NewProjectAdopter
     in_journeys:
-      - AchieveGoalGenomeIsProtocol (step 1)
-      - AchieveGoalBuildPandoValidatesProtocol (step 1)
+      - CheckGoalCoverageAgainstGoals (step 6)
       - ProveGenomeIsTheProduct (step 1)
     triggered_by_actors:
-      - _actors/ProjectOwner
+      - _actors/Auditor
       - _actors/NewProjectAdopter
     cross_module_connections:
-      - _actors/ProjectOwner
       - _actors/NewProjectAdopter
     referenced_in_modules:
       - _goals
@@ -24127,25 +24565,19 @@ nodes:
     type: rule
     description: no hacks, no shortcuts — every component reliable enough for real workloads
     preceded_by:
-      - audit/CheckCrossModuleCoverage
+      - _goals/GenomeIsTheProduct
     followed_by:
-      - convergence/BoundedCreationRule
       - _goals/SelfSustaining
       - compilation/CompileFromModules
     in_journeys:
-      - AchieveGoalProductionReady (step 1)
-      - AchieveGoalBuildPandoValidatesProtocol (step 6)
+      - CheckGoalCoverageAgainstGoals (step 7)
       - ProveProductionReady (step 1)
     triggered_by_actors:
-      - _actors/ProjectOwner
+      - _actors/Auditor
     cross_module_connections:
-      - convergence/BoundedCreationRule
-      - audit/CheckCrossModuleCoverage
       - compilation/CompileFromModules
     referenced_in_modules:
       - _goals
-      - convergence
-      - audit
       - compilation
   _goals/SelfSustaining:
     module: _goals
@@ -24154,17 +24586,19 @@ nodes:
     preceded_by:
       - _goals/ProductionReady
     followed_by:
+      - _actors/Auditor
       - convergence/OnlyHumanInputIsSpec
     in_journeys:
-      - AchieveGoalSelfSustaining (step 1)
-      - AchieveGoalBuildPandoValidatesProtocol (step 7)
+      - CheckGoalCoverageAgainstGoals (step 8)
       - ProveSelfSustaining (step 1)
     triggered_by_actors:
-      - _actors/ProjectOwner
+      - _actors/Auditor
     cross_module_connections:
+      - _actors/Auditor
       - convergence/OnlyHumanInputIsSpec
     referenced_in_modules:
       - _goals
+      - _actors
       - convergence
 journeys:
   DiscoverActorsFromSpec:
@@ -25091,6 +25525,133 @@ journeys:
       - _actors
       - actors
       - llm
+  LLMDrivenActorDiscovery:
+    name: LLMDrivenActorDiscovery
+    module: actors
+    actor: null
+    steps:
+      - node: convergence/DiscoverActors
+        action: triggers actor discovery and prepares the discovery task payload
+        step_number: 1
+      - node: llm/BuildTaskContext
+        action: assembles the spec text and discovery-angle prompt into a task context
+        step_number: 2
+      - node: llm/SendTask
+        action: sends the activities-angle discovery task to the LLM worker
+        step_number: 3
+      - node: llm/ValidateWorkerOutput
+        action: the worker reads the spec and produces actor entries using native Read tool
+        step_number: 4
+      - node: llm/ReceiveResult
+        action: receives the raw activities-angle actor list from the worker
+        step_number: 5
+      - node: llm/ValidateWorkerOutput
+        action: checks the worker output is valid YAML with actor entries before accepting
+        step_number: 6
+      - node: actors/DiscoverFromActivities
+        action: stores the validated activities-angle actors
+        step_number: 7
+      - node: llm/SendTask
+        action: sends the threats-angle discovery task to the same worker
+        step_number: 8
+      - node: llm/ReceiveResult
+        action: receives the raw threats-angle actor list from the worker
+        step_number: 9
+      - node: actors/DiscoverFromThreats
+        action: stores the validated threats-angle actors
+        step_number: 10
+      - node: llm/SendTask
+        action: sends the lifecycle-angle discovery task to the same worker
+        step_number: 11
+      - node: llm/ReceiveResult
+        action: receives the raw lifecycle-angle actor list from the worker
+        step_number: 12
+      - node: actors/DiscoverFromLifecycle
+        action: stores the validated lifecycle-angle actors
+        step_number: 13
+      - node: actors/MergeAndDeduplicate
+        action: merges all three angle results into the final actor set
+        step_number: 14
+    modules_touched:
+      - convergence
+      - llm
+      - actors
+  OrganizationContextDrivesDiscovery:
+    name: OrganizationContextDrivesDiscovery
+    module: actors
+    actor: null
+    steps:
+      - node: convergence/WriteOrganization
+        action: completes the organization step producing ORGANIZATION.md
+        step_number: 1
+      - node: organization/OrganizationFile
+        action: provides the module list, dependencies, and scope analysis
+        step_number: 2
+      - node: organization/IdentifyScope
+        action: defines the system boundary that constrains which actors are relevant
+        step_number: 3
+      - node: organization/IdentifyModules
+        action: provides the module names so discovery can target actors per domain
+        step_number: 4
+      - node: organization/ModuleSpecSectionMap
+        action: maps spec sections to modules so each discovery angle knows which sections matter
+        step_number: 5
+      - node: convergence/DiscoverActors
+        action: receives the organization context and begins actor discovery
+        step_number: 6
+      - node: actors/DiscoverFromActivities
+        action: uses the module list to identify which activities produce which actors
+        step_number: 7
+      - node: actors/DiscoverFromThreats
+        action: uses the scope boundary to identify which threat actors target which modules
+        step_number: 8
+      - node: actors/DiscoverFromLifecycle
+        action: uses the module domains to identify lifecycle actors per concern area
+        step_number: 9
+      - node: actors/MergeAndDeduplicate
+        action: merges actors with organization context ensuring each actor maps to at least one module
+        step_number: 10
+    modules_touched:
+      - convergence
+      - organization
+      - actors
+  ActorExcerptRoundTrip:
+    name: ActorExcerptRoundTrip
+    module: actors
+    actor: _actors/LLMWorker
+    steps:
+      - node: actors/ActorsFile
+        action: provides the full validated actor list on disk
+        step_number: 1
+      - node: actors/ProvideActorsForModuleCreation
+        action: extracts actor names and descriptions relevant to the target module
+        step_number: 2
+      - node: excerpt/CollectReferencedActors
+        action: gathers the actor references that the target module's journeys use
+        step_number: 3
+      - node: excerpt/CollectTriggeredByActors
+        action: assembles actor descriptions and their journey participation into excerpt context
+        step_number: 4
+      - node: excerpt/AssembleExcerpt
+        action: includes the actor context section in the final module excerpt
+        step_number: 5
+      - node: excerpt/ExcerptOutput
+        action: the assembled excerpt now contains actor names the worker can reference as _actors/ActorName
+        step_number: 6
+      - node: llm/TaskPayload
+        action: packages the excerpt with actor context into the module creation task
+        step_number: 7
+      - node: _actors/LLMWorker
+        action: reads the excerpt and writes journey steps referencing _actors/ActorName for discovered actors
+        step_number: 8
+      - node: actors/ValidateActorCoverage
+        action: after all modules are created, checks that every actor appears in at least one journey
+        step_number: 9
+    modules_touched:
+      - actors
+      - excerpt
+      - llm
+      - _actors
   DepthAudit:
     name: DepthAudit
     module: audit
@@ -26186,34 +26747,50 @@ journeys:
       - node: audit/GenerateAuditPrompt
         action: builds the goal coverage prompt including the full goal list as ground truth
         step_number: 3
+      - node: _goals/SolveContextProblem
+        action: loaded as ground truth goal to verify journey coverage proves context scoping at any scale
+        step_number: 4
+      - node: _goals/BuildPando
+        action: loaded as ground truth goal to verify journey coverage proves Pando ships at scale
+        step_number: 5
+      - node: _goals/GenomeIsTheProduct
+        action: loaded as ground truth goal to verify journey coverage proves genome is an adoptable protocol
+        step_number: 6
+      - node: _goals/ProductionReady
+        action: loaded as ground truth goal to verify journey coverage proves production reliability
+        step_number: 7
+      - node: _goals/SelfSustaining
+        action: loaded as ground truth goal to verify journey coverage proves autonomous operation
+        step_number: 8
       - node: _actors/Auditor
         action: compares each goal rule node against journeys that exercise its achievement path
-        step_number: 4
+        step_number: 9
       - node: audit/CheckGoalCoverage
         action: >-
           flags goals that have no journey proving achievement and goals referenced only in descriptions without
           concrete steps
-        step_number: 5
+        step_number: 10
       - node: audit/CheckGoalCoverage
         action: >-
           distinguishes between goals with journey coverage (plan exists) and goals with actual proof (journey tests
           pass)
-        step_number: 6
+        step_number: 11
       - node: audit/GoalCoverageReport
         action: records which goals are covered by journeys, which are orphaned, and which lack achievement proof
-        step_number: 7
+        step_number: 12
       - node: audit/CollectAuditFindings
         action: adds goal coverage gaps to the findings list with the goal name and missing coverage type as context
-        step_number: 8
+        step_number: 13
       - node: audit/MergeAuditReports
         action: >-
           integrates the goal coverage report alongside spec, actor, and cross-module reports into the unified findings
           format
-        step_number: 9
+        step_number: 14
     modules_touched:
       - convergence
       - graph
       - audit
+      - _goals
       - _actors
   VerifyAuditFindingsAreRepeatable:
     name: VerifyAuditFindingsAreRepeatable
@@ -26504,33 +27081,38 @@ journeys:
       - node: excerpt/ExcerptOutput
         action: provides focused context for the module to guide implementation
         step_number: 3
-      - node: llm/TaskPayload
-        action: packages the skeleton and excerpt into a task for the worker
+      - node: codegen/BuildFillPrompt
+        action: >-
+          builds the structured fill prompt combining skeleton content, node metadata, connection context, and fill
+          rules
         step_number: 4
+      - node: llm/TaskPayload
+        action: packages the prompt into a task for the worker
+        step_number: 5
       - node: llm/SendTask
         action: sends the fill task to the LLM worker
-        step_number: 5
+        step_number: 6
       - node: _actors/LLMWorker
         action: reads the skeleton and excerpt to understand what each stub should do
-        step_number: 6
+        step_number: 7
       - node: codegen/FillImplementation
         action: LLM writes working code into each empty function body and class method
-        step_number: 7
+        step_number: 8
       - node: llm/ReceiveResult
         action: receives the filled source code from the worker
-        step_number: 8
+        step_number: 9
       - node: codegen/FilledSourceFile
         action: stores the implementation-complete TypeScript file
-        step_number: 9
+        step_number: 10
       - node: codegen/ValidateFilledSyntax
         action: runs TypeScript syntax and type checking on the filled output
-        step_number: 10
+        step_number: 11
       - node: codegen/WriteGeneratedFile
         action: writes the validated file to the generated code output directory
-        step_number: 11
+        step_number: 12
       - node: codegen/GeneratedCodeDirectory
         action: the file is now on disk in the output directory
-        step_number: 12
+        step_number: 13
     modules_touched:
       - codegen
       - excerpt
@@ -26550,45 +27132,48 @@ journeys:
       - node: codegen/SkeletonFile
         action: provides the selected module's skeleton
         step_number: 3
+      - node: codegen/BuildFillPrompt
+        action: builds the fill prompt from the skeleton and node metadata with connection context and fill rules
+        step_number: 4
       - node: codegen/FillImplementation
         action: LLM fills the first module
-        step_number: 4
+        step_number: 5
       - node: codegen/FilledSourceFile
         action: the first filled file is available for subsequent modules to import
-        step_number: 5
+        step_number: 6
       - node: codegen/ValidateFilledSyntax
         action: checks the filled file for syntax and type errors
-        step_number: 6
+        step_number: 7
       - node: codegen/WriteGeneratedFile
         action: writes the first filled file to disk
-        step_number: 7
+        step_number: 8
       - node: codegen/SelectNextModuleToFill
         action: advances to the next module in build order
-        step_number: 8
+        step_number: 9
       - node: codegen/SkeletonFile
         action: provides the next module's skeleton
-        step_number: 9
+        step_number: 10
       - node: _actors/LLMWorker
         action: fills the next module with access to previously filled dependency files
-        step_number: 10
+        step_number: 11
       - node: codegen/FillImplementation
         action: LLM fills the module referencing already-implemented dependencies
-        step_number: 11
+        step_number: 12
       - node: codegen/ValidateFilledSyntax
         action: checks each subsequent filled file for errors
-        step_number: 12
+        step_number: 13
       - node: codegen/WriteGeneratedFile
         action: writes each filled file to disk as it completes
-        step_number: 13
+        step_number: 14
       - node: codegen/GeneratedCodeDirectory
         action: accumulates all filled files in build order
-        step_number: 14
+        step_number: 15
       - node: codegen/ConfirmAllModulesFilled
         action: verifies every module in the build list has a filled source file
-        step_number: 15
+        step_number: 16
       - node: convergence/ConvergenceState
         action: records that code generation is complete for all modules
-        step_number: 16
+        step_number: 17
     modules_touched:
       - organization
       - codegen
@@ -26715,30 +27300,33 @@ journeys:
       - node: codegen/ProvideCodegenExcerpt
         action: assembles codegen-specific context for each module
         step_number: 13
+      - node: codegen/BuildFillPrompt
+        action: builds the fill prompt from skeleton, node metadata, and connection context for the LLM worker
+        step_number: 14
       - node: codegen/FillImplementation
         action: LLM fills each skeleton with working code
-        step_number: 14
+        step_number: 15
       - node: codegen/FilledSourceFile
         action: stores each filled implementation
-        step_number: 15
+        step_number: 16
       - node: codegen/ValidateFilledSyntax
         action: checks each filled file for syntax and type errors
-        step_number: 16
+        step_number: 17
       - node: codegen/StageFilledModule
         action: stages each validated file for review
-        step_number: 17
+        step_number: 18
       - node: codegen/WriteGeneratedFile
         action: writes each final file to the output directory
-        step_number: 18
+        step_number: 19
       - node: codegen/ConfirmAllModulesFilled
         action: verifies every module has been filled and staged
-        step_number: 19
+        step_number: 20
       - node: codegen/GeneratedCodeDirectory
         action: contains the complete generated codebase
-        step_number: 20
+        step_number: 21
       - node: convergence/TriggerTestgen
         action: signals testgen to begin generating test skeletons from the filled code
-        step_number: 21
+        step_number: 22
     modules_touched:
       - convergence
       - graph
@@ -27339,18 +27927,21 @@ journeys:
       - node: compilation/NodeTypeValidation
         action: validates each node's type is one of actor, process, artifact, interface, or rule
         step_number: 8
+      - node: compilation/NodeNameValidation
+        action: validates each node name follows PascalCase format and warns on special characters
+        step_number: 9
       - node: graph/JourneyDefinition
         action: parses each journey entry from the parsed YAML
-        step_number: 9
+        step_number: 10
       - node: graph/NodeRegistry
         action: registers all parsed nodes into the deduplicated map
-        step_number: 10
+        step_number: 11
       - node: graph/JourneyRegistry
         action: registers all parsed journeys into the journey collection
-        step_number: 11
+        step_number: 12
       - node: graph/CompiledIndex
         action: merges all parsed modules into the in-memory compiled structure
-        step_number: 12
+        step_number: 13
     modules_touched:
       - _actors
       - compilation
@@ -27522,24 +28113,27 @@ journeys:
       - node: compilation/NodeTypeValidation
         action: validates each node's type is one of the five universal types
         step_number: 13
+      - node: compilation/NodeNameValidation
+        action: validates each node name follows PascalCase format
+        step_number: 14
       - node: compilation/ValidationAggregation
         action: collects all errors and warnings into a single result
-        step_number: 14
+        step_number: 15
       - node: compilation/StatsComputation
         action: computes total_nodes, total_journeys, total_connections, orphans, isolated_modules, and duplicate_names
-        step_number: 15
+        step_number: 16
       - node: compilation/CoverageComputation
         action: computes per-module coverage metrics
-        step_number: 16
+        step_number: 17
       - node: compilation/DeterministicOrdering
         action: sorts all error, warning, orphan, and duplicate lists by canonical key before output
-        step_number: 17
+        step_number: 18
       - node: compilation/CompilationResult
         action: outputs final counts of errors, warnings, orphans, duplicates, and dangling refs
-        step_number: 18
+        step_number: 19
       - node: compilation/ZeroErrorConvergence
         action: determines whether the result meets the 0-error 0-orphan threshold for convergence
-        step_number: 19
+        step_number: 20
     modules_touched:
       - _actors
       - compilation
@@ -27778,65 +28372,73 @@ journeys:
       - graph
       - compilation
       - convergence
-  FinalConvergenceGate:
-    name: FinalConvergenceGate
-    module: convergence
-    actor: null
+  FinalCompilationGate:
+    name: FinalCompilationGate
+    module: compilation
+    actor: _actors/Compiler
     steps:
       - node: convergence/ConvergenceState
-        action: indicates all audit gaps have been fixed and reaudits passed
+        action: indicates all audit fixes are complete and requests the definitive final compilation
         step_number: 1
-      - node: convergence/PipelineInvariantCheck
-        action: verifies organization phase was recorded as complete
+      - node: _actors/Compiler
+        action: runs the final full compilation across all modules
         step_number: 2
-      - node: convergence/PipelineInvariantCheck
-        action: verifies actor discovery phase was recorded as complete
+      - node: compilation/YAMLParsing
+        action: parses all modules one final time
         step_number: 3
-      - node: convergence/PipelineInvariantCheck
-        action: verifies hierarchy decision phase was recorded as complete
+      - node: compilation/YAMLErrorReporting
+        action: confirms zero YAML errors across all modules
         step_number: 4
-      - node: convergence/PipelineInvariantCheck
-        action: verifies module creation phase was recorded as complete
+      - node: organization/ModuleList
+        action: provides the expected list of modules from ORGANIZATION.md
         step_number: 5
-      - node: convergence/PipelineInvariantCheck
-        action: verifies perspective enrichment phase was recorded as complete
-        step_number: 6
-      - node: convergence/PipelineInvariantCheck
-        action: verifies compilation phase reported zero errors
-        step_number: 7
-      - node: convergence/PipelineInvariantCheck
-        action: verifies audit phase reported zero gaps
-        step_number: 8
-      - node: convergence/AllPhasesCompleteRule
-        action: enforces that all 7 phases must be complete before convergence is declared
-        step_number: 9
       - node: compilation/ValidateModuleCompleteness
-        action: confirms every ORGANIZATION.md module exists in the compiled index
-        step_number: 10
+        action: checks that every expected module from the organization exists in the compiled index
+        step_number: 6
+      - node: graph/CompiledIndex
+        action: provides the full graph for final validation
+        step_number: 7
       - node: graph/UniqueNodeNameRule
-        action: confirms no duplicate node names across all modules
-        step_number: 11
+        action: verifies no duplicate node names exist across all modules
+        step_number: 8
+      - node: compilation/DuplicateDetection
+        action: confirms zero duplicates in the final graph
+        step_number: 9
       - node: graph/AllRefsResolveRule
-        action: confirms every node reference resolves to a known target
-        step_number: 12
+        action: verifies every node reference resolves to a known target
+        step_number: 10
+      - node: compilation/DanglingRefDetection
+        action: confirms zero dangling refs in the final graph
+        step_number: 11
       - node: graph/NoIsolationRule
-        action: confirms every node participates in at least one journey
+        action: verifies every node participates in at least one journey
+        step_number: 12
+      - node: compilation/OrphanDetection
+        action: confirms zero orphans in the final graph
         step_number: 13
-      - node: compilation/ZeroErrorConvergence
-        action: confirms the definitive compilation reports exactly zero errors and zero orphans
+      - node: compilation/IsolatedModuleDetection
+        action: confirms zero isolated modules in the final graph
         step_number: 14
-      - node: audit/DeclareConverged
-        action: receives the clean result and marks the graph as CONVERGED
+      - node: compilation/StaleConnectionDetection
+        action: confirms zero stale connections referencing removed nodes in the final graph
         step_number: 15
-      - node: convergence/ConvergenceState
-        action: transitions to CONVERGED status
+      - node: compilation/ValidationAggregation
+        action: collects all final validation results
         step_number: 16
-      - node: convergence/TriggerPublish
-        action: proceeds to publish the converged interface
+      - node: compilation/CompilationResult
+        action: outputs the definitive result with zero errors, zero orphans, zero duplicates
         step_number: 17
+      - node: compilation/ZeroErrorConvergence
+        action: confirms the zero-error threshold is met
+        step_number: 18
+      - node: audit/DeclareConverged
+        action: receives the clean final compilation and marks the graph as CONVERGED
+        step_number: 19
     modules_touched:
       - convergence
+      - _actors
       - compilation
+      - organization
       - graph
       - audit
   ValidateActionDescriptions:
@@ -28369,30 +28971,33 @@ journeys:
       - node: compilation/NodeTypeValidation
         action: validates each node's type field is one of the five universal types
         step_number: 5
+      - node: compilation/NodeNameValidation
+        action: validates each node name follows PascalCase format
+        step_number: 6
       - node: compilation/DanglingRefDetection
         action: checks every journey step ref against the node registry
-        step_number: 6
+        step_number: 7
       - node: compilation/ExternalInterfaceResolution
         action: resolves cross-engine refs against published interfaces when provided
-        step_number: 7
+        step_number: 8
       - node: compilation/ExternalRefClassification
         action: classifies remaining unresolved external refs as warnings
-        step_number: 8
+        step_number: 9
       - node: graph/ConnectionComputation
         action: computes all connections from consecutive journey steps
-        step_number: 9
+        step_number: 10
       - node: compilation/OrphanDetection
         action: identifies nodes not referenced in any journey
-        step_number: 10
+        step_number: 11
       - node: compilation/StatsComputation
         action: computes aggregate statistics for the compiled graph
-        step_number: 11
+        step_number: 12
       - node: compilation/CoverageComputation
         action: computes per-module coverage metrics with orphan and isolated module lists
-        step_number: 12
+        step_number: 13
       - node: compilation/CompilationResult
         action: assembles the compiled index, issues, and coverage into the final result
-        step_number: 13
+        step_number: 14
     modules_touched:
       - compilation
       - graph
@@ -29196,6 +29801,67 @@ journeys:
       - convergence
       - _actors
       - compilation
+  FinalConvergenceGate:
+    name: FinalConvergenceGate
+    module: convergence
+    actor: null
+    steps:
+      - node: convergence/ConvergenceState
+        action: indicates all audit gaps have been fixed and reaudits passed
+        step_number: 1
+      - node: convergence/PipelineInvariantCheck
+        action: verifies organization phase was recorded as complete
+        step_number: 2
+      - node: convergence/PipelineInvariantCheck
+        action: verifies actor discovery phase was recorded as complete
+        step_number: 3
+      - node: convergence/PipelineInvariantCheck
+        action: verifies hierarchy decision phase was recorded as complete
+        step_number: 4
+      - node: convergence/PipelineInvariantCheck
+        action: verifies module creation phase was recorded as complete
+        step_number: 5
+      - node: convergence/PipelineInvariantCheck
+        action: verifies perspective enrichment phase was recorded as complete
+        step_number: 6
+      - node: convergence/PipelineInvariantCheck
+        action: verifies compilation phase reported zero errors
+        step_number: 7
+      - node: convergence/PipelineInvariantCheck
+        action: verifies audit phase reported zero gaps
+        step_number: 8
+      - node: convergence/AllPhasesCompleteRule
+        action: enforces that all 7 phases must be complete before convergence is declared
+        step_number: 9
+      - node: compilation/ValidateModuleCompleteness
+        action: confirms every ORGANIZATION.md module exists in the compiled index
+        step_number: 10
+      - node: graph/UniqueNodeNameRule
+        action: confirms no duplicate node names across all modules
+        step_number: 11
+      - node: graph/AllRefsResolveRule
+        action: confirms every node reference resolves to a known target
+        step_number: 12
+      - node: graph/NoIsolationRule
+        action: confirms every node participates in at least one journey
+        step_number: 13
+      - node: compilation/ZeroErrorConvergence
+        action: confirms the definitive compilation reports exactly zero errors and zero orphans
+        step_number: 14
+      - node: audit/DeclareConverged
+        action: receives the clean result and marks the graph as CONVERGED
+        step_number: 15
+      - node: convergence/ConvergenceState
+        action: transitions to CONVERGED status
+        step_number: 16
+      - node: convergence/TriggerPublish
+        action: proceeds to publish the converged interface
+        step_number: 17
+    modules_touched:
+      - convergence
+      - compilation
+      - graph
+      - audit
   HandleCompactionDuringCreation:
     name: HandleCompactionDuringCreation
     module: convergence
@@ -31133,7 +31799,7 @@ journeys:
     module: convergence
     actor: _actors/ProjectOwner
     steps:
-      - node: _goals/SolveContextProblem
+      - node: convergence/SourceOfTruthHierarchy
         action: asserts that any system at any scale gets scoped, connected, synced context
         step_number: 1
       - node: _actors/ProjectOwner
@@ -31164,16 +31830,15 @@ journeys:
         action: scales to any depth by spawning child engines — proving it works at any scale
         step_number: 10
     modules_touched:
-      - _goals
-      - _actors
       - convergence
+      - _actors
       - hierarchy
   AchieveGoalGenomeIsProtocol:
     name: AchieveGoalGenomeIsProtocol
     module: convergence
     actor: _actors/ProjectOwner
     steps:
-      - node: _goals/GenomeIsTheProduct
+      - node: convergence/GenomeIsProtocolNotTool
         action: asserts that genome8 is a protocol applicable to any system, not a single-purpose tool
         step_number: 1
       - node: _actors/ProjectOwner
@@ -31201,16 +31866,15 @@ journeys:
         action: confirms the protocol is self-describing — genome managing genome
         step_number: 9
     modules_touched:
-      - _goals
-      - _actors
       - convergence
+      - _actors
       - hierarchy
   AchieveGoalProductionReady:
     name: AchieveGoalProductionReady
     module: convergence
     actor: null
     steps:
-      - node: _goals/ProductionReady
+      - node: convergence/ProductionReadyNoShortcuts
         action: asserts that every pipeline phase enforces production-quality safeguards
         step_number: 1
       - node: convergence/BoundedCreationRule
@@ -31241,7 +31905,6 @@ journeys:
         action: verifies all phases completed in correct order before declaring convergence
         step_number: 10
     modules_touched:
-      - _goals
       - convergence
       - graph
   AchieveGoalSelfSustaining:
@@ -31249,7 +31912,7 @@ journeys:
     module: convergence
     actor: _actors/ProjectOwner
     steps:
-      - node: _goals/SelfSustaining
+      - node: convergence/SelfSustainingWithoutHumans
         action: asserts that the system operates autonomously after the initial spec is written
         step_number: 1
       - node: convergence/OnlyHumanInputIsSpec
@@ -31277,7 +31940,6 @@ journeys:
         action: returns to sleep after autonomous reconvergence — the cycle is fully self-sustaining
         step_number: 9
     modules_touched:
-      - _goals
       - convergence
       - _actors
   AchieveGoalBuildPando:
@@ -31356,7 +32018,7 @@ journeys:
     module: convergence
     actor: _actors/ProjectOwner
     steps:
-      - node: _goals/GenomeIsTheProduct
+      - node: convergence/GenomeIsProtocolNotTool
         action: asserts Pando proves genome8 works on a system genome8 did not build
         step_number: 1
       - node: _actors/ProjectOwner
@@ -31371,14 +32033,14 @@ journeys:
       - node: audit/CheckCrossModuleCoverage
         action: verifies Pando subsystems are connected through cross-engine journeys
         step_number: 5
-      - node: _goals/ProductionReady
+      - node: convergence/ProductionReadyNoShortcuts
         action: confirms Pando passed the same production-quality gates as genome8 itself
         step_number: 6
-      - node: _goals/SelfSustaining
+      - node: convergence/SelfSustainingWithoutHumans
         action: confirms Pando's graph auto-updates when its spec changes — the protocol scales beyond genome8
         step_number: 7
     modules_touched:
-      - _goals
+      - convergence
       - _actors
       - hierarchy
       - audit
@@ -32116,8 +32778,8 @@ journeys:
           produces a _goals.yaml that is malformed, missing goals from the spec, or contains invalid rule node
           definitions
         step_number: 2
-      - node: _goals/SolveContextProblem
-        action: attempts to load as a rule node but fails due to invalid format
+      - node: compilation/YAMLParsing
+        action: attempts to load the extracted goal as a rule node but fails due to invalid format
         step_number: 3
       - node: compilation/ErrorReport
         action: records the specific validation failures in the goal extraction output
@@ -32146,7 +32808,6 @@ journeys:
     modules_touched:
       - convergence
       - _actors
-      - _goals
       - compilation
   RecoverFromCodegenPipelineFailure:
     name: RecoverFromCodegenPipelineFailure
@@ -32887,6 +33548,157 @@ journeys:
       - convergence
       - llm
       - _actors
+  IntegrationSelfTestSpecToCode:
+    name: IntegrationSelfTestSpecToCode
+    module: convergence
+    actor: _actors/FileSystem
+    steps:
+      - node: convergence/SelfAuditOwnCode
+        action: completes self-audit and triggers integration self-tests after modifying convergence.ts
+        step_number: 1
+      - node: convergence/CreateTemporaryTestProject
+        action: creates a temp directory with a minimal spec.md describing a greeting app
+        step_number: 2
+      - node: _actors/FileSystem
+        action: writes spec.md and genome/config.json into the temp directory
+        step_number: 3
+      - node: convergence/RunConvergenceOnTestProject
+        action: spawns a child convergence process targeting the temp project directory
+        step_number: 4
+      - node: _actors/LLMWorker
+        action: performs organization, actor discovery, module creation, and codegen on the temp spec
+        step_number: 5
+      - node: convergence/RunConvergenceOnTestProject
+        action: waits for the child process to reach CONVERGED status
+        step_number: 6
+      - node: convergence/VerifyTestProjectProducesCode
+        action: checks that genome/modules/ contains YAML files and src/ contains generated TypeScript
+        step_number: 7
+      - node: convergence/VerifyTestProjectProducesCode
+        action: runs the TypeScript compiler on the generated code to confirm it compiles
+        step_number: 8
+      - node: convergence/IntegrationSelfTestResult
+        action: records PASS for spec-to-code if output exists and compiles, FAIL with details otherwise
+        step_number: 9
+      - node: convergence/CleanupTemporaryTestProject
+        action: kills the child convergence process and removes the temp directory
+        step_number: 10
+    modules_touched:
+      - convergence
+      - _actors
+  IntegrationSelfTestSpecChangeWake:
+    name: IntegrationSelfTestSpecChangeWake
+    module: convergence
+    actor: _actors/FileSystem
+    steps:
+      - node: convergence/CreateTemporaryTestProject
+        action: creates a temp directory with a minimal spec.md and runs convergence to CONVERGED
+        step_number: 1
+      - node: convergence/RunConvergenceOnTestProject
+        action: confirms the temp project has reached CONVERGED and is now in watch mode
+        step_number: 2
+      - node: convergence/EditTestProjectSpec
+        action: appends a new section to the temp project's spec.md describing an additional feature
+        step_number: 3
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the modified spec.md to the child convergence process
+        step_number: 4
+      - node: convergence/VerifyWatchModeWakes
+        action: polls the child process state until it shows spec-change reconvergence started
+        step_number: 5
+      - node: convergence/VerifyWatchModeWakes
+        action: waits for the child process to return to CONVERGED after targeted reconvergence
+        step_number: 6
+      - node: convergence/VerifyWatchModeWakes
+        action: checks that only the modules affected by the spec change were reconverged
+        step_number: 7
+      - node: convergence/IntegrationSelfTestResult
+        action: records PASS for spec-change wake if targeted reconvergence completed, FAIL otherwise
+        step_number: 8
+      - node: convergence/CleanupTemporaryTestProject
+        action: kills the child convergence process and removes the temp directory
+        step_number: 9
+    modules_touched:
+      - convergence
+      - _actors
+  IntegrationSelfTestCodeChangeSync:
+    name: IntegrationSelfTestCodeChangeSync
+    module: convergence
+    actor: _actors/FileSystem
+    steps:
+      - node: convergence/CreateTemporaryTestProject
+        action: creates a temp directory with a minimal spec.md and runs convergence to CONVERGED
+        step_number: 1
+      - node: convergence/RunConvergenceOnTestProject
+        action: confirms the temp project has reached CONVERGED and is now in watch mode
+        step_number: 2
+      - node: convergence/EditTestProjectCode
+        action: modifies a generated source file in the temp project's src/ directory
+        step_number: 3
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the modified source file to the child convergence process
+        step_number: 4
+      - node: convergence/VerifyCodeToGraphSyncWorks
+        action: polls the child process state until it shows code-change reconciliation started
+        step_number: 5
+      - node: convergence/VerifyCodeToGraphSyncWorks
+        action: waits for the child process to return to CONVERGED after code-to-graph sync
+        step_number: 6
+      - node: convergence/VerifyCodeToGraphSyncWorks
+        action: checks that the module YAML was updated to reflect the code change
+        step_number: 7
+      - node: convergence/IntegrationSelfTestResult
+        action: records PASS for code-change sync if reconciliation completed, FAIL otherwise
+        step_number: 8
+      - node: convergence/CleanupTemporaryTestProject
+        action: kills the child convergence process and removes the temp directory
+        step_number: 9
+    modules_touched:
+      - convergence
+      - _actors
+  EndToEndIntegrationSelfTest:
+    name: EndToEndIntegrationSelfTest
+    module: convergence
+    actor: null
+    steps:
+      - node: convergence/SelfAuditOwnCode
+        action: completes self-heal cycle that modified convergence.ts, triggering integration self-tests
+        step_number: 1
+      - node: convergence/CreateTemporaryTestProject
+        action: creates a temp directory with a minimal greeting-app spec.md
+        step_number: 2
+      - node: convergence/RunConvergenceOnTestProject
+        action: runs full convergence on the temp project from bootstrap to CONVERGED
+        step_number: 3
+      - node: convergence/VerifyTestProjectProducesCode
+        action: confirms the temp project produced compiling code from the spec
+        step_number: 4
+      - node: convergence/EditTestProjectSpec
+        action: edits the temp spec to add a farewell feature
+        step_number: 5
+      - node: convergence/VerifyWatchModeWakes
+        action: confirms watch mode detected the spec change and performed targeted reconvergence
+        step_number: 6
+      - node: convergence/EditTestProjectCode
+        action: edits a generated source file in the temp project
+        step_number: 7
+      - node: convergence/VerifyCodeToGraphSyncWorks
+        action: confirms code-to-graph sync detected the change and updated the module YAML
+        step_number: 8
+      - node: convergence/IntegrationSelfTestResult
+        action: aggregates all three checks into a single PASS or FAIL verdict
+        step_number: 9
+      - node: convergence/CleanupTemporaryTestProject
+        action: removes the temp directory and all child processes
+        step_number: 10
+      - node: convergence/BoundedRetryRule
+        action: caps integration self-test retries if a specific behavior fails intermittently
+        step_number: 11
+      - node: convergence/ConvergenceState
+        action: records integration self-test results and proceeds to sleep only if all behaviors passed
+        step_number: 12
+    modules_touched:
+      - convergence
   SetupEventWatching:
     name: SetupEventWatching
     module: events
@@ -41669,42 +42481,37 @@ journeys:
       - _actors
       - graph
       - publish
-  EnforceRippleDepthLimit:
-    name: EnforceRippleDepthLimit
-    module: sync
-    actor: _actors/FileSystem
+  EnforcePublishRippleDepthLimit:
+    name: EnforcePublishRippleDepthLimit
+    module: publish
+    actor: null
     steps:
-      - node: _actors/FileSystem
-        action: delivers an event file change notification via fs.watch
+      - node: publish/EventFile
+        action: provides the incoming event with its ripple origin chain
         step_number: 1
-      - node: events/ReadEventFile
-        action: reads the incoming event file from disk
+      - node: publish/TrackRippleOrigin
+        action: reads the origin chain and counts the number of boxes in it
         step_number: 2
-      - node: sync/ParseEventPayload
-        action: extracts the ripple origin chain from the event payload
+      - node: publish/RippleDepthLimit
+        action: compares the chain length against the configured maximum ripple depth
         step_number: 3
-      - node: sync/CheckRippleDepthLimit
-        action: counts the number of box IDs in the origin chain to determine current ripple depth
+      - node: publish/RippleDepthLimit
+        action: determines the chain exceeds the maximum allowed depth
         step_number: 4
-      - node: sync/CheckRippleDepthLimit
-        action: compares the depth against the configured maximum ripple depth
+      - node: publish/SuppressNoOpRipple
+        action: blocks the event file write to prevent unbounded propagation even though the interface changed
         step_number: 5
-      - node: sync/CheckRippleDepthLimit
-        action: determines the depth exceeds the limit, indicating a cascade storm risk
+      - node: publish/ReportPublishFailure
+        action: builds a warning report noting that ripple was truncated at max depth for manual review
         step_number: 6
-      - node: sync/SuppressSyncOnOscillation
-        action: aborts the sync pipeline to stop the cascade from propagating further
+      - node: publish/NotifyPublishComplete
+        action: signals convergence that publish artifacts were written but ripple propagation was stopped at depth limit
         step_number: 7
-      - node: sync/SyncResult
-        action: records that sync was suppressed due to ripple depth exceeding the configured maximum
-        step_number: 8
       - node: convergence/ConvergenceState
-        action: receives the suppressed result and does not trigger reconvergence or republish
-        step_number: 9
+        action: records the depth-limited publish and flags it for operator review
+        step_number: 8
     modules_touched:
-      - _actors
-      - events
-      - sync
+      - publish
       - convergence
   VerifyPublishedHashAfterWrite:
     name: VerifyPublishedHashAfterWrite
@@ -43721,6 +44528,43 @@ journeys:
     modules_touched:
       - sync
       - graph
+  EnforceSyncRippleDepthLimit:
+    name: EnforceSyncRippleDepthLimit
+    module: sync
+    actor: _actors/FileSystem
+    steps:
+      - node: _actors/FileSystem
+        action: delivers an event file change notification via fs.watch
+        step_number: 1
+      - node: events/ReadEventFile
+        action: reads the incoming event file from disk
+        step_number: 2
+      - node: sync/ParseEventPayload
+        action: extracts the ripple origin chain from the event payload
+        step_number: 3
+      - node: sync/CheckRippleDepthLimit
+        action: counts the number of box IDs in the origin chain to determine current ripple depth
+        step_number: 4
+      - node: sync/CheckRippleDepthLimit
+        action: compares the depth against the configured maximum ripple depth
+        step_number: 5
+      - node: sync/CheckRippleDepthLimit
+        action: determines the depth exceeds the limit, indicating a cascade storm risk
+        step_number: 6
+      - node: sync/SuppressSyncOnOscillation
+        action: aborts the sync pipeline to stop the cascade from propagating further
+        step_number: 7
+      - node: sync/SyncResult
+        action: records that sync was suppressed due to ripple depth exceeding the configured maximum
+        step_number: 8
+      - node: convergence/ConvergenceState
+        action: receives the suppressed result and does not trigger reconvergence or republish
+        step_number: 9
+    modules_touched:
+      - _actors
+      - events
+      - sync
+      - convergence
   RejectExcessiveDependencyFanOut:
     name: RejectExcessiveDependencyFanOut
     module: sync
@@ -45315,6 +46159,9 @@ journeys:
       - node: convergence/ValidateSelfConsistency
         action: genome8 manages itself using its own protocol proving it is the product
         step_number: 7
+      - node: convergence/GenomeIsProtocolNotTool
+        action: enforces that the protocol is self-describing and applies to any system
+        step_number: 8
     modules_touched:
       - _goals
       - _actors
@@ -45385,6 +46232,9 @@ journeys:
       - node: llm/ValidateWorkerOutput
         action: validates every LLM output before accepting it into the graph
         step_number: 8
+      - node: convergence/ProductionReadyNoShortcuts
+        action: enforces that every change is validated, tested, and protected against regressions
+        step_number: 9
     modules_touched:
       - _goals
       - compilation
@@ -45421,6 +46271,9 @@ journeys:
       - node: convergence/EnterSleepMode
         action: returns to sleep after autonomous reconvergence completing the self-sustaining cycle
         step_number: 8
+      - node: convergence/SelfSustainingWithoutHumans
+        action: enforces that the system monitors, heals, and reconverges without human intervention
+        step_number: 9
     modules_touched:
       - _goals
       - convergence

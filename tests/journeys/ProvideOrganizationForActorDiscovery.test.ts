@@ -17,10 +17,20 @@ describe("ProvideOrganizationForActorDiscovery", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/OrganizationFile → organization/ModuleList", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: organization/IdentifyModules provides the module descriptions which contain the activities actors participate in", () => {
     // Node: organization/IdentifyModules (process)
     // Action: provides the module descriptions which contain the activities actors participate in
     // TODO: agent fills assertion
+  });
+
+  it("connection: organization/ModuleList → organization/IdentifyModules", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: convergence/DiscoverActors receives the organization and begins the actor discovery phase", () => {
@@ -29,10 +39,20 @@ describe("ProvideOrganizationForActorDiscovery", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/IdentifyModules → convergence/DiscoverActors", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: actors/DiscoverFromActivities analyzes module descriptions to find actors involved in each activity", () => {
     // Node: actors/DiscoverFromActivities (process)
     // Action: analyzes module descriptions to find actors involved in each activity
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/DiscoverActors → actors/DiscoverFromActivities", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
 });

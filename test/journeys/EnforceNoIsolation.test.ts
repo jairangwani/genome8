@@ -20,10 +20,20 @@ describe("EnforceNoIsolation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → graph/NoIsolationRule", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: _actors/Compiler reports orphan nodes as validation errors", () => {
     // Node: _actors/Compiler (actor)
     // Action: reports orphan nodes as validation errors
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/NoIsolationRule → _actors/Compiler", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
 });

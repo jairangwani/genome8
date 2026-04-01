@@ -20,3 +20,7 @@ export declare function endStep(name: string): void;
 export declare function trackModules(count: number): void;
 export declare function trackGraph(nodes: number, journeys: number): void;
 export declare function getMetrics(): ConvergenceMetrics;
+export declare function pipelineInvariantCheck(): {
+    passed: boolean;
+    missing: string[];
+};

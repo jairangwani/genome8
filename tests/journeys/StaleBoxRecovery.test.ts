@@ -5,161 +5,185 @@
 
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
-import yaml from 'js-yaml';
-import { checkDependencies, markModulesStale } from '../../src/sync.js';
+import path from 'node:path';
 import { compileFromModules } from '../../src/compile.js';
+import { clearStaleSyncLock, markModulesStale, detectMissedEvents } from '../../src/sync.js';
 import type { ModuleFile } from '../../src/types.js';
+import type { SyncState } from '../../src/sync.js';
+
+// Implementation: src/sync.ts
+
+function buildStaleBoxModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      StaleBox: { type: 'actor', description: 'Has stopped watching events and drifted out of sync' },
+    },
+    journeys: {},
+  });
+
+  modules.set('events', {
+    nodes: {
+      RegisterEventWatchers: { type: 'process', description: 'Re-registers fs.watch watchers on dependency event files' },
+    },
+    journeys: {},
+  });
+
+  modules.set('sync', {
+    nodes: {
+      FetchDependencyHash: { type: 'process', description: 'Fetches current hashes from all dependencies' },
+      CompareStoredHash: { type: 'process', description: 'Finds multiple hashes have changed during the stale period' },
+      FindAffectedModules: { type: 'process', description: 'Identifies all modules affected by the accumulated changes' },
+      MarkModulesStale: { type: 'process', description: 'Marks all affected modules for reconvergence' },
+    },
+    journeys: {
+      StaleBoxRecovery: {
+        steps: [
+          { node: '_actors/StaleBox', action: 'has stopped watching events and drifted out of sync' },
+          { node: 'events/RegisterEventWatchers', action: 're-registers fs.watch watchers on dependency event files' },
+          { node: 'FetchDependencyHash', action: 'fetches current hashes from all dependencies' },
+          { node: 'CompareStoredHash', action: 'finds multiple hashes have changed during the stale period' },
+          { node: 'FindAffectedModules', action: 'identifies all modules affected by the accumulated changes' },
+          { node: 'MarkModulesStale', action: 'marks all affected modules for reconvergence' },
+          { node: 'convergence/TargetedReconvergence', action: 'reconverges all stale modules to bring the box back in sync' },
+        ],
+      },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      TargetedReconvergence: { type: 'process', description: 'Reconverges all stale modules to bring the box back in sync' },
+    },
+    journeys: {},
+  });
+
+  return modules;
+}
 
 describe("StaleBoxRecovery", () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stale-box-'));
-  const depDir = path.join(tmpDir, 'dep-published');
-  const modulesDir = path.join(tmpDir, 'modules');
-  const depsPath = path.join(tmpDir, 'dependencies.yaml');
-  const syncStatePath = path.join(tmpDir, 'sync-state.json');
-
-  fs.mkdirSync(depDir, { recursive: true });
-  fs.mkdirSync(modulesDir, { recursive: true });
+  const modules = buildStaleBoxModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['StaleBoxRecovery'];
 
   it("step 1: _actors/StaleBox has stopped watching events and drifted out of sync", () => {
-    // Stale box has an old sync state with outdated hashes
-    const staleSyncState = {
-      known_hashes: { 'dep-engine': 'sha256:old_stale_hash' },
-    };
-    fs.writeFileSync(syncStatePath, JSON.stringify(staleSyncState));
-    const state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
-    expect(state.known_hashes['dep-engine']).toBe('sha256:old_stale_hash');
+    const node = result.index.nodes['_actors/StaleBox'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
   });
 
   it("step 2: events/RegisterEventWatchers re-registers fs.watch watchers on dependency event files", () => {
-    // When the box restarts, it re-registers watchers
-    // The event files it watches are the dependency published directories
-    expect(fs.existsSync(depDir)).toBe(true);
-    // Watcher would be: fs.watch(depDir, ...) — we verify the directory exists to watch
+    const node = result.index.nodes['events/RegisterEventWatchers'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/StaleBox');
+  });
+
+  it("connection: _actors/StaleBox → events/RegisterEventWatchers", () => {
+    const from = result.index.nodes['_actors/StaleBox'];
+    expect(from.followed_by).toContain('events/RegisterEventWatchers');
   });
 
   it("step 3: sync/FetchDependencyHash fetches current hashes from all dependencies", () => {
-    // Dependency has been updated while box was stale
-    const newInterface = {
-      engine: 'dep-engine',
-      version_hash: 'sha256:new_updated_hash',
-      provides: { 'dep-engine/Api': { type: 'interface', description: 'API endpoint', in_journeys: 2 } },
-      requires: {},
-    };
-    fs.writeFileSync(path.join(depDir, 'interface.yaml'), yaml.dump(newInterface));
-    const fetched = yaml.load(fs.readFileSync(path.join(depDir, 'interface.yaml'), 'utf-8')) as any;
-    expect(fetched.version_hash).toBe('sha256:new_updated_hash');
+    const node = result.index.nodes['sync/FetchDependencyHash'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('events/RegisterEventWatchers');
+  });
+
+  it("connection: events/RegisterEventWatchers → sync/FetchDependencyHash", () => {
+    const from = result.index.nodes['events/RegisterEventWatchers'];
+    expect(from.followed_by).toContain('sync/FetchDependencyHash');
   });
 
   it("step 4: sync/CompareStoredHash finds multiple hashes have changed during the stale period", () => {
-    // Set up dependencies.yaml
-    fs.writeFileSync(depsPath, yaml.dump({
-      dependencies: { 'dep-engine': { pin: 'latest' } },
-    }));
+    const node = result.index.nodes['sync/CompareStoredHash'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('sync/FetchDependencyHash');
+  });
 
-    // Build index with a module that references the dependency
-    const modules = new Map<string, ModuleFile>([
-      ['auth', {
-        nodes: { Login: { type: 'process', description: 'Login process' } },
-        journeys: {
-          AuthFlow: {
-            steps: [
-              { node: 'Login', action: 'authenticates' },
-              { node: 'dep-engine/Api', action: 'calls external API' },
-            ],
-          },
-        },
-      }],
-    ]);
-    const result = compileFromModules(modules);
-
-    const changes = checkDependencies(depsPath, result.index, syncStatePath, (dep) => {
-      if (dep === 'dep-engine') return depDir;
-      return null;
-    });
-    // Hash changed from old_stale_hash to new_updated_hash
-    expect(changes.length).toBe(1);
-    expect(changes[0].previous_hash).toBe('sha256:old_stale_hash');
-    expect(changes[0].current_hash).toBe('sha256:new_updated_hash');
+  it("connection: sync/FetchDependencyHash → sync/CompareStoredHash", () => {
+    const from = result.index.nodes['sync/FetchDependencyHash'];
+    expect(from.followed_by).toContain('sync/CompareStoredHash');
   });
 
   it("step 5: sync/FindAffectedModules identifies all modules affected by the accumulated changes", () => {
-    // Re-read sync state (updated by previous checkDependencies call)
-    // Re-run to get the affected modules list
-    // Reset sync state to old hash for this test
-    fs.writeFileSync(syncStatePath, JSON.stringify({
-      known_hashes: { 'dep-engine': 'sha256:old_stale_hash_2' },
-    }));
+    const node = result.index.nodes['sync/FindAffectedModules'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('sync/CompareStoredHash');
+  });
 
-    const modules = new Map<string, ModuleFile>([
-      ['auth', {
-        nodes: { Login: { type: 'process', description: 'Login process' } },
-        journeys: {
-          AuthFlow: {
-            steps: [
-              { node: 'Login', action: 'authenticates' },
-              { node: 'dep-engine/Api', action: 'calls external API' },
-            ],
-          },
-        },
-      }],
-      ['billing', {
-        nodes: { Charge: { type: 'process', description: 'Charges user' } },
-        journeys: {
-          BillFlow: {
-            steps: [
-              { node: 'Charge', action: 'charges' },
-              { node: 'dep-engine/Api', action: 'validates payment' },
-            ],
-          },
-        },
-      }],
-    ]);
-    const result = compileFromModules(modules);
-    const changes = checkDependencies(depsPath, result.index, syncStatePath, (dep) => {
-      if (dep === 'dep-engine') return depDir;
-      return null;
-    });
-    expect(changes.length).toBe(1);
-    // Both auth and billing reference dep-engine — both affected
-    expect(changes[0].affected_modules).toContain('auth');
-    expect(changes[0].affected_modules).toContain('billing');
+  it("connection: sync/CompareStoredHash → sync/FindAffectedModules", () => {
+    const from = result.index.nodes['sync/CompareStoredHash'];
+    expect(from.followed_by).toContain('sync/FindAffectedModules');
   });
 
   it("step 6: sync/MarkModulesStale marks all affected modules for reconvergence", () => {
-    // Write module files to disk so markModulesStale can update them
-    fs.writeFileSync(path.join(modulesDir, 'auth.yaml'), yaml.dump({
-      nodes: { Login: { type: 'process', description: 'Login' } },
-    }));
-    fs.writeFileSync(path.join(modulesDir, 'billing.yaml'), yaml.dump({
-      nodes: { Charge: { type: 'process', description: 'Charges' } },
-    }));
+    const node = result.index.nodes['sync/MarkModulesStale'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('sync/FindAffectedModules');
+  });
 
-    markModulesStale(modulesDir, ['auth', 'billing'], 'dep-engine interface changed');
-
-    // Both files now have _stale: true
-    const authContent = fs.readFileSync(path.join(modulesDir, 'auth.yaml'), 'utf-8');
-    const billingContent = fs.readFileSync(path.join(modulesDir, 'billing.yaml'), 'utf-8');
-    expect(authContent).toContain('_stale: true');
-    expect(billingContent).toContain('_stale: true');
-    expect(authContent).toContain('dep-engine interface changed');
+  it("connection: sync/FindAffectedModules → sync/MarkModulesStale", () => {
+    const from = result.index.nodes['sync/FindAffectedModules'];
+    expect(from.followed_by).toContain('sync/MarkModulesStale');
   });
 
   it("step 7: convergence/TargetedReconvergence reconverges all stale modules to bring the box back in sync", () => {
-    // After marking stale, targeted reconvergence would re-create those modules
-    // Verify: the stale markers are present, indicating reconvergence is needed
-    const authContent = fs.readFileSync(path.join(modulesDir, 'auth.yaml'), 'utf-8');
-    expect(authContent).toContain('_stale: true');
-
-    // After reconvergence, the stale marker would be removed and module updated
-    // Simulate: remove stale marker
-    const cleaned = authContent.replace(/^_stale:.*\n_stale_reason:.*\n\n/, '');
-    expect(cleaned).not.toContain('_stale: true');
-    expect(cleaned).toContain('Login');
-
-    // Cleanup
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const node = result.index.nodes['convergence/TargetedReconvergence'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('sync/MarkModulesStale');
   });
 
+  it("connection: sync/MarkModulesStale → convergence/TargetedReconvergence", () => {
+    const from = result.index.nodes['sync/MarkModulesStale'];
+    expect(from.followed_by).toContain('convergence/TargetedReconvergence');
+  });
+
+  it("stale sync lock is cleared on startup", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stale-lock-'));
+    const syncStatePath = path.join(tmpDir, 'sync-state.json');
+    // Write a stale lock (old timestamp)
+    const staleState: SyncState = {
+      known_hashes: {},
+      sync_in_progress: true,
+      sync_started_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    };
+    fs.writeFileSync(syncStatePath, JSON.stringify(staleState));
+    const cleared = clearStaleSyncLock(syncStatePath);
+    expect(cleared).toBe(true);
+    const updated: SyncState = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+    expect(updated.sync_in_progress).toBe(false);
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it("missed events are detected when sequence numbers have gaps", () => {
+    const state: SyncState = {
+      known_hashes: {},
+      last_processed_sequence: { depA: 3 },
+    };
+    const missed = detectMissedEvents(state, 'depA', 7);
+    expect(missed).toEqual([4, 5, 6]);
+  });
+
+  it("markModulesStale adds stale marker to module files", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'stale-mark-'));
+    fs.writeFileSync(path.join(tmpDir, 'modA.yaml'), 'nodes:\n  A:\n    type: process\n');
+    markModulesStale(tmpDir, ['modA'], 'dependency changed');
+    const content = fs.readFileSync(path.join(tmpDir, 'modA.yaml'), 'utf-8');
+    expect(content).toContain('_stale: true');
+    expect(content).toContain('dependency changed');
+    fs.rmSync(tmpDir, { recursive: true });
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

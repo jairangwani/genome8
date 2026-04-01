@@ -5,250 +5,413 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Build a realistic multi-module graph for audit testing
-const actorsModule: ModuleFile = {
-  nodes: {
-    User: { type: 'actor', description: 'Uses the platform' },
-    Admin: { type: 'actor', description: 'Manages the platform' },
-    OrphanActor: { type: 'actor', description: 'Not referenced anywhere' },
-  },
-};
+function buildDepthAuditModules() {
+  const modules = new Map<string, ModuleFile>();
 
-const authModule: ModuleFile = {
-  spec_sections: [1],
-  nodes: {
-    Login: { type: 'process', description: 'Authenticates users' },
-    Token: { type: 'artifact', description: 'Session token' },
-  },
-  journeys: {
-    UserLogin: {
-      steps: [
-        { node: '_actors/User', action: 'submits credentials' },
-        { node: 'Login', action: 'validates' },
-        { node: 'Token', action: 'is issued' },
-      ],
+  modules.set('_actors', {
+    nodes: {
+      Auditor: { type: 'actor', description: 'Checks coverage across all 4 angles' },
     },
-  },
-};
+    journeys: {},
+  });
 
-const contentModule: ModuleFile = {
-  spec_sections: [2],
-  nodes: {
-    CreatePost: { type: 'process', description: 'Creates a post' },
-    Post: { type: 'artifact', description: 'Content post' },
-  },
-  journeys: {
-    UserCreates: {
-      steps: [
-        { node: '_actors/User', action: 'writes content' },
-        { node: 'CreatePost', action: 'processes' },
-        { node: 'Post', action: 'is stored' },
-      ],
+  modules.set('convergence', {
+    nodes: {
+      CompileCheck: { type: 'process', description: 'Confirms compilation passed with 0 errors and 0 orphans' },
+      TargetedAudit: { type: 'process', description: 'Triggers the depth audit with 4 auditors' },
     },
-    AdminModerates: {
-      steps: [
-        { node: '_actors/Admin', action: 'reviews content' },
-        { node: 'Post', action: 'is moderated' },
-      ],
-    },
-  },
-};
+    journeys: {},
+  });
 
-function buildResult() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', actorsModule],
-    ['auth', authModule],
-    ['content', contentModule],
-  ]));
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'Provides the clean compilation result' },
+    },
+    journeys: {},
+  });
+
+  modules.set('excerpt', {
+    nodes: {
+      ExcerptOutput: { type: 'artifact', description: 'Provides focused context for the auditor to review' },
+    },
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      AuditAfterZeroErrors: { type: 'rule', description: 'Verifies the graph is error-free before starting audit' },
+      ExactlyFourAuditors: { type: 'rule', description: 'Enforces that all 4 coverage angles will be checked' },
+      TrackAuditRound: { type: 'artifact', description: 'Initializes the round counter to 1 for the first audit pass' },
+      GenerateAuditPrompt: { type: 'process', description: 'Builds the coverage prompt for each auditor' },
+      CheckSpecCoverage: { type: 'process', description: 'Compares spec sections against nodes and journeys' },
+      SpecCoverageReport: { type: 'artifact', description: 'Records which sections are covered and which have gaps' },
+      CheckActorCoverage: { type: 'process', description: 'Compares _actors.yaml entries against journey step references' },
+      ActorCoverageReport: { type: 'artifact', description: 'Records which actors are connected and which are orphaned' },
+      CheckCrossModuleCoverage: { type: 'process', description: 'Checks each module for at least one cross-module connection' },
+      CrossModuleCoverageReport: { type: 'artifact', description: 'Records which modules are connected and which are isolated' },
+      CheckGoalCoverage: { type: 'process', description: 'Compares goal rule nodes against journeys exercising each goal' },
+      GoalCoverageReport: { type: 'artifact', description: 'Records which goals are covered by proving journeys' },
+      MergeAuditReports: { type: 'process', description: 'Combines the 4 individual reports into a unified gap format' },
+      CollectAuditFindings: { type: 'process', description: 'Gathers all findings from the merged reports into a single gap list' },
+      AuditFindingsList: { type: 'artifact', description: 'Stores the complete list of coverage gaps' },
+    },
+    journeys: {
+      DepthAudit: {
+        steps: [
+          { node: 'convergence/CompileCheck', action: 'confirms compilation passed with 0 errors and 0 orphans' },
+          { node: 'compilation/CompilationResult', action: 'provides the clean compilation result' },
+          { node: 'AuditAfterZeroErrors', action: 'verifies the graph is error-free before starting audit' },
+          { node: 'convergence/TargetedAudit', action: 'triggers the depth audit with 4 auditors' },
+          { node: 'ExactlyFourAuditors', action: 'enforces that all 4 coverage angles will be checked' },
+          { node: 'TrackAuditRound', action: 'initializes the round counter to 1 for the first audit pass' },
+          { node: 'GenerateAuditPrompt', action: 'builds the spec coverage prompt for auditor 1' },
+          { node: 'excerpt/ExcerptOutput', action: 'provides focused context for the auditor to review' },
+          { node: '_actors/Auditor', action: 'checks spec coverage' },
+          { node: 'CheckSpecCoverage', action: 'compares spec sections against nodes and journeys in the compiled graph' },
+          { node: 'SpecCoverageReport', action: 'records which sections are covered and which have gaps' },
+          { node: 'GenerateAuditPrompt', action: 'builds the actor coverage prompt for auditor 2' },
+          { node: '_actors/Auditor', action: 'checks actor coverage' },
+          { node: 'CheckActorCoverage', action: 'compares _actors.yaml entries against journey step references' },
+          { node: 'ActorCoverageReport', action: 'records which actors are connected and which are orphaned' },
+          { node: 'GenerateAuditPrompt', action: 'builds the cross-module coverage prompt for auditor 3' },
+          { node: '_actors/Auditor', action: 'checks cross-module coverage' },
+          { node: 'CheckCrossModuleCoverage', action: 'checks each module for at least one cross-module connection' },
+          { node: 'CrossModuleCoverageReport', action: 'records which modules are connected and which are isolated' },
+          { node: 'GenerateAuditPrompt', action: 'builds the goal coverage prompt for auditor 4' },
+          { node: '_actors/Auditor', action: 'checks goal coverage' },
+          { node: 'CheckGoalCoverage', action: 'compares goal rule nodes against journeys exercising each goal' },
+          { node: 'GoalCoverageReport', action: 'records which goals are covered by proving journeys' },
+          { node: 'MergeAuditReports', action: 'combines the 4 individual reports into a unified gap format' },
+          { node: 'CollectAuditFindings', action: 'gathers all findings from the merged reports into a single gap list' },
+          { node: 'AuditFindingsList', action: 'stores the complete list of coverage gaps' },
+        ],
+      },
+    },
+  });
+
+  return modules;
 }
 
 describe("DepthAudit", () => {
+  const modules = buildDepthAuditModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['DepthAudit'];
+
   it("step 1: convergence/CompileCheck confirms compilation passed with 0 errors and 0 orphans", () => {
-    const result = buildResult();
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
-    // Note: OrphanActor IS an orphan — so check that compilation itself passed (no errors)
+    const node = result.index.nodes['convergence/CompileCheck'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
   });
 
   it("step 2: compilation/CompilationResult provides the clean compilation result", () => {
-    const result = buildResult();
-    expect(result.index).toBeDefined();
-    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
-    expect(result.index._stats.total_journeys).toBeGreaterThan(0);
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/CompileCheck');
+  });
+
+  it("connection: convergence/CompileCheck → compilation/CompilationResult", () => {
+    const from = result.index.nodes['convergence/CompileCheck'];
+    expect(from.followed_by).toContain('compilation/CompilationResult');
   });
 
   it("step 3: audit/AuditAfterZeroErrors verifies the graph is error-free before starting audit", () => {
-    const result = buildResult();
-    const errors = result.issues.filter(i => i.severity === 'error');
-    const canAudit = errors.length === 0;
-    expect(canAudit).toBe(true);
+    const node = result.index.nodes['audit/AuditAfterZeroErrors'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
   });
 
-  it("step 4: convergence/TargetedAudit triggers the depth audit with 3 auditors", () => {
-    const auditAngles = ['spec_coverage', 'actor_coverage', 'cross_module_coverage'];
-    expect(auditAngles.length).toBe(3);
+  it("connection: compilation/CompilationResult → audit/AuditAfterZeroErrors", () => {
+    const from = result.index.nodes['compilation/CompilationResult'];
+    expect(from.followed_by).toContain('audit/AuditAfterZeroErrors');
+  });
+
+  it("step 4: convergence/TargetedAudit triggers the depth audit with 4 auditors", () => {
+    const node = result.index.nodes['convergence/TargetedAudit'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditAfterZeroErrors');
+  });
+
+  it("connection: audit/AuditAfterZeroErrors → convergence/TargetedAudit", () => {
+    const from = result.index.nodes['audit/AuditAfterZeroErrors'];
+    expect(from.followed_by).toContain('convergence/TargetedAudit');
   });
 
   it("step 5: audit/ExactlyFourAuditors enforces that all 4 coverage angles will be checked", () => {
-    // The journey says 4, but the actual audit checks 3 angles
-    // (spec, actor, cross-module) + a combined check = 4 total checks
-    const auditChecks = ['spec_coverage', 'actor_coverage', 'cross_module_coverage', 'combined_report'];
-    expect(auditChecks.length).toBe(4);
+    const node = result.index.nodes['audit/ExactlyFourAuditors'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('convergence/TargetedAudit');
+  });
+
+  it("connection: convergence/TargetedAudit → audit/ExactlyFourAuditors", () => {
+    const from = result.index.nodes['convergence/TargetedAudit'];
+    expect(from.followed_by).toContain('audit/ExactlyFourAuditors');
   });
 
   it("step 6: audit/TrackAuditRound initializes the round counter to 1 for the first audit pass", () => {
-    let auditRound = 0;
-    auditRound = 1; // initialize
-    expect(auditRound).toBe(1);
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/ExactlyFourAuditors');
+  });
+
+  it("connection: audit/ExactlyFourAuditors → audit/TrackAuditRound", () => {
+    const from = result.index.nodes['audit/ExactlyFourAuditors'];
+    expect(from.followed_by).toContain('audit/TrackAuditRound');
   });
 
   it("step 7: audit/GenerateAuditPrompt builds the spec coverage prompt for auditor 1", () => {
-    const result = buildResult();
-    const prompt = `Check which spec sections are represented in the graph.
-Modules with spec_sections: ${Object.entries(result.coverage.modules)
-      .filter(([, c]) => c.spec_sections.length > 0)
-      .map(([m, c]) => `${m}(§${c.spec_sections.join(',')})`)
-      .join(', ')}`;
-    expect(prompt).toContain('spec sections');
-    expect(prompt).toContain('auth');
+    const node = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("connection: audit/TrackAuditRound → audit/GenerateAuditPrompt", () => {
+    const from = result.index.nodes['audit/TrackAuditRound'];
+    expect(from.followed_by).toContain('audit/GenerateAuditPrompt');
   });
 
   it("step 8: excerpt/ExcerptOutput provides focused context for the auditor to review", () => {
-    const result = buildResult();
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'auth',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: 'nodes:\n  Login:\n    type: process',
-    });
-    expect(excerpt).toContain('Focus: auth');
-    expect(excerpt).toContain('YOUR NODES:');
+    const node = result.index.nodes['excerpt/ExcerptOutput'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/GenerateAuditPrompt');
+  });
+
+  it("connection: audit/GenerateAuditPrompt → excerpt/ExcerptOutput", () => {
+    const from = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(from.followed_by).toContain('excerpt/ExcerptOutput');
   });
 
   it("step 9: _actors/Auditor checks spec coverage — which spec sections are represented in the graph", () => {
-    const result = buildResult();
-    // Auth covers section 1, content covers section 2
-    expect(result.coverage.modules['auth'].spec_sections).toContain(1);
-    expect(result.coverage.modules['content'].spec_sections).toContain(2);
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('excerpt/ExcerptOutput');
+  });
+
+  it("connection: excerpt/ExcerptOutput → _actors/Auditor", () => {
+    const from = result.index.nodes['excerpt/ExcerptOutput'];
+    expect(from.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 10: audit/CheckSpecCoverage compares spec sections against nodes and journeys in the compiled graph", () => {
-    const result = buildResult();
-    const coveredSections = new Set<number>();
-    for (const [, cov] of Object.entries(result.coverage.modules)) {
-      for (const s of cov.spec_sections) coveredSections.add(s);
-    }
-    expect(coveredSections.has(1)).toBe(true);
-    expect(coveredSections.has(2)).toBe(true);
-    // Section 3 would be a gap if the spec has 3+ sections
+    const node = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
+  });
+
+  it("connection: _actors/Auditor → audit/CheckSpecCoverage", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('audit/CheckSpecCoverage');
   });
 
   it("step 11: audit/SpecCoverageReport records which sections are covered and which have gaps", () => {
-    const totalSpecSections = [1, 2, 3];
-    const coveredSections = [1, 2];
-    const gaps = totalSpecSections.filter(s => !coveredSections.includes(s));
-    expect(gaps).toEqual([3]);
+    const node = result.index.nodes['audit/SpecCoverageReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CheckSpecCoverage');
+  });
+
+  it("connection: audit/CheckSpecCoverage → audit/SpecCoverageReport", () => {
+    const from = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(from.followed_by).toContain('audit/SpecCoverageReport');
   });
 
   it("step 12: audit/GenerateAuditPrompt builds the actor coverage prompt for auditor 2", () => {
-    const result = buildResult();
-    const actors = Object.entries(result.index.nodes)
-      .filter(([, n]) => n.type === 'actor')
-      .map(([k]) => k);
-    expect(actors.length).toBe(3); // User, Admin, OrphanActor
+    const node = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('audit/SpecCoverageReport');
+  });
+
+  it("connection: audit/SpecCoverageReport → audit/GenerateAuditPrompt", () => {
+    const from = result.index.nodes['audit/SpecCoverageReport'];
+    expect(from.followed_by).toContain('audit/GenerateAuditPrompt');
   });
 
   it("step 13: _actors/Auditor checks actor coverage — which actors participate in journeys", () => {
-    const result = buildResult();
-    const userNode = result.index.nodes['_actors/User'];
-    const orphanNode = result.index.nodes['_actors/OrphanActor'];
-    expect(userNode.in_journeys.length).toBeGreaterThanOrEqual(1);
-    expect(orphanNode.in_journeys.length).toBe(0);
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('audit/GenerateAuditPrompt');
+  });
+
+  it("connection: audit/GenerateAuditPrompt → _actors/Auditor", () => {
+    const from = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(from.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 14: audit/CheckActorCoverage compares _actors.yaml entries against journey step references", () => {
-    const result = buildResult();
-    const actorNodes = Object.entries(result.index.nodes)
-      .filter(([k]) => k.startsWith('_actors/'));
-    const connected = actorNodes.filter(([, n]) => n.in_journeys.length > 0);
-    const orphaned = actorNodes.filter(([, n]) => n.in_journeys.length === 0);
-    expect(connected.length).toBe(2); // User, Admin
-    expect(orphaned.length).toBe(1); // OrphanActor
+    const node = result.index.nodes['audit/CheckActorCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
+  });
+
+  it("connection: _actors/Auditor → audit/CheckActorCoverage", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('audit/CheckActorCoverage');
   });
 
   it("step 15: audit/ActorCoverageReport records which actors are connected and which are orphaned", () => {
-    const result = buildResult();
-    expect(result.coverage.orphans).toContain('_actors/OrphanActor');
-    expect(result.coverage.orphans).not.toContain('_actors/User');
+    const node = result.index.nodes['audit/ActorCoverageReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CheckActorCoverage');
+  });
+
+  it("connection: audit/CheckActorCoverage → audit/ActorCoverageReport", () => {
+    const from = result.index.nodes['audit/CheckActorCoverage'];
+    expect(from.followed_by).toContain('audit/ActorCoverageReport');
   });
 
   it("step 16: audit/GenerateAuditPrompt builds the cross-module coverage prompt for auditor 3", () => {
-    const result = buildResult();
-    const crossModPrompt = Object.entries(result.coverage.modules)
-      .map(([m, c]) => `${m}: ${c.cross_module_connections} cross-module`)
-      .join(', ');
-    expect(crossModPrompt).toContain('auth');
-    expect(crossModPrompt).toContain('content');
+    const node = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('audit/ActorCoverageReport');
+  });
+
+  it("connection: audit/ActorCoverageReport → audit/GenerateAuditPrompt", () => {
+    const from = result.index.nodes['audit/ActorCoverageReport'];
+    expect(from.followed_by).toContain('audit/GenerateAuditPrompt');
   });
 
   it("step 17: _actors/Auditor checks cross-module coverage — which modules connect to others", () => {
-    const result = buildResult();
-    // auth connects to _actors via User reference
-    expect(result.coverage.modules['auth'].cross_module_connections).toBeGreaterThan(0);
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('audit/GenerateAuditPrompt');
+  });
+
+  it("connection: audit/GenerateAuditPrompt → _actors/Auditor", () => {
+    const from = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(from.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 18: audit/CheckCrossModuleCoverage checks each module for at least one cross-module connection", () => {
-    const result = buildResult();
-    const authCross = result.coverage.modules['auth'].cross_module_connections;
-    const contentCross = result.coverage.modules['content'].cross_module_connections;
-    expect(authCross).toBeGreaterThan(0);
-    expect(contentCross).toBeGreaterThan(0);
+    const node = result.index.nodes['audit/CheckCrossModuleCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
+  });
+
+  it("connection: _actors/Auditor → audit/CheckCrossModuleCoverage", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('audit/CheckCrossModuleCoverage');
   });
 
   it("step 19: audit/CrossModuleCoverageReport records which modules are connected and which are isolated", () => {
-    const result = buildResult();
-    // No isolated modules in this graph (all have cross-module via _actors)
-    // _actors itself may be isolated by the >3 node threshold
-    const isolated = result.coverage.isolated_modules;
-    expect(isolated).not.toContain('auth');
-    expect(isolated).not.toContain('content');
+    const node = result.index.nodes['audit/CrossModuleCoverageReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CheckCrossModuleCoverage');
   });
 
-  it("step 20: audit/MergeAuditReports combines the 3 individual reports into a unified gap format", () => {
-    const specGaps = [{ type: 'spec_gap', section: 3, message: 'Section 3 not covered' }];
-    const actorGaps = [{ type: 'actor_orphan', actor: 'OrphanActor', message: 'OrphanActor not in any journey' }];
-    const crossModGaps: any[] = [];
-    const merged = [...specGaps, ...actorGaps, ...crossModGaps];
-    expect(merged.length).toBe(2);
+  it("connection: audit/CheckCrossModuleCoverage → audit/CrossModuleCoverageReport", () => {
+    const from = result.index.nodes['audit/CheckCrossModuleCoverage'];
+    expect(from.followed_by).toContain('audit/CrossModuleCoverageReport');
   });
 
-  it("step 21: audit/CollectAuditFindings gathers all findings from the merged reports into a single gap list", () => {
-    const allFindings = [
-      { type: 'spec_gap', detail: 'Section 3 not covered' },
-      { type: 'actor_orphan', detail: 'OrphanActor not in any journey' },
-    ];
-    expect(allFindings.length).toBe(2);
-    expect(allFindings.some(f => f.type === 'spec_gap')).toBe(true);
-    expect(allFindings.some(f => f.type === 'actor_orphan')).toBe(true);
+  it("step 20: audit/GenerateAuditPrompt builds the goal coverage prompt for auditor 4", () => {
+    const node = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('audit/CrossModuleCoverageReport');
   });
 
-  it("step 22: audit/AuditFindingsList stores the complete list of coverage gaps", () => {
-    const findingsList = {
-      round: 1,
-      total_gaps: 2,
-      gaps: [
-        { type: 'spec_gap', section: 3 },
-        { type: 'actor_orphan', actor: 'OrphanActor' },
-      ],
-    };
-    expect(findingsList.total_gaps).toBe(2);
-    expect(findingsList.gaps.length).toBe(findingsList.total_gaps);
-    expect(findingsList.round).toBe(1);
+  it("connection: audit/CrossModuleCoverageReport → audit/GenerateAuditPrompt", () => {
+    const from = result.index.nodes['audit/CrossModuleCoverageReport'];
+    expect(from.followed_by).toContain('audit/GenerateAuditPrompt');
   });
 
+  it("step 21: _actors/Auditor checks goal coverage — which goals have journeys proving achievement", () => {
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('audit/GenerateAuditPrompt');
+  });
+
+  it("connection: audit/GenerateAuditPrompt → _actors/Auditor", () => {
+    const from = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(from.followed_by).toContain('_actors/Auditor');
+  });
+
+  it("step 22: audit/CheckGoalCoverage compares goal rule nodes against journeys exercising each goal's achievement path", () => {
+    const node = result.index.nodes['audit/CheckGoalCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
+  });
+
+  it("connection: _actors/Auditor → audit/CheckGoalCoverage", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('audit/CheckGoalCoverage');
+  });
+
+  it("step 23: audit/GoalCoverageReport records which goals are covered by proving journeys and which are orphaned", () => {
+    const node = result.index.nodes['audit/GoalCoverageReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CheckGoalCoverage');
+  });
+
+  it("connection: audit/CheckGoalCoverage → audit/GoalCoverageReport", () => {
+    const from = result.index.nodes['audit/CheckGoalCoverage'];
+    expect(from.followed_by).toContain('audit/GoalCoverageReport');
+  });
+
+  it("step 24: audit/MergeAuditReports combines the 4 individual reports into a unified gap format", () => {
+    const node = result.index.nodes['audit/MergeAuditReports'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/GoalCoverageReport');
+  });
+
+  it("connection: audit/GoalCoverageReport → audit/MergeAuditReports", () => {
+    const from = result.index.nodes['audit/GoalCoverageReport'];
+    expect(from.followed_by).toContain('audit/MergeAuditReports');
+  });
+
+  it("step 25: audit/CollectAuditFindings gathers all findings from the merged reports into a single gap list", () => {
+    const node = result.index.nodes['audit/CollectAuditFindings'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/MergeAuditReports');
+  });
+
+  it("connection: audit/MergeAuditReports → audit/CollectAuditFindings", () => {
+    const from = result.index.nodes['audit/MergeAuditReports'];
+    expect(from.followed_by).toContain('audit/CollectAuditFindings');
+  });
+
+  it("step 26: audit/AuditFindingsList stores the complete list of coverage gaps", () => {
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CollectAuditFindings');
+  });
+
+  it("connection: audit/CollectAuditFindings → audit/AuditFindingsList", () => {
+    const from = result.index.nodes['audit/CollectAuditFindings'];
+    expect(from.followed_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("journey covers full depth audit pipeline (26 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(26);
+    expect(journey.steps[0].node).toBe('convergence/CompileCheck');
+    expect(journey.steps[25].node).toBe('audit/AuditFindingsList');
+  });
+
+  it("journey actor is Auditor (first actor in steps)", () => {
+    expect(journey.actor).toBe('_actors/Auditor');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

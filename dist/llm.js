@@ -316,33 +316,85 @@ export class LLMWorker {
     isAlive() {
         return this.worker !== null && this.worker.process.exitCode === null;
     }
+    /**
+     * Health check: verify worker is alive and not stuck.
+     * Returns 'healthy', 'dead', or 'busy' (message in flight).
+     * Enables HealthCheckBeforeTaskDispatch journey.
+     */
+    healthCheck() {
+        if (!this.worker || this.worker.process.exitCode !== null)
+            return 'dead';
+        if (this.worker.responseResolve)
+            return 'busy';
+        return 'healthy';
+    }
+    /**
+     * Get worker stats for diagnostics.
+     */
+    getStats() {
+        if (!this.worker)
+            return null;
+        return {
+            pid: this.worker.process.pid,
+            charsSent: this.worker.charsSent,
+            initialized: this.worker.initialized,
+        };
+    }
 }
 // ── Worker Output Validation ──
 import fs from 'node:fs';
 import path from 'node:path';
+import yaml from 'js-yaml';
 /**
- * Validate that expected output files from a worker task exist and are non-empty.
+ * Validate that expected output files from a worker task exist, are non-empty,
+ * and — for YAML module files — have valid syntax and required schema fields.
  */
 export function validateWorkerOutput(expectedFiles, projectDir) {
     const valid = [];
     const missing = [];
     const empty = [];
+    const malformed = [];
     for (const file of expectedFiles) {
         const absPath = path.resolve(projectDir, file);
         if (!fs.existsSync(absPath)) {
             missing.push(file);
+            continue;
         }
-        else {
-            const stat = fs.statSync(absPath);
-            if (stat.size === 0) {
-                empty.push(file);
-            }
-            else {
+        const stat = fs.statSync(absPath);
+        if (stat.size === 0) {
+            empty.push(file);
+            continue;
+        }
+        // YAML module files: validate syntax + schema
+        if (/\.ya?ml$/.test(file)) {
+            try {
+                const content = fs.readFileSync(absPath, 'utf-8');
+                const parsed = yaml.load(content);
+                if (!parsed || typeof parsed !== 'object') {
+                    malformed.push(`${file}: YAML parsed to non-object`);
+                    continue;
+                }
+                // Module schema check: nodes and journeys must be maps if present
+                if (parsed.nodes !== undefined && (typeof parsed.nodes !== 'object' || Array.isArray(parsed.nodes))) {
+                    malformed.push(`${file}: nodes must be a map, got ${Array.isArray(parsed.nodes) ? 'array' : typeof parsed.nodes}`);
+                    continue;
+                }
+                if (parsed.journeys !== undefined && (typeof parsed.journeys !== 'object' || Array.isArray(parsed.journeys))) {
+                    malformed.push(`${file}: journeys must be a map, got ${Array.isArray(parsed.journeys) ? 'array' : typeof parsed.journeys}`);
+                    continue;
+                }
                 valid.push(file);
             }
+            catch (err) {
+                const msg = err instanceof Error ? err.message.split('\n')[0] : 'unknown parse error';
+                malformed.push(`${file}: ${msg}`);
+            }
+        }
+        else {
+            valid.push(file);
         }
     }
-    return { valid, missing, empty };
+    return { valid, missing, empty, malformed };
 }
 /**
  * Scan expected output paths for any files the worker wrote before crashing.

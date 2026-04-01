@@ -31,9 +31,9 @@ import { publishInterface } from './publish.js';
 import { checkDependencies, markModulesStale, clearStaleSyncLock } from './sync.js';
 import { generateTests } from './testgen.js';
 import { generateCodeSkeletons } from './codegen.js';
-import { LLMWorker } from './llm.js';
+import { LLMWorker, validateWorkerOutput } from './llm.js';
 import type { CompileResult } from './compile.js';
-import { trackLLMCall, startStep, endStep, trackModules, trackGraph, getMetrics } from './metrics.js';
+import { trackLLMCall, startStep, endStep, trackModules, trackGraph, getMetrics, pipelineInvariantCheck } from './metrics.js';
 
 // ── Configuration ──
 // All values can be overridden via genome/config.json in the project directory.
@@ -669,6 +669,15 @@ Write the file NOW using the Write tool.`);
       continue;
     }
 
+    // ValidateWorkerOutput: check YAML syntax + schema before compile
+    const validation = validateWorkerOutput([modPath], '');
+    if (validation.malformed.length > 0) {
+      console.log(`  ⚠ MALFORMED YAML in ${modName}: ${validation.malformed[0]}`);
+      console.log(`  → Removing broken file. Will retry in convergence rounds.`);
+      fs.unlinkSync(modPath);
+      continue;
+    }
+
     const afterCompile = doCompile();
     const errors = afterCompile.issues.filter(i => i.severity === 'error');
     if (errors.length > 0) {
@@ -888,6 +897,16 @@ RULES:
       }
 
       passCount++;
+
+      // ValidateWorkerOutput: catch broken YAML before compile
+      const enrichValidation = validateWorkerOutput([modFilePath], '');
+      if (enrichValidation.malformed.length > 0) {
+        console.log(`    ⚠ MALFORMED YAML after enrichment: ${enrichValidation.malformed[0]}`);
+        console.log(`    → Reverting to pre-pass state.`);
+        fs.writeFileSync(modFilePath, modContent, 'utf-8');
+        consecutiveZeroDelta++;
+        continue;
+      }
 
       // Early termination: check if this pass actually added anything
       const afterResult = doCompile();
@@ -1403,6 +1422,18 @@ INSTRUCTIONS:
       }
 
         // Step 3: Run tests with feedback loop — failures get diagnosed and fixed
+        // RollbackFailedFix: snapshot src/ before fix attempts so we can revert on regression
+        const srcDirForSnapshot = path.join(absProjectDir, 'src');
+        const srcSnapshot = new Map<string, string>();
+        if (fs.existsSync(srcDirForSnapshot)) {
+          for (const f of fs.readdirSync(srcDirForSnapshot)) {
+            const fp = path.join(srcDirForSnapshot, f);
+            if (fs.statSync(fp).isFile()) {
+              srcSnapshot.set(fp, fs.readFileSync(fp, 'utf-8'));
+            }
+          }
+        }
+
         console.log('  Running journey tests...');
         const MAX_JOURNEY_FIX_ATTEMPTS = 3;
         let journeyFixAttempt = 0;
@@ -1456,6 +1487,14 @@ Do NOT rewrite entire files — use Edit for targeted fixes.`);
 
         if (!allJourneysPassed && journeyFixAttempt >= MAX_JOURNEY_FIX_ATTEMPTS) {
           console.log(`  WARNING: Journey tests still failing after ${MAX_JOURNEY_FIX_ATTEMPTS} fix attempts.`);
+          // RollbackFailedFix: revert src/ to pre-fix snapshot to prevent regressions from shipping
+          if (srcSnapshot.size > 0) {
+            console.log('  ⚠ ROLLBACK: Reverting source code to pre-fix snapshot...');
+            for (const [fp, content] of srcSnapshot) {
+              fs.writeFileSync(fp, content, 'utf-8');
+            }
+            console.log(`  → Reverted ${srcSnapshot.size} source files to pre-fix state.`);
+          }
         }
     }
   } else {
@@ -1715,6 +1754,14 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
       // Recompile to capture any graph changes from self-heal
       finalResult = doCompile();
     }
+  }
+
+  // PipelineInvariantCheck: verify all phases completed before declaring convergence
+  const invariant = pipelineInvariantCheck();
+  if (!invariant.passed) {
+    console.log(`\n  ⚠ PIPELINE INVARIANT FAILED: phases not completed: ${invariant.missing.join(', ')}`);
+    console.log('  Convergence cannot be declared — marking as UNSTABLE.');
+    testsPassed = false;
   }
 
   console.log('\n═══ CONVERGED ═══');

@@ -38,4 +38,31 @@ export function getMetrics() {
     current.completedAt = new Date().toISOString();
     return { ...current };
 }
+/**
+ * PipelineInvariantCheck: verify all required phases completed before declaring convergence.
+ * Returns list of phases that were never started or never finished.
+ */
+const REQUIRED_PHASES = [
+    'step1_organization',
+    'step2_actors',
+    'step3_modules',
+    'step4_convergence',
+    'step5_publish',
+    'step6_codegen',
+];
+export function pipelineInvariantCheck() {
+    const missing = [];
+    for (const phase of REQUIRED_PHASES) {
+        const timing = current.stepTimings[phase];
+        // Missing entirely, or still a raw Date.now() timestamp (startStep called but endStep never was)
+        if (timing === undefined) {
+            missing.push(phase);
+        }
+        else if (timing > 1_000_000_000_000) {
+            // Still a raw epoch timestamp — endStep was never called, phase didn't complete
+            missing.push(phase);
+        }
+    }
+    return { passed: missing.length === 0, missing };
+}
 //# sourceMappingURL=metrics.js.map

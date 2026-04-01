@@ -17,10 +17,20 @@ describe("EnforceDeterministicChangelogOutput", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ComputeChangelogDiff → publish/CanonicalizeChangelogDiffOutput", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/CanonicalizeChangelogDiffOutput sorts the removed list alphabetically by node or journey name", () => {
     // Node: publish/CanonicalizeChangelogDiffOutput (process)
     // Action: sorts the removed list alphabetically by node or journey name
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/CanonicalizeChangelogDiffOutput → publish/CanonicalizeChangelogDiffOutput", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/CanonicalizeChangelogDiffOutput sorts the modified list alphabetically by node or journey name", () => {
@@ -29,10 +39,20 @@ describe("EnforceDeterministicChangelogOutput", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/CanonicalizeChangelogDiffOutput → publish/CanonicalizeChangelogDiffOutput", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/GenerateChangelogYaml serializes the canonicalized diff into changelog.yaml with deterministic output", () => {
     // Node: publish/GenerateChangelogYaml (process)
     // Action: serializes the canonicalized diff into changelog.yaml with deterministic output
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/CanonicalizeChangelogDiffOutput → publish/GenerateChangelogYaml", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/ChangelogYamlFile stores the changelog that is now guaranteed byte-identical for the same diff regardless of internal ordering", () => {
@@ -41,10 +61,20 @@ describe("EnforceDeterministicChangelogOutput", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/GenerateChangelogYaml → publish/ChangelogYamlFile", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/EmbedChangelogInEvent embeds the deterministic changelog into the event so dependents receive consistent scoping data across re-runs", () => {
     // Node: publish/EmbedChangelogInEvent (process)
     // Action: embeds the deterministic changelog into the event so dependents receive consistent scoping data across re-runs
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/ChangelogYamlFile → publish/EmbedChangelogInEvent", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

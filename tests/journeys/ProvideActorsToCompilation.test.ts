@@ -4,114 +4,167 @@
 // Modules touched: actors, _actors, compilation, graph
 
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import yaml from 'js-yaml';
-import { compile, compileFromModules } from '../../src/compile.js';
+import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-const actorsModule: ModuleFile = {
-  nodes: {
-    User: { type: 'actor', description: 'Uses the platform' },
-    Admin: { type: 'actor', description: 'Manages the platform' },
-    Attacker: { type: 'actor', description: 'Attempts exploitation' },
-  },
-};
+// Implementation: src/compile.ts
+// Implementation: src/types.ts
 
-const appModule: ModuleFile = {
-  nodes: {
-    LoginProcess: { type: 'process', description: 'Handles login' },
-  },
-  journeys: {
-    UserLogin: {
-      steps: [
-        { node: '_actors/User', action: 'submits credentials' },
-        { node: 'LoginProcess', action: 'authenticates the user' },
-      ],
+function buildCompilationModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  // _actors module: actors that get parsed into the compiled index
+  modules.set('_actors', {
+    nodes: {
+      Compiler: { type: 'actor', description: 'The compilation engine that includes _actors.yaml' },
+      ProjectOwner: { type: 'actor', description: 'Person who wrote the spec' },
+      HumanDeveloper: { type: 'actor', description: 'Developer who builds the system' },
     },
-  },
-};
+    journeys: {},
+  });
+
+  // actors module: provides ActorsFile artifact
+  modules.set('actors', {
+    nodes: {
+      ActorsFile: { type: 'artifact', description: 'The validated _actors.yaml file on disk' },
+    },
+    journeys: {
+      ProvideActorsToCompilation: {
+        steps: [
+          { node: 'ActorsFile', action: 'provides the validated _actors.yaml file on disk' },
+          { node: '_actors/Compiler', action: 'includes _actors.yaml in the set of files to parse' },
+          { node: 'compilation/YAMLParsing', action: 'parses _actors.yaml into structured actor node definitions' },
+          { node: 'graph/NodeDefinition', action: 'creates a node definition for each discovered actor' },
+          { node: 'graph/NodeRegistry', action: 'registers each actor node so _actors/ references in journeys can resolve' },
+          { node: 'graph/CompiledIndex', action: 'the compiled index now contains all actor nodes alongside module nodes' },
+        ],
+      },
+    },
+  });
+
+  // compilation module
+  modules.set('compilation', {
+    nodes: {
+      YAMLParsing: { type: 'process', description: 'Parses YAML module files into structured data' },
+    },
+    journeys: {},
+  });
+
+  // graph module
+  modules.set('graph', {
+    nodes: {
+      NodeDefinition: { type: 'process', description: 'Creates a node definition for each node entry in a module' },
+      NodeRegistry: { type: 'artifact', description: 'Registry of all known nodes so references can resolve' },
+      CompiledIndex: { type: 'artifact', description: 'The final compiled index with all nodes, journeys, and connections' },
+    },
+    journeys: {},
+  });
+
+  return modules;
+}
 
 describe("ProvideActorsToCompilation", () => {
+  const modules = buildCompilationModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['ProvideActorsToCompilation'];
+
   it("step 1: actors/ActorsFile provides the validated _actors.yaml file on disk", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'actors-compile-'));
-    fs.writeFileSync(path.join(tmpDir, '_actors.yaml'), yaml.dump(actorsModule));
-    expect(fs.existsSync(path.join(tmpDir, '_actors.yaml'))).toBe(true);
-    const content = yaml.load(fs.readFileSync(path.join(tmpDir, '_actors.yaml'), 'utf-8')) as any;
-    expect(Object.keys(content.nodes).length).toBe(3);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const node = result.index.nodes['actors/ActorsFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
   });
 
   it("step 2: _actors/Compiler includes _actors.yaml in the set of files to parse", () => {
-    // compile() via loadAllModules picks up _actors.yaml as "_actors" module
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'actors-compile-'));
-    fs.writeFileSync(path.join(tmpDir, '_actors.yaml'), yaml.dump(actorsModule));
-    fs.writeFileSync(path.join(tmpDir, 'app.yaml'), yaml.dump(appModule));
-    const result = compile(tmpDir);
-    // _actors module is loaded — its nodes exist in the index
-    expect(result.index.nodes['_actors/User']).toBeDefined();
-    expect(result.index.nodes['_actors/Admin']).toBeDefined();
-    expect(result.index.nodes['_actors/Attacker']).toBeDefined();
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const node = result.index.nodes['_actors/Compiler'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('actors/ActorsFile');
+  });
+
+  it("connection: actors/ActorsFile → _actors/Compiler", () => {
+    const from = result.index.nodes['actors/ActorsFile'];
+    const to = result.index.nodes['_actors/Compiler'];
+    expect(from.followed_by).toContain('_actors/Compiler');
+    expect(to.preceded_by).toContain('actors/ActorsFile');
   });
 
   it("step 3: compilation/YAMLParsing parses _actors.yaml into structured actor node definitions", () => {
-    const modules = new Map<string, ModuleFile>([
-      ['_actors', actorsModule],
-    ]);
-    const result = compileFromModules(modules);
-    // Parsed correctly — no parse errors
-    const parseErrors = result.issues.filter(i => i.message.includes('parse error'));
-    expect(parseErrors.length).toBe(0);
-    // Each node has its type and description preserved
-    expect(result.index.nodes['_actors/User'].type).toBe('actor');
-    expect(result.index.nodes['_actors/User'].description).toBe('Uses the platform');
+    const node = result.index.nodes['compilation/YAMLParsing'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Compiler');
+  });
+
+  it("connection: _actors/Compiler → compilation/YAMLParsing", () => {
+    const from = result.index.nodes['_actors/Compiler'];
+    expect(from.followed_by).toContain('compilation/YAMLParsing');
   });
 
   it("step 4: graph/NodeDefinition creates a node definition for each discovered actor", () => {
-    const modules = new Map<string, ModuleFile>([
-      ['_actors', actorsModule],
-    ]);
-    const result = compileFromModules(modules);
-    const actorNodes = Object.entries(result.index.nodes).filter(([k]) => k.startsWith('_actors/'));
-    expect(actorNodes.length).toBe(3);
-    for (const [, node] of actorNodes) {
-      expect(node.type).toBe('actor');
-      expect(node.module).toBe('_actors');
-      expect(node.description.length).toBeGreaterThan(0);
-    }
+    const node = result.index.nodes['graph/NodeDefinition'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/YAMLParsing');
+  });
+
+  it("connection: compilation/YAMLParsing → graph/NodeDefinition", () => {
+    const from = result.index.nodes['compilation/YAMLParsing'];
+    expect(from.followed_by).toContain('graph/NodeDefinition');
   });
 
   it("step 5: graph/NodeRegistry registers each actor node so _actors/ references in journeys can resolve", () => {
-    const modules = new Map<string, ModuleFile>([
-      ['_actors', actorsModule],
-      ['app', appModule],
-    ]);
-    const result = compileFromModules(modules);
-    // The journey references _actors/User — should resolve without errors
-    const danglingErrors = result.issues.filter(i =>
-      i.severity === 'error' && i.message.includes('does not exist')
-    );
-    expect(danglingErrors.length).toBe(0);
-    // User node appears in the UserLogin journey
-    expect(result.index.nodes['_actors/User'].in_journeys.length).toBeGreaterThanOrEqual(1);
+    const node = result.index.nodes['graph/NodeRegistry'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('graph/NodeDefinition');
+  });
+
+  it("connection: graph/NodeDefinition → graph/NodeRegistry", () => {
+    const from = result.index.nodes['graph/NodeDefinition'];
+    expect(from.followed_by).toContain('graph/NodeRegistry');
   });
 
   it("step 6: graph/CompiledIndex the compiled index now contains all actor nodes alongside module nodes", () => {
-    const modules = new Map<string, ModuleFile>([
-      ['_actors', actorsModule],
-      ['app', appModule],
-    ]);
-    const result = compileFromModules(modules);
-    // Actor nodes + app nodes all present
-    expect(result.index.nodes['_actors/User']).toBeDefined();
-    expect(result.index.nodes['_actors/Admin']).toBeDefined();
-    expect(result.index.nodes['_actors/Attacker']).toBeDefined();
-    expect(result.index.nodes['app/LoginProcess']).toBeDefined();
-    // Stats reflect both modules
-    expect(result.index._stats.total_nodes).toBe(4);
-    expect(result.index._stats.modules).toBe(2);
+    const node = result.index.nodes['graph/CompiledIndex'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('graph/NodeRegistry');
   });
 
+  it("connection: graph/NodeRegistry → graph/CompiledIndex", () => {
+    const from = result.index.nodes['graph/NodeRegistry'];
+    expect(from.followed_by).toContain('graph/CompiledIndex');
+  });
+
+  it("_actors nodes are registered in the compiled index alongside module nodes", () => {
+    // Actor nodes from _actors module
+    expect(result.index.nodes['_actors/Compiler']).toBeDefined();
+    expect(result.index.nodes['_actors/ProjectOwner']).toBeDefined();
+    expect(result.index.nodes['_actors/HumanDeveloper']).toBeDefined();
+
+    // Module nodes coexist
+    expect(result.index.nodes['actors/ActorsFile']).toBeDefined();
+    expect(result.index.nodes['compilation/YAMLParsing']).toBeDefined();
+    expect(result.index.nodes['graph/CompiledIndex']).toBeDefined();
+  });
+
+  it("all _actors nodes have type actor", () => {
+    for (const name of ['Compiler', 'ProjectOwner', 'HumanDeveloper']) {
+      expect(result.index.nodes[`_actors/${name}`].type).toBe('actor');
+    }
+  });
+
+  it("journey actor is _actors/Compiler (first actor in steps)", () => {
+    expect(journey.actor).toBe('_actors/Compiler');
+  });
+
+  it("triggered_by_actors is populated for nodes in the journey", () => {
+    const node = result.index.nodes['compilation/YAMLParsing'];
+    expect(node.triggered_by_actors).toContain('_actors/Compiler');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

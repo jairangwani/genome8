@@ -174,6 +174,9 @@ nodes:
   ChangelogScopedReconvergence:
     type: rule
     description: dependents must use the embedded changelog in the event file to scope reconvergence to only the modules affected by upstream changes rather than full reconvergence
+  DetectCorruptedPreviousInterface:
+    type: process
+    description: detects when the previous interface.yaml on disk is present but unparsable as YAML or missing required fields like provides or version_hash, flagging it as corrupted so the pipeline falls back to first-time publish behavior
   PublishCLI:
     type: interface
     description: command-line interface to run publish and display interface stats, version hash, and changelog summary
@@ -606,7 +609,7 @@ journeys:
       - node: convergence/ConvergenceState
         action: records that reconvergence completed but the ripple was suppressed due to no interface change
 
-  EnforceRippleDepthLimit:
+  EnforcePublishRippleDepthLimit:
     files: [test/journeys/EnforceRippleDepthLimit.test.ts]
     steps:
       - node: EventFile
@@ -1120,3 +1123,60 @@ journeys:
         action: flags the hash-content divergence as an integrity violation
       - node: GenerateInterfaceYaml
         action: publishes anyway because the changelog proves content changed
+
+  HandleChangelogWriteFailure:
+    steps:
+      - node: GenerateInterfaceYaml
+        action: successfully wrote interface.yaml to disk
+      - node: InterfaceYamlFile
+        action: confirms interface.yaml is on disk and valid
+      - node: GenerateChangelogYaml
+        action: attempts to write changelog.yaml but the write operation fails
+      - node: DetectWriteFailure
+        action: catches the IO error on the changelog file write with the specific error code
+      - node: AtomicFileWrite
+        action: confirms the changelog temp file was never renamed so no partial changelog.yaml exists on disk
+      - node: ReportPublishFailure
+        action: reports that interface.yaml is valid on disk but changelog.yaml was not written
+      - node: convergence/ConvergenceState
+        action: receives the report and retries only from the changelog stage since interface.yaml is intact and reusable
+
+  RecoverFromCorruptedSequenceCounter:
+    steps:
+      - node: _actors/Compiler
+        action: starts cold boot and initializes publish state
+      - node: EventFile
+        action: provides the last event file on disk for counter restoration
+      - node: RestoreSequenceCounterFromDisk
+        action: reads the sequence number field from the event file
+      - node: RestoreSequenceCounterFromDisk
+        action: detects the field is missing, non-numeric, or negative and fails validation
+      - node: EventSequenceCounter
+        action: resets to zero as a safe fallback baseline since the persisted value is unrecoverable
+      - node: MonotonicEventSequencing
+        action: accepts the reset since monotonic ordering restarts from a known point after corruption
+      - node: ReportPublishFailure
+        action: logs a warning that the sequence counter was reset due to corruption for diagnostic review
+
+  RecoverFromCorruptedPreviousInterface:
+    steps:
+      - node: convergence/TriggerPublish
+        action: invokes publish which needs the previous interface for changelog diffing
+      - node: ReadPreviousInterface
+        action: attempts to read and parse the existing interface.yaml from disk
+      - node: DetectCorruptedPreviousInterface
+        action: detects that the YAML parse fails or required fields like provides or version_hash are missing
+      - node: DetectCorruptedPreviousInterface
+        action: flags the previous interface as unusable for changelog diffing
+      - node: ComparePreviousHash
+        action: receives the corruption flag and treats this as a first-time publish scenario
+      - node: ComputeChangelogDiff
+        action: produces an initial changelog with all items marked as added since previous state is unknown
+      - node: GenerateInterfaceYaml
+        action: writes a fresh interface.yaml replacing the corrupted file on disk
+      - node: StorePreviousHash
+        action: writes the new hash establishing a fresh baseline after corruption recovery
+      - node: WriteEventFile
+        action: writes the event file to notify dependents of the fresh publish after corruption recovery
+      - node: EventFile
+        action: the event file signals dependents to resync since interface continuity was broken

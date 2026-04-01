@@ -373,6 +373,33 @@ nodes:
   PreventDuplicateInstance:
     type: process
     description: on startup reads pids.json and checks whether the recorded process is still alive — if a convergence process is already running on this project directory, exits with an error instead of starting a second concurrent instance
+  CreateTemporaryTestProject:
+    type: process
+    description: creates a temporary directory with a minimal spec.md describing a small system (e.g., greeting app) for integration self-testing
+  RunConvergenceOnTestProject:
+    type: process
+    description: spawns a child convergence process on the temporary test project and waits for it to reach CONVERGED status
+  VerifyTestProjectProducesCode:
+    type: process
+    description: checks that the temporary test project has generated working code by verifying output files exist and compile
+  EditTestProjectSpec:
+    type: process
+    description: modifies the temporary test project's spec.md to trigger a spec-change wake event
+  VerifyWatchModeWakes:
+    type: process
+    description: confirms the convergence process on the test project detected the spec change and performed targeted reconvergence
+  EditTestProjectCode:
+    type: process
+    description: modifies a generated source file in the temporary test project to trigger a code-change wake event
+  VerifyCodeToGraphSyncWorks:
+    type: process
+    description: confirms the convergence process detected the code change and reconciled it back to the graph
+  CleanupTemporaryTestProject:
+    type: process
+    description: removes the temporary test project directory and kills any child processes spawned for it
+  IntegrationSelfTestResult:
+    type: artifact
+    description: records PASS or FAIL for each integration self-test scenario with failure details if any behavior broke
 
 journeys:
   ProjectConvergence:
@@ -690,6 +717,36 @@ journeys:
         action: confirms zero new errors from the revised fix
       - node: ConvergenceState
         action: records the fix-retry outcome
+
+  RollbackCodeOnTestRegression:
+    files: [test/journeys/RollbackCodeOnTestRegression.test.ts]
+    steps:
+      - node: ExecuteTests
+        action: runs journey tests against the current source code
+      - node: _actors/Compiler
+        action: reports test failures after LLM fix attempts
+      - node: BoundedRetryRule
+        action: confirms all fix attempts have been exhausted
+      - node: RollbackFailedFix
+        action: reverts all source files to the pre-fix snapshot taken before the fix loop
+      - node: _actors/Compiler
+        action: validates the reverted source code matches the last known good state
+      - node: ConvergenceState
+        action: records that code was rolled back due to persistent test failures
+
+  RejectMalformedModuleBeforeCompile:
+    files: [test/journeys/RejectMalformedModuleBeforeCompile.test.ts]
+    steps:
+      - node: _actors/LLMWorker
+        action: writes a module YAML file with broken syntax or invalid schema
+      - node: llm/ValidateWorkerOutput
+        action: parses the file as YAML and checks nodes and journeys are maps not arrays
+      - node: llm/ValidateWorkerOutput
+        action: detects the malformed output before compile.ts ever sees it
+      - node: RollbackFailedFix
+        action: reverts the module file to its pre-enrichment state or removes the broken file
+      - node: ConvergenceState
+        action: records that the malformed output was caught and rejected
 
   ResumeAfterCrash:
     files: [test/journeys/ResumeAfterCrash.test.ts]
@@ -2036,8 +2093,9 @@ journeys:
         action: records the hierarchy decision as complete after retry
 
   AchieveGoalSolveContextProblem:
+    files: [tests/journeys/AchieveGoalSolveContextProblem.test.ts]
     steps:
-      - node: _goals/SolveContextProblem
+      - node: SourceOfTruthHierarchy
         action: asserts that any system at any scale gets scoped, connected, synced context
       - node: _actors/ProjectOwner
         action: writes spec.md describing a system too large for any single brain to hold
@@ -2059,8 +2117,9 @@ journeys:
         action: scales to any depth by spawning child engines — proving it works at any scale
 
   AchieveGoalGenomeIsProtocol:
+    files: [tests/journeys/AchieveGoalGenomeIsProtocol.test.ts]
     steps:
-      - node: _goals/GenomeIsTheProduct
+      - node: GenomeIsProtocolNotTool
         action: asserts that genome8 is a protocol applicable to any system, not a single-purpose tool
       - node: _actors/ProjectOwner
         action: writes a spec.md describing genome8 itself as the target system
@@ -2080,8 +2139,9 @@ journeys:
         action: confirms the protocol is self-describing — genome managing genome
 
   AchieveGoalProductionReady:
+    files: [tests/journeys/AchieveGoalProductionReady.test.ts]
     steps:
-      - node: _goals/ProductionReady
+      - node: ProductionReadyNoShortcuts
         action: asserts that every pipeline phase enforces production-quality safeguards
       - node: BoundedCreationRule
         action: bounds module creation to prevent unbounded loops
@@ -2103,8 +2163,9 @@ journeys:
         action: verifies all phases completed in correct order before declaring convergence
 
   AchieveGoalSelfSustaining:
+    files: [tests/journeys/AchieveGoalSelfSustaining.test.ts]
     steps:
-      - node: _goals/SelfSustaining
+      - node: SelfSustainingWithoutHumans
         action: asserts that the system operates autonomously after the initial spec is written
       - node: OnlyHumanInputIsSpec
         action: confirms spec.md is the only human-authored artifact — everything else is auto-generated
@@ -2124,6 +2185,7 @@ journeys:
         action: returns to sleep after autonomous reconvergence — the cycle is fully self-sustaining
 
   AchieveGoalBuildPando:
+    files: [tests/journeys/AchieveGoalBuildPando.test.ts]
     steps:
       - node: _actors/ProjectOwner
         action: writes a spec.md describing Pando — a decentralized AI platform with multiple independent subsystems
@@ -2147,6 +2209,7 @@ journeys:
         action: runs journey tests validating that Pando subsystems interact correctly through published interfaces
 
   AchieveGoalBuildPandoRipple:
+    files: [tests/journeys/AchieveGoalBuildPandoRipple.test.ts]
     steps:
       - node: _actors/ChildEngine
         action: converges Pando's consensus subsystem and publishes an interface change
@@ -2164,8 +2227,9 @@ journeys:
         action: ripples the change to any boxes that depend on Pando's published interface
 
   AchieveGoalBuildPandoValidatesProtocol:
+    files: [tests/journeys/AchieveGoalBuildPandoValidatesProtocol.test.ts]
     steps:
-      - node: _goals/GenomeIsTheProduct
+      - node: GenomeIsProtocolNotTool
         action: asserts Pando proves genome8 works on a system genome8 did not build
       - node: _actors/ProjectOwner
         action: evaluates whether Pando's converged graph accurately represents its decentralized architecture
@@ -2175,9 +2239,9 @@ journeys:
         action: verifies Pando's graph covers every section of Pando's spec
       - node: audit/CheckCrossModuleCoverage
         action: verifies Pando subsystems are connected through cross-engine journeys
-      - node: _goals/ProductionReady
+      - node: ProductionReadyNoShortcuts
         action: confirms Pando passed the same production-quality gates as genome8 itself
-      - node: _goals/SelfSustaining
+      - node: SelfSustainingWithoutHumans
         action: confirms Pando's graph auto-updates when its spec changes — the protocol scales beyond genome8
 
   EnforceArchitecturalDecisions:
@@ -2612,8 +2676,8 @@ journeys:
         action: delegates to LLM to derive goal rule nodes from spec §8
       - node: _actors/LLMWorker
         action: produces a _goals.yaml that is malformed, missing goals from the spec, or contains invalid rule node definitions
-      - node: _goals/SolveContextProblem
-        action: attempts to load as a rule node but fails due to invalid format
+      - node: compilation/YAMLParsing
+        action: attempts to load the extracted goal as a rule node but fails due to invalid format
       - node: compilation/ErrorReport
         action: records the specific validation failures in the goal extraction output
       - node: BoundedRetryRule
@@ -3067,3 +3131,126 @@ journeys:
         action: validates the batch of concurrently created modules
       - node: ConvergenceState
         action: records the batch as complete with both modules accounted for
+
+  IntegrationSelfTestSpecToCode:
+    steps:
+      - node: SelfAuditOwnCode
+        action: completes self-audit and triggers integration self-tests after modifying convergence.ts
+      - node: CreateTemporaryTestProject
+        action: creates a temp directory with a minimal spec.md describing a greeting app
+      - node: _actors/FileSystem
+        action: writes spec.md and genome/config.json into the temp directory
+      - node: RunConvergenceOnTestProject
+        action: spawns a child convergence process targeting the temp project directory
+      - node: _actors/LLMWorker
+        action: performs organization, actor discovery, module creation, and codegen on the temp spec
+      - node: RunConvergenceOnTestProject
+        action: waits for the child process to reach CONVERGED status
+      - node: VerifyTestProjectProducesCode
+        action: checks that genome/modules/ contains YAML files and src/ contains generated TypeScript
+      - node: VerifyTestProjectProducesCode
+        action: runs the TypeScript compiler on the generated code to confirm it compiles
+      - node: IntegrationSelfTestResult
+        action: records PASS for spec-to-code if output exists and compiles, FAIL with details otherwise
+      - node: CleanupTemporaryTestProject
+        action: kills the child convergence process and removes the temp directory
+
+  IntegrationSelfTestSpecChangeWake:
+    steps:
+      - node: CreateTemporaryTestProject
+        action: creates a temp directory with a minimal spec.md and runs convergence to CONVERGED
+      - node: RunConvergenceOnTestProject
+        action: confirms the temp project has reached CONVERGED and is now in watch mode
+      - node: EditTestProjectSpec
+        action: appends a new section to the temp project's spec.md describing an additional feature
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the modified spec.md to the child convergence process
+      - node: VerifyWatchModeWakes
+        action: polls the child process state until it shows spec-change reconvergence started
+      - node: VerifyWatchModeWakes
+        action: waits for the child process to return to CONVERGED after targeted reconvergence
+      - node: VerifyWatchModeWakes
+        action: checks that only the modules affected by the spec change were reconverged
+      - node: IntegrationSelfTestResult
+        action: records PASS for spec-change wake if targeted reconvergence completed, FAIL otherwise
+      - node: CleanupTemporaryTestProject
+        action: kills the child convergence process and removes the temp directory
+
+  IntegrationSelfTestCodeChangeSync:
+    steps:
+      - node: CreateTemporaryTestProject
+        action: creates a temp directory with a minimal spec.md and runs convergence to CONVERGED
+      - node: RunConvergenceOnTestProject
+        action: confirms the temp project has reached CONVERGED and is now in watch mode
+      - node: EditTestProjectCode
+        action: modifies a generated source file in the temp project's src/ directory
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the modified source file to the child convergence process
+      - node: VerifyCodeToGraphSyncWorks
+        action: polls the child process state until it shows code-change reconciliation started
+      - node: VerifyCodeToGraphSyncWorks
+        action: waits for the child process to return to CONVERGED after code-to-graph sync
+      - node: VerifyCodeToGraphSyncWorks
+        action: checks that the module YAML was updated to reflect the code change
+      - node: IntegrationSelfTestResult
+        action: records PASS for code-change sync if reconciliation completed, FAIL otherwise
+      - node: CleanupTemporaryTestProject
+        action: kills the child convergence process and removes the temp directory
+
+  EndToEndIntegrationSelfTest:
+    steps:
+      - node: SelfAuditOwnCode
+        action: completes self-heal cycle that modified convergence.ts, triggering integration self-tests
+      - node: CreateTemporaryTestProject
+        action: creates a temp directory with a minimal greeting-app spec.md
+      - node: RunConvergenceOnTestProject
+        action: runs full convergence on the temp project from bootstrap to CONVERGED
+      - node: VerifyTestProjectProducesCode
+        action: confirms the temp project produced compiling code from the spec
+      - node: EditTestProjectSpec
+        action: edits the temp spec to add a farewell feature
+      - node: VerifyWatchModeWakes
+        action: confirms watch mode detected the spec change and performed targeted reconvergence
+      - node: EditTestProjectCode
+        action: edits a generated source file in the temp project
+      - node: VerifyCodeToGraphSyncWorks
+        action: confirms code-to-graph sync detected the change and updated the module YAML
+      - node: IntegrationSelfTestResult
+        action: aggregates all three checks into a single PASS or FAIL verdict
+      - node: CleanupTemporaryTestProject
+        action: removes the temp directory and all child processes
+      - node: BoundedRetryRule
+        action: caps integration self-test retries if a specific behavior fails intermittently
+      - node: ConvergenceState
+        action: records integration self-test results and proceeds to sleep only if all behaviors passed
+
+  DependencyWake:
+    steps:
+      - node: EnterSleepMode
+        action: is watching spec.md, src/ files, and dependency event files via fs.watch
+      - node: _actors/DependentBox
+        action: publishes a new interface and writes an event file that this engine watches
+      - node: _actors/FileSystem
+        action: delivers the fs.watch event for the dependency's event file
+      - node: WakeOnEvent
+        action: wakes from sleep and reads the event file to determine which dependency changed
+      - node: sync/FetchDependencyHash
+        action: compares the new dependency hash against the stored hash to confirm an actual change
+      - node: sync/MarkModulesStale
+        action: identifies local modules that reference the changed dependency and marks them stale
+      - node: TargetedReconvergence
+        action: runs Steps 4a-6b on only the stale modules, skipping full creation
+      - node: _actors/LLMWorker
+        action: updates stale modules to reflect the dependency's interface changes
+      - node: CompileCheck
+        action: validates the updated modules compile cleanly
+      - node: _actors/Compiler
+        action: confirms zero errors after reconvergence
+      - node: TargetedAudit
+        action: audits the affected modules for coverage after the dependency change
+      - node: TriggerPublish
+        action: publishes the updated interface if the graph changed
+      - node: SkipPublishOnUnchangedHash
+        action: skips publish if the interface hash is unchanged despite the dependency update
+      - node: EnterSleepMode
+        action: returns to zero-cost sleep, ripple continues only if this engine's interface changed

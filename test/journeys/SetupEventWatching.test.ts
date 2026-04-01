@@ -20,10 +20,20 @@ describe("SetupEventWatching", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/EnterSleepMode → sync/ReadDependencyList", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/RegisterEventWatchers creates an fs.watch instance for each dependency's event file path", () => {
     // Node: events/RegisterEventWatchers (process)
     // Action: creates an fs.watch instance for each dependency's event file path
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ReadDependencyList → events/RegisterEventWatchers", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: _actors/FileSystem registers the watch callbacks at the kernel level", () => {
@@ -32,10 +42,20 @@ describe("SetupEventWatching", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/RegisterEventWatchers → _actors/FileSystem", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: events/EventWatcherSet stores the set of active watcher instances for later teardown", () => {
     // Node: events/EventWatcherSet (artifact)
     // Action: stores the set of active watcher instances for later teardown
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/FileSystem → events/EventWatcherSet", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: events/EventDrivenNotPolling confirms that only fs.watch is used, no polling timers created", () => {
@@ -44,16 +64,31 @@ describe("SetupEventWatching", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/EventWatcherSet → events/EventDrivenNotPolling", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: events/ZeroCostAtRest confirms zero CPU consumption with only kernel-level handles active", () => {
     // Node: events/ZeroCostAtRest (rule)
     // Action: confirms zero CPU consumption with only kernel-level handles active
     // TODO: agent fills assertion
   });
 
+  it("connection: events/EventDrivenNotPolling → events/ZeroCostAtRest", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: events/EnterSleep suspends the engine process until an event callback fires", () => {
     // Node: events/EnterSleep (process)
     // Action: suspends the engine process until an event callback fires
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ZeroCostAtRest → events/EnterSleep", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

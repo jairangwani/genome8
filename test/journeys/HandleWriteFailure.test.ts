@@ -4,6 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/codegen.ts
+
 describe("HandleWriteFailure", () => {
   it("step 1: codegen/FilledSourceFile provides the validated filled content ready to write", () => {
     // Node: codegen/FilledSourceFile (artifact)
@@ -12,15 +14,25 @@ describe("HandleWriteFailure", () => {
   });
 
   it("step 2: codegen/WriteGeneratedFile attempts to write the file to disk and encounters a failure", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: attempts to write the file to disk and encounters a failure
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/FilledSourceFile → codegen/WriteGeneratedFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: codegen/WriteGeneratedFile detects the specific failure reason — disk full, permission denied, or path not found", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: detects the specific failure reason — disk full, permission denied, or path not found
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/WriteGeneratedFile → codegen/WriteGeneratedFile", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: codegen/GeneratedCodeDirectory checks the output directory exists and is writable", () => {
@@ -29,22 +41,42 @@ describe("HandleWriteFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/WriteGeneratedFile → codegen/GeneratedCodeDirectory", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: codegen/WriteGeneratedFile retries the write after verifying the directory is accessible", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: retries the write after verifying the directory is accessible
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/GeneratedCodeDirectory → codegen/WriteGeneratedFile", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
   it("step 6: codegen/WriteGeneratedFile confirms the file was successfully written on retry", () => {
-    // Node: codegen/WriteGeneratedFile (process)
+    // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: confirms the file was successfully written on retry
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/WriteGeneratedFile → codegen/WriteGeneratedFile", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
   it("step 7: convergence/ConvergenceState records the write failure and recovery for diagnostic logging", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records the write failure and recovery for diagnostic logging
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/WriteGeneratedFile → convergence/ConvergenceState", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

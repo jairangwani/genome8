@@ -19,10 +19,20 @@ describe("ValidateAndStageFilledModule", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/FillImplementation → codegen/FilledSourceFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: codegen/ValidateFilledSyntax parses the filled file to check for syntax errors", () => {
     // Node: codegen/ValidateFilledSyntax (process)
     // Action: parses the filled file to check for syntax errors
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/FilledSourceFile → codegen/ValidateFilledSyntax", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: codegen/ValidateFilledSyntax runs type checking against the module's imports and dependencies", () => {
@@ -31,10 +41,20 @@ describe("ValidateAndStageFilledModule", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/ValidateFilledSyntax → codegen/ValidateFilledSyntax", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: codegen/CodeComesFromNodes verifies the filled file still contains one function or class per graph node", () => {
     // Node: codegen/CodeComesFromNodes (rule)
     // Action: verifies the filled file still contains one function or class per graph node
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/ValidateFilledSyntax → codegen/CodeComesFromNodes", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: codegen/StageFilledModule writes the validated file to the staging directory", () => {
@@ -43,10 +63,20 @@ describe("ValidateAndStageFilledModule", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/CodeComesFromNodes → codegen/StageFilledModule", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/StageGeneratedCode registers the staged file in the convergence state for review", () => {
     // Node: convergence/StageGeneratedCode (process)
     // Action: registers the staged file in the convergence state for review
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/StageFilledModule → convergence/StageGeneratedCode", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: codegen/WriteGeneratedFile writes the final approved file to the generated code output directory", () => {
@@ -55,10 +85,20 @@ describe("ValidateAndStageFilledModule", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/StageGeneratedCode → codegen/WriteGeneratedFile", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: codegen/GeneratedCodeDirectory the validated and staged file is now in the final output location", () => {
     // Node: codegen/GeneratedCodeDirectory (artifact)
     // Action: the validated and staged file is now in the final output location
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/WriteGeneratedFile → codegen/GeneratedCodeDirectory", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

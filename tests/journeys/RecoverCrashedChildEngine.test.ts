@@ -20,10 +20,20 @@ describe("RecoverCrashedChildEngine", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/SplitIntoChildEngines → hierarchy/SpawnChildEngine", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/WaitForAllChildren detects that a child process exited with a non-zero exit code or became unresponsive", () => {
     // Node: hierarchy/WaitForAllChildren (process)
     // Action: detects that a child process exited with a non-zero exit code or became unresponsive
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/SpawnChildEngine → hierarchy/WaitForAllChildren", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: convergence/RecoverFromChildEngineCrash identifies which child engine crashed and reads its last known ConvergenceState", () => {
@@ -32,10 +42,20 @@ describe("RecoverCrashedChildEngine", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/WaitForAllChildren → convergence/RecoverFromChildEngineCrash", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: convergence/RecoverFromChildEngineCrash checks whether the crashed child had completed enough work to salvage its partial results", () => {
     // Node: convergence/RecoverFromChildEngineCrash (process)
     // Action: checks whether the crashed child had completed enough work to salvage its partial results
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/RecoverFromChildEngineCrash → convergence/RecoverFromChildEngineCrash", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: convergence/RecoverFromChildEngineCrash determines whether to restart the child from scratch or resume from its checkpoint", () => {
@@ -44,10 +64,20 @@ describe("RecoverCrashedChildEngine", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/RecoverFromChildEngineCrash → convergence/RecoverFromChildEngineCrash", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/BoundedRetryRule checks that the restart count for this child engine has not exceeded the cap", () => {
     // Node: convergence/BoundedRetryRule (rule)
     // Action: checks that the restart count for this child engine has not exceeded the cap
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/RecoverFromChildEngineCrash → convergence/BoundedRetryRule", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: hierarchy/GenerateScopedSpec provides the scoped spec for the crashed child so it can be relaunched", () => {
@@ -56,10 +86,20 @@ describe("RecoverCrashedChildEngine", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/BoundedRetryRule → hierarchy/GenerateScopedSpec", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: hierarchy/SpawnChildEngine relaunches the child engine process with its scoped spec and recovered module state", () => {
     // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: relaunches the child engine process with its scoped spec and recovered module state
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/GenerateScopedSpec → hierarchy/SpawnChildEngine", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: hierarchy/WaitForAllChildren resumes waiting for all children including the relaunched one to converge", () => {
@@ -68,10 +108,20 @@ describe("RecoverCrashedChildEngine", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/SpawnChildEngine → hierarchy/WaitForAllChildren", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: convergence/RecoverFromChildEngineCrash if retry cap is reached, promotes the crashed child's partial results and remaining errors to the parent", () => {
     // Node: convergence/RecoverFromChildEngineCrash (process)
     // Action: if retry cap is reached, promotes the crashed child's partial results and remaining errors to the parent
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/WaitForAllChildren → convergence/RecoverFromChildEngineCrash", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: compilation/ErrorReport records the child engine crash as an error with the child name, crash reason, and recovery outcome", () => {
@@ -80,10 +130,20 @@ describe("RecoverCrashedChildEngine", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/RecoverFromChildEngineCrash → compilation/ErrorReport", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: convergence/ConvergenceState records the child engine recovery outcome and whether the hierarchy split can proceed", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records the child engine recovery outcome and whether the hierarchy split can proceed
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/ErrorReport → convergence/ConvergenceState", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
   });
 
 });

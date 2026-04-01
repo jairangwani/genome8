@@ -18,10 +18,20 @@ describe("HandleFailedToolCall", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → llm/NativeToolSet", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/HandleToolCallFailure captures the error details including tool name, arguments, and failure reason", () => {
     // Node: llm/HandleToolCallFailure (process)
     // Action: captures the error details including tool name, arguments, and failure reason
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/NativeToolSet → llm/HandleToolCallFailure", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: _actors/LLMWorker receives the error and decides whether to retry with different arguments or report failure", () => {
@@ -30,10 +40,20 @@ describe("HandleFailedToolCall", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/HandleToolCallFailure → _actors/LLMWorker", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/TaskResult includes the tool call failure as part of the task output for the orchestrator", () => {
     // Node: llm/TaskResult (artifact)
     // Action: includes the tool call failure as part of the task output for the orchestrator
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/LLMWorker → llm/TaskResult", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
 });

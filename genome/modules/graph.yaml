@@ -90,7 +90,8 @@ nodes:
     description: a point-in-time copy of the CompiledIndex taken before a merge operation, used to restore graph state if the merge fails or is destructive
   DestructiveEditDetection:
     type: process
-    description: compares node and journey counts before and after a module rewrite to detect content loss caused by LLM overwrites
+    description: compares per-module node counts before and after a module rewrite to detect content loss caused by LLM overwrites, returning which nodes were lost
+    files: ["src/compile.ts"]
   DestructiveEditProtectionRule:
     type: rule
     description: a module rewrite must not decrease the node count without explicit intent — blocks merge and triggers revert if node count drops
@@ -118,6 +119,15 @@ nodes:
   DetectSelfLoopStep:
     type: process
     description: detects consecutive journey steps that reference the same node, rejecting self-loop edges that produce meaningless connections and waste computation
+  ClassifyExternalRef:
+    type: process
+    description: classifies an unresolvable cross-module reference as either external (targeting a sibling engine's published interface namespace) or dangling (truly missing), enabling AllRefsResolveRule to treat external refs as deferred warnings rather than errors
+  ModulePurge:
+    type: process
+    description: removes all nodes, journeys, and connections contributed by a specific module from the compiled index in a single atomic operation, the inverse of IncrementalMerge
+  CanonicalCollectionOrderRule:
+    type: rule
+    description: enforces that NodeRegistry is sorted by node name, JourneyRegistry by journey name, and ConnectionSet by source-target-journey tuple, ensuring identical output regardless of module processing order
 
 journeys:
   DefineNode:
@@ -684,3 +694,77 @@ journeys:
         action: scans consecutive step pairs and detects the same node appearing as both source and target
       - node: _actors/Compiler
         action: reports a validation error identifying the self-loop step pair and its journey
+
+  EnforceDeterministicGraphCollectionOrder:
+    steps:
+      - node: _actors/Compiler
+        action: compiles all modules into the graph
+      - node: NodeRegistry
+        action: produces the list of all nodes across all modules
+      - node: CanonicalCollectionOrderRule
+        action: enforces that nodes are sorted alphabetically by name
+      - node: JourneyRegistry
+        action: produces the list of all journeys across all modules
+      - node: CanonicalCollectionOrderRule
+        action: enforces that journeys are sorted alphabetically by name
+      - node: ConnectionSet
+        action: produces the list of all directed edges
+      - node: CanonicalCollectionOrderRule
+        action: enforces that connections are sorted by source-target-journey tuple
+      - node: CompiledIndex
+        action: contains identically ordered collections regardless of which order modules were read
+
+  VerifyIncrementalGraphMatchesFull:
+    steps:
+      - node: _actors/Compiler
+        action: performs a full rebuild of the compiled index from all module files
+      - node: CompiledIndex
+        action: stores the full-rebuild result as the reference baseline
+      - node: IncrementalMerge
+        action: builds the same compiled index by merging modules one at a time incrementally
+      - node: NodeRegistry
+        action: compares node entries between full and incremental results
+      - node: JourneyRegistry
+        action: compares journey entries between full and incremental results
+      - node: ConnectionSet
+        action: compares edge entries between full and incremental results
+      - node: CompiledIndex
+        action: confirms the incremental result is identical to the full rebuild result
+
+  PurgeDeprecatedModule:
+    steps:
+      - node: _actors/Compiler
+        action: identifies a module that has been removed or deprecated from the organization
+      - node: CompiledIndex
+        action: provides the current graph containing the deprecated module's contributions
+      - node: ModulePurge
+        action: identifies all nodes and journeys defined by the deprecated module
+      - node: NodeRegistry
+        action: removes the deprecated module's nodes from the deduplicated map
+      - node: JourneyRegistry
+        action: removes all journeys defined by the deprecated module
+      - node: ConnectionSet
+        action: purges all edges sourced from the deprecated module's journeys
+      - node: CrossModuleImpactScan
+        action: finds references from other modules pointing to the purged module's nodes
+      - node: AllRefsResolveRule
+        action: flags remaining cross-module references to purged nodes as dangling
+      - node: ConnectionDeduplication
+        action: re-deduplicates the connection set after edge removal
+      - node: CompiledIndex
+        action: updated with all traces of the deprecated module atomically removed
+
+  ClassifyAndDeferExternalRef:
+    steps:
+      - node: _actors/Compiler
+        action: encounters an unresolvable cross-module reference during compilation of a child engine
+      - node: CrossModuleRefResolution
+        action: attempts to resolve the reference against all modules in the current box and fails
+      - node: ClassifyExternalRef
+        action: checks whether the reference's module prefix matches a known sibling engine name
+      - node: ClassifyExternalRef
+        action: classifies the reference as external because it targets a sibling engine's namespace
+      - node: AllRefsResolveRule
+        action: records the external ref as a deferred warning instead of a validation error
+      - node: CompiledIndex
+        action: stores the external ref classification so the parent engine can validate it after all children converge

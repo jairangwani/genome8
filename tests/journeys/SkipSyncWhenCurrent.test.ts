@@ -22,10 +22,20 @@ describe("SkipSyncWhenCurrent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/DependentBox → sync/ReadDependencyList", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/FetchDependencyHash fetches current hashes from all dependency interfaces", () => {
     // Node: sync/FetchDependencyHash (process)
     // Action: fetches current hashes from all dependency interfaces
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ReadDependencyList → sync/FetchDependencyHash", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/DependencyHashStore provides stored hashes for comparison", () => {
@@ -34,10 +44,20 @@ describe("SkipSyncWhenCurrent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/FetchDependencyHash → sync/DependencyHashStore", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/CompareStoredHash compares all fetched hashes against stored hashes", () => {
-    // Node: sync/CompareStoredHash (process) — has code: test/staleness.test.ts
+    // Node: sync/CompareStoredHash (process) — has code: src/sync.ts
     // Action: compares all fetched hashes against stored hashes
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/DependencyHashStore → sync/CompareStoredHash", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/SkipIfAllCurrent determines all hashes match and aborts sync early", () => {
@@ -46,10 +66,20 @@ describe("SkipSyncWhenCurrent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/CompareStoredHash → sync/SkipIfAllCurrent", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: sync/SyncResult records that no dependencies changed, no reconvergence needed", () => {
     // Node: sync/SyncResult (artifact) — has code: test/sync-loop.test.ts
     // Action: records that no dependencies changed, no reconvergence needed
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/SkipIfAllCurrent → sync/SyncResult", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

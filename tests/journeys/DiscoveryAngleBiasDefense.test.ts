@@ -4,105 +4,203 @@
 // Modules touched: _actors, actors, compilation
 
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
 
-// Biased discovery: activities angle has many, threats/lifecycle suppressed
-const activitiesActors = ['User', 'Admin', 'Editor', 'Viewer', 'Moderator', 'Creator', 'Analyst', 'Operator'];
-const threatsActors: string[] = []; // suppressed — spec avoids threat language
-const lifecycleActors: string[] = []; // suppressed — spec omits lifecycle
+function buildBiasModules() {
+  const modules = new Map<string, ModuleFile>();
 
-const MIN_ANGLE_PROPORTION = 0.1; // each angle should produce >= 10% of total
+  modules.set('_actors', {
+    nodes: {
+      MaliciousSpecAuthor: { type: 'actor', description: 'Writes a spec heavily weighted toward one domain to suppress other discovery angles' },
+    },
+    journeys: {},
+  });
 
-function computeAngleRatios(activities: string[], threats: string[], lifecycle: string[]) {
-  const total = activities.length + threats.length + lifecycle.length;
-  if (total === 0) return { activities: 0, threats: 0, lifecycle: 0, total: 0 };
-  return {
-    activities: activities.length / total,
-    threats: threats.length / total,
-    lifecycle: lifecycle.length / total,
-    total,
-  };
-}
+  modules.set('actors', {
+    nodes: {
+      DiscoverFromActivities: { type: 'process', description: 'Discovers a disproportionately large number of actors from the biased spec' },
+      DiscoverFromThreats: { type: 'process', description: 'Discovers zero or very few threat actors because the spec avoids threat language' },
+      DiscoverFromLifecycle: { type: 'process', description: 'Discovers zero or very few lifecycle actors because the spec omits lifecycle scenarios' },
+      ActivitiesActorList: { type: 'artifact', description: 'Stores the inflated activities actor set' },
+      ThreatsActorList: { type: 'artifact', description: 'Stores the suppressed threats actor set' },
+      LifecycleActorList: { type: 'artifact', description: 'Stores the suppressed lifecycle actor set' },
+      DetectDiscoveryAngleBias: { type: 'process', description: 'Computes the ratio of actors from each angle to the total' },
+      ValidateThreeAngleCompleteness: { type: 'process', description: 'Confirms that the suppressed angles violate the completeness requirement' },
+    },
+    journeys: {
+      DiscoveryAngleBiasDefense: {
+        steps: [
+          { node: '_actors/MaliciousSpecAuthor', action: 'writes a spec heavily weighted toward one domain to suppress other discovery angles' },
+          { node: 'DiscoverFromActivities', action: 'discovers a disproportionately large number of actors from the biased spec' },
+          { node: 'DiscoverFromThreats', action: 'discovers zero or very few threat actors because the spec avoids threat language' },
+          { node: 'DiscoverFromLifecycle', action: 'discovers zero or very few lifecycle actors because the spec omits lifecycle scenarios' },
+          { node: 'ActivitiesActorList', action: 'stores the inflated activities actor set' },
+          { node: 'ThreatsActorList', action: 'stores the suppressed threats actor set' },
+          { node: 'LifecycleActorList', action: 'stores the suppressed lifecycle actor set' },
+          { node: 'DetectDiscoveryAngleBias', action: 'computes the ratio of actors from each angle to the total' },
+          { node: 'DetectDiscoveryAngleBias', action: 'flags angles producing less than the minimum threshold proportion as suppressed' },
+          { node: 'ValidateThreeAngleCompleteness', action: 'confirms that the suppressed angles violate the completeness requirement' },
+          { node: 'compilation/ErrorReport', action: 'records the angle bias with the specific ratios and which angles were suppressed' },
+        ],
+      },
+    },
+  });
 
-function detectSuppressedAngles(ratios: ReturnType<typeof computeAngleRatios>): string[] {
-  const suppressed: string[] = [];
-  if (ratios.threats < MIN_ANGLE_PROPORTION) suppressed.push('threats');
-  if (ratios.lifecycle < MIN_ANGLE_PROPORTION) suppressed.push('lifecycle');
-  if (ratios.activities < MIN_ANGLE_PROPORTION) suppressed.push('activities');
-  return suppressed;
+  modules.set('compilation', {
+    nodes: {
+      ErrorReport: { type: 'artifact', description: 'Records the angle bias with the specific ratios and which angles were suppressed' },
+    },
+    journeys: {},
+  });
+
+  return modules;
 }
 
 describe("DiscoveryAngleBiasDefense", () => {
+  const modules = buildBiasModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['DiscoveryAngleBiasDefense'];
+
   it("step 1: _actors/MaliciousSpecAuthor writes a spec heavily weighted toward one domain to suppress other discovery angles", () => {
-    const biasedSpec = 'Users create content. Admins edit it. Editors review it. Viewers see it. Moderators enforce policy. Creators publish. Analysts report. Operators monitor.';
-    // All activities, no threat or lifecycle language
-    expect(biasedSpec).not.toContain('attack');
-    expect(biasedSpec).not.toContain('onboard');
-    expect(biasedSpec).not.toContain('churn');
+    const node = result.index.nodes['_actors/MaliciousSpecAuthor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
   });
 
   it("step 2: actors/DiscoverFromActivities discovers a disproportionately large number of actors from the biased spec", () => {
-    expect(activitiesActors.length).toBe(8);
-    expect(activitiesActors.length).toBeGreaterThan(5);
+    const node = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/MaliciousSpecAuthor');
+  });
+
+  it("connection: _actors/MaliciousSpecAuthor → actors/DiscoverFromActivities", () => {
+    const from = result.index.nodes['_actors/MaliciousSpecAuthor'];
+    expect(from.followed_by).toContain('actors/DiscoverFromActivities');
   });
 
   it("step 3: actors/DiscoverFromThreats discovers zero or very few threat actors because the spec avoids threat language", () => {
-    expect(threatsActors.length).toBe(0);
+    const node = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/DiscoverFromActivities');
+  });
+
+  it("connection: actors/DiscoverFromActivities → actors/DiscoverFromThreats", () => {
+    const from = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(from.followed_by).toContain('actors/DiscoverFromThreats');
   });
 
   it("step 4: actors/DiscoverFromLifecycle discovers zero or very few lifecycle actors because the spec omits lifecycle scenarios", () => {
-    expect(lifecycleActors.length).toBe(0);
+    const node = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/DiscoverFromThreats');
+  });
+
+  it("connection: actors/DiscoverFromThreats → actors/DiscoverFromLifecycle", () => {
+    const from = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(from.followed_by).toContain('actors/DiscoverFromLifecycle');
   });
 
   it("step 5: actors/ActivitiesActorList stores the inflated activities actor set", () => {
-    expect(activitiesActors).toContain('User');
-    expect(activitiesActors).toContain('Operator');
-    expect(activitiesActors.length).toBe(8);
+    const node = result.index.nodes['actors/ActivitiesActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/DiscoverFromLifecycle');
+  });
+
+  it("connection: actors/DiscoverFromLifecycle → actors/ActivitiesActorList", () => {
+    const from = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(from.followed_by).toContain('actors/ActivitiesActorList');
   });
 
   it("step 6: actors/ThreatsActorList stores the suppressed threats actor set", () => {
-    expect(threatsActors.length).toBe(0);
+    const node = result.index.nodes['actors/ThreatsActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/ActivitiesActorList');
+  });
+
+  it("connection: actors/ActivitiesActorList → actors/ThreatsActorList", () => {
+    const from = result.index.nodes['actors/ActivitiesActorList'];
+    expect(from.followed_by).toContain('actors/ThreatsActorList');
   });
 
   it("step 7: actors/LifecycleActorList stores the suppressed lifecycle actor set", () => {
-    expect(lifecycleActors.length).toBe(0);
+    const node = result.index.nodes['actors/LifecycleActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/ThreatsActorList');
+  });
+
+  it("connection: actors/ThreatsActorList → actors/LifecycleActorList", () => {
+    const from = result.index.nodes['actors/ThreatsActorList'];
+    expect(from.followed_by).toContain('actors/LifecycleActorList');
   });
 
   it("step 8: actors/DetectDiscoveryAngleBias computes the ratio of actors from each angle to the total", () => {
-    const ratios = computeAngleRatios(activitiesActors, threatsActors, lifecycleActors);
-    expect(ratios.activities).toBe(1.0); // all from activities
-    expect(ratios.threats).toBe(0);
-    expect(ratios.lifecycle).toBe(0);
-    expect(ratios.total).toBe(8);
+    const node = result.index.nodes['actors/DetectDiscoveryAngleBias'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/LifecycleActorList');
+  });
+
+  it("connection: actors/LifecycleActorList → actors/DetectDiscoveryAngleBias", () => {
+    const from = result.index.nodes['actors/LifecycleActorList'];
+    expect(from.followed_by).toContain('actors/DetectDiscoveryAngleBias');
   });
 
   it("step 9: actors/DetectDiscoveryAngleBias flags angles producing less than the minimum threshold proportion as suppressed", () => {
-    const ratios = computeAngleRatios(activitiesActors, threatsActors, lifecycleActors);
-    const suppressed = detectSuppressedAngles(ratios);
-    expect(suppressed).toContain('threats');
-    expect(suppressed).toContain('lifecycle');
-    expect(suppressed).not.toContain('activities');
+    const node = result.index.nodes['actors/DetectDiscoveryAngleBias'];
+    expect(node).toBeDefined();
+    // Self-connection: same node consecutively
+    expect(node.followed_by).toContain('actors/ValidateThreeAngleCompleteness');
+  });
+
+  it("connection: actors/DetectDiscoveryAngleBias → actors/DetectDiscoveryAngleBias", () => {
+    const node = result.index.nodes['actors/DetectDiscoveryAngleBias'];
+    expect(node.preceded_by).toContain('actors/LifecycleActorList');
   });
 
   it("step 10: actors/ValidateThreeAngleCompleteness confirms that the suppressed angles violate the completeness requirement", () => {
-    // All 3 angles must produce at least 1 actor
-    const allAnglesComplete = activitiesActors.length >= 1
-      && threatsActors.length >= 1
-      && lifecycleActors.length >= 1;
-    expect(allAnglesComplete).toBe(false);
+    const node = result.index.nodes['actors/ValidateThreeAngleCompleteness'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/DetectDiscoveryAngleBias');
+  });
+
+  it("connection: actors/DetectDiscoveryAngleBias → actors/ValidateThreeAngleCompleteness", () => {
+    const from = result.index.nodes['actors/DetectDiscoveryAngleBias'];
+    expect(from.followed_by).toContain('actors/ValidateThreeAngleCompleteness');
   });
 
   it("step 11: compilation/ErrorReport records the angle bias with the specific ratios and which angles were suppressed", () => {
-    const ratios = computeAngleRatios(activitiesActors, threatsActors, lifecycleActors);
-    const suppressed = detectSuppressedAngles(ratios);
-    const errorReport = {
-      type: 'discovery_angle_bias',
-      ratios,
-      suppressed_angles: suppressed,
-      message: `Discovery angle bias detected: ${suppressed.join(', ')} produced < ${MIN_ANGLE_PROPORTION * 100}% of actors`,
-    };
-    expect(errorReport.suppressed_angles.length).toBe(2);
-    expect(errorReport.message).toContain('threats');
-    expect(errorReport.message).toContain('lifecycle');
+    const node = result.index.nodes['compilation/ErrorReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/ValidateThreeAngleCompleteness');
   });
 
+  it("connection: actors/ValidateThreeAngleCompleteness → compilation/ErrorReport", () => {
+    const from = result.index.nodes['actors/ValidateThreeAngleCompleteness'];
+    expect(from.followed_by).toContain('compilation/ErrorReport');
+  });
+
+  it("journey covers full bias detection pipeline (11 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(11);
+    expect(journey.steps[0].node).toBe('_actors/MaliciousSpecAuthor');
+    expect(journey.steps[10].node).toBe('compilation/ErrorReport');
+  });
+
+  it("journey actor is MaliciousSpecAuthor", () => {
+    expect(journey.actor).toBe('_actors/MaliciousSpecAuthor');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

@@ -27,11 +27,11 @@ import { platform } from 'node:os';
 import { compile } from './compile.js';
 import { generateExcerpt } from './excerpt.js';
 import { publishInterface } from './publish.js';
-import { checkDependencies, markModulesStale } from './sync.js';
+import { checkDependencies, markModulesStale, clearStaleSyncLock } from './sync.js';
 import { generateTests } from './testgen.js';
 import { generateCodeSkeletons } from './codegen.js';
-import { LLMWorker } from './llm.js';
-import { trackLLMCall, startStep, endStep, trackModules, trackGraph, getMetrics } from './metrics.js';
+import { LLMWorker, validateWorkerOutput } from './llm.js';
+import { trackLLMCall, startStep, endStep, trackModules, trackGraph, getMetrics, pipelineInvariantCheck } from './metrics.js';
 const DEFAULT_CONFIG = {
     maxRounds: Infinity,
     watchIntervalMs: 60_000,
@@ -173,6 +173,12 @@ async function run() {
     const cryptoModule = await import('node:crypto');
     const spec = fs.readFileSync(specPath, 'utf-8');
     console.log(`\n=== GENOME CONVERGENCE: ${absProjectDir} ===`);
+    cleanupOrphanPids(); // Clean stale PIDs from previous crashed processes
+    // Clear stale sync locks from previous crashed sync operations
+    const syncStatePath0 = path.join(genomeDir, 'sync-state.json');
+    if (clearStaleSyncLock(syncStatePath0)) {
+        console.log('  Cleared stale sync lock from previous crash.');
+    }
     writePidFile(); // Track this process for clean shutdown
     console.log(`Spec: ${spec.length} chars, ${spec.split('\n').length} lines\n`);
     // ── Check if already converged → skip to Step 7 (watch loop) ──
@@ -190,7 +196,8 @@ async function run() {
                 const currentResult = compile(modulesDir);
                 const currentHash = publishInterface(publishedDir, currentResult.index, path.basename(absProjectDir)).interface_.version_hash;
                 const currentSpecHash = cryptoModule.createHash('sha256').update(spec).digest('hex');
-                const specUnchanged = !state.spec_hash || currentSpecHash === state.spec_hash;
+                // If no spec_hash stored → spec state unknown → must run pipeline to check
+                const specUnchanged = state.spec_hash ? (currentSpecHash === state.spec_hash) : false;
                 if (currentHash === state.interface_hash && specUnchanged) {
                     console.log(`Already converged (hash: ${currentHash.substring(7, 19)}). Entering watch loop directly.\n`);
                     // Go directly to Step 7 — skip Steps 1-6 entirely
@@ -607,6 +614,14 @@ Write the file NOW using the Write tool.`);
             console.error(`  ERROR: Failed to create ${modName}.yaml after 3 attempts.`);
             continue;
         }
+        // ValidateWorkerOutput: check YAML syntax + schema before compile
+        const validation = validateWorkerOutput([modPath], '');
+        if (validation.malformed.length > 0) {
+            console.log(`  ⚠ MALFORMED YAML in ${modName}: ${validation.malformed[0]}`);
+            console.log(`  → Removing broken file. Will retry in convergence rounds.`);
+            fs.unlinkSync(modPath);
+            continue;
+        }
         const afterCompile = doCompile();
         const errors = afterCompile.issues.filter(i => i.severity === 'error');
         if (errors.length > 0) {
@@ -808,6 +823,15 @@ RULES:
                     // Don't break — continue with next lens/module
                 }
                 passCount++;
+                // ValidateWorkerOutput: catch broken YAML before compile
+                const enrichValidation = validateWorkerOutput([modFilePath], '');
+                if (enrichValidation.malformed.length > 0) {
+                    console.log(`    ⚠ MALFORMED YAML after enrichment: ${enrichValidation.malformed[0]}`);
+                    console.log(`    → Reverting to pre-pass state.`);
+                    fs.writeFileSync(modFilePath, modContent, 'utf-8');
+                    consecutiveZeroDelta++;
+                    continue;
+                }
                 // Early termination: check if this pass actually added anything
                 const afterResult = doCompile();
                 const deltaNodes = afterResult.index._stats.total_nodes - beforeNodes;
@@ -1296,6 +1320,17 @@ INSTRUCTIONS:
                 console.log(`  Note: ${testFiles.length - 50} test files skipped (capped at 50 for time).`);
             }
             // Step 3: Run tests with feedback loop — failures get diagnosed and fixed
+            // RollbackFailedFix: snapshot src/ before fix attempts so we can revert on regression
+            const srcDirForSnapshot = path.join(absProjectDir, 'src');
+            const srcSnapshot = new Map();
+            if (fs.existsSync(srcDirForSnapshot)) {
+                for (const f of fs.readdirSync(srcDirForSnapshot)) {
+                    const fp = path.join(srcDirForSnapshot, f);
+                    if (fs.statSync(fp).isFile()) {
+                        srcSnapshot.set(fp, fs.readFileSync(fp, 'utf-8'));
+                    }
+                }
+            }
             console.log('  Running journey tests...');
             const MAX_JOURNEY_FIX_ATTEMPTS = 3;
             let journeyFixAttempt = 0;
@@ -1348,6 +1383,14 @@ Do NOT rewrite entire files — use Edit for targeted fixes.`);
             }
             if (!allJourneysPassed && journeyFixAttempt >= MAX_JOURNEY_FIX_ATTEMPTS) {
                 console.log(`  WARNING: Journey tests still failing after ${MAX_JOURNEY_FIX_ATTEMPTS} fix attempts.`);
+                // RollbackFailedFix: revert src/ to pre-fix snapshot to prevent regressions from shipping
+                if (srcSnapshot.size > 0) {
+                    console.log('  ⚠ ROLLBACK: Reverting source code to pre-fix snapshot...');
+                    for (const [fp, content] of srcSnapshot) {
+                        fs.writeFileSync(fp, content, 'utf-8');
+                    }
+                    console.log(`  → Reverted ${srcSnapshot.size} source files to pre-fix state.`);
+                }
             }
         }
     }
@@ -1590,6 +1633,13 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
             finalResult = doCompile();
         }
     }
+    // PipelineInvariantCheck: verify all phases completed before declaring convergence
+    const invariant = pipelineInvariantCheck();
+    if (!invariant.passed) {
+        console.log(`\n  ⚠ PIPELINE INVARIANT FAILED: phases not completed: ${invariant.missing.join(', ')}`);
+        console.log('  Convergence cannot be declared — marking as UNSTABLE.');
+        testsPassed = false;
+    }
     console.log('\n═══ CONVERGED ═══');
     console.log(`Final: ${finalResult.index._stats.total_nodes} nodes, ${finalResult.index._stats.total_journeys} journeys, ${finalResult.index._stats.total_connections} connections`);
     // Auto-create dependencies.yaml if external refs exist and no deps file yet
@@ -1679,6 +1729,34 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
             }
         }
     });
+    specWatcher.on('error', (err) => {
+        console.error(`  ⚠️ Spec watcher error: ${err.message}. Recreating watcher...`);
+        try {
+            specWatcher.close();
+            const replacement = fs.watch(path.dirname(specPath), (eventType, filename) => {
+                if (filename === 'spec.md') {
+                    const currentSpec = fs.readFileSync(specPath, 'utf-8');
+                    const currentHash = cryptoModule.createHash('sha256').update(currentSpec).digest('hex');
+                    const stateFile = path.join(genomeDir, 'convergence-state.json');
+                    const savedHash = (() => { try {
+                        return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash;
+                    }
+                    catch {
+                        return null;
+                    } })();
+                    if (currentHash !== savedHash) {
+                        console.log('\n  SPEC CHANGED — waking up for reconvergence...');
+                        replacement.close();
+                        run().catch(err => { console.error('Reconvergence failed:', err); process.exit(1); });
+                    }
+                }
+            });
+            activeWatchers.push(replacement);
+        }
+        catch (e) {
+            console.error(`  Failed to recreate spec watcher: ${e.message}`);
+        }
+    });
     activeWatchers.push(specWatcher);
     // Watch src/ directory for code changes — CodeChangeWake journey (Spec §3 Step 7)
     // When a developer edits source code directly, reconcile the change back to the graph.
@@ -1687,16 +1765,21 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
         console.log(`  Watching src: ${watchSrcDir}`);
         let codeChangeTimer = null;
         const pendingCodeChanges = new Set();
+        let codeChangeProcessing = false; // Lock to prevent concurrent handling
         const srcWatcher = fs.watch(watchSrcDir, { recursive: true }, (_eventType, filename) => {
             if (!filename || !/\.(ts|js|tsx|jsx)$/.test(filename))
                 return;
-            // Ignore build artifacts and test outputs
-            if (filename.includes('node_modules') || filename.includes('dist/'))
+            if (filename.includes('node_modules') || filename.includes('dist/') || filename.includes('test'))
                 return;
+            if (codeChangeProcessing)
+                return; // Skip if already processing
             pendingCodeChanges.add(filename);
             if (codeChangeTimer)
                 clearTimeout(codeChangeTimer);
             codeChangeTimer = setTimeout(async () => {
+                if (codeChangeProcessing)
+                    return;
+                codeChangeProcessing = true;
                 const changedFiles = [...pendingCodeChanges];
                 pendingCodeChanges.clear();
                 console.log(`\n  CODE CHANGE: ${changedFiles.join(', ')}`);
@@ -1743,6 +1826,74 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
                         const errorList = errors.slice(0, 10).map(e => `- ${e.message}`).join('\n');
                         await worker.call(`Fix these compile errors after code reconciliation:\n${errorList}\nRead affected files, fix refs, write back.`);
                     }
+                    // Validate code change against spec examples (fast, specific)
+                    // Extract CLI examples from spec: lines matching `npx tsx src/...` → expected output
+                    const specContent = fs.readFileSync(specPath, 'utf-8');
+                    const specExamples = specContent.match(/`npx tsx src\/\S+ "?[^"]*"?`\s*→\s*.+/g) || [];
+                    if (specExamples.length > 0) {
+                        console.log(`  Running ${specExamples.length} spec examples as validation...`);
+                        const { execSync: execSyncValidate } = await import('node:child_process');
+                        let failures = 0;
+                        const failDetails = [];
+                        for (const example of specExamples.slice(0, 5)) { // cap at 5
+                            const cmdMatch = example.match(/`(npx tsx src\/\S+ "[^"]*")`\s*→\s*(.+)/);
+                            if (!cmdMatch)
+                                continue;
+                            const cmd = cmdMatch[1];
+                            const expected = cmdMatch[2].trim();
+                            try {
+                                const actual = execSyncValidate(cmd + ' 2>&1', { cwd: absProjectDir, encoding: 'utf-8', timeout: 10_000 }).trim();
+                                if (actual === expected) {
+                                    console.log(`    ✓ ${cmd} → ${expected}`);
+                                }
+                                else {
+                                    console.log(`    ✗ ${cmd} → expected "${expected}", got "${actual}"`);
+                                    failures++;
+                                    failDetails.push(`${cmd}: expected "${expected}", got "${actual}"`);
+                                }
+                            }
+                            catch (err) {
+                                const errOut = (err.stdout || err.message || '').trim();
+                                if (errOut.startsWith('Error:') && expected.startsWith('Error:')) {
+                                    console.log(`    ✓ ${cmd} → ${expected}`);
+                                }
+                                else {
+                                    console.log(`    ✗ ${cmd} → expected "${expected}", got error`);
+                                    failures++;
+                                    failDetails.push(`${cmd}: expected "${expected}", got "${errOut.substring(0, 100)}"`);
+                                }
+                            }
+                        }
+                        if (failures > 0) {
+                            console.log(`  ${failures} spec examples FAILED. Attempting self-heal...`);
+                            try {
+                                await worker.call(`Code was changed and ${failures} spec examples failed:
+
+${failDetails.join('\n')}
+
+The spec defines what the output SHOULD be. Fix the code to match.
+Read the source files and use Edit for targeted fixes.`);
+                                console.log('  Self-heal fix applied. Re-checking...');
+                                // Quick re-check
+                                for (const detail of failDetails) {
+                                    const m = detail.match(/^(npx tsx src\/\S+ "[^"]*")/);
+                                    if (m) {
+                                        try {
+                                            const recheck = execSyncValidate(m[1] + ' 2>&1', { cwd: absProjectDir, encoding: 'utf-8', timeout: 10_000 }).trim();
+                                            console.log(`    Re-check: ${m[1]} → ${recheck}`);
+                                        }
+                                        catch { }
+                                    }
+                                }
+                            }
+                            catch {
+                                console.log('  Self-heal timed out.');
+                            }
+                        }
+                        else {
+                            console.log(`  All ${specExamples.length} spec examples PASS.`);
+                        }
+                    }
                     // Publish if interface changed
                     const latestResult = doCompile();
                     const { interface_: newInterface } = publishInterface(publishedDir, latestResult.index, path.basename(absProjectDir));
@@ -1780,7 +1931,13 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
                     console.error(`  Code reconciliation error: ${err.message}`);
                     fs.writeFileSync(statePath, JSON.stringify({ status: 'sleeping', converged_at: new Date().toISOString() }, null, 2));
                 }
+                finally {
+                    codeChangeProcessing = false; // Release lock
+                }
             }, config.eventDebounceMs);
+        });
+        srcWatcher.on('error', (err) => {
+            console.error(`  ⚠️ Src watcher error: ${err.message}. Code change detection may be impaired.`);
         });
         activeWatchers.push(srcWatcher);
     }
@@ -1962,6 +2119,9 @@ Do NOT rewrite entire files — use Edit to append new content only.`);
                 // 'rename' fires when a new file is created — debounce rapid events
                 debouncedHandleEvent(dep.name, filename);
             }
+        });
+        watcher.on('error', (err) => {
+            console.error(`  ⚠️ Dependency watcher error (${dep.name}): ${err.message}`);
         });
         activeWatchers.push(watcher);
     }
@@ -2512,6 +2672,58 @@ Write the file using the Write tool NOW.`);
 const childProcesses = [];
 const activeWatchers = []; // Track fs.watch instances for clean teardown
 const pidFilePath = path.join(genomeDir, 'pids.json');
+/**
+ * Check if a process with the given PID is still alive.
+ */
+function isProcessAlive(pid) {
+    try {
+        process.kill(pid, 0); // Signal 0 = existence check (works on Windows + Unix in Node.js)
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Clean up stale PID file from a previous crashed convergence process.
+ * If the recorded PID is dead, remove the PID file so we can start fresh.
+ */
+function cleanupOrphanPids() {
+    if (!fs.existsSync(pidFilePath))
+        return;
+    try {
+        const existing = JSON.parse(fs.readFileSync(pidFilePath, 'utf-8'));
+        if (existing.self && !isProcessAlive(existing.self)) {
+            console.log(`  Cleaning up stale PID file (previous pid: ${existing.self} is dead).`);
+            // Kill any orphan children that might still be running
+            for (const child of existing.children || []) {
+                if (child.pid && isProcessAlive(child.pid)) {
+                    console.log(`  Killing orphan child: ${child.name} (pid: ${child.pid})`);
+                    try {
+                        if (platform() === 'win32') {
+                            execSync(`taskkill /T /F /PID ${child.pid}`, { stdio: 'pipe', windowsHide: true });
+                        }
+                        else {
+                            process.kill(child.pid, 'SIGTERM');
+                        }
+                    }
+                    catch { /* already dead */ }
+                }
+            }
+            fs.unlinkSync(pidFilePath);
+        }
+        else if (existing.self && isProcessAlive(existing.self) && existing.self !== process.pid) {
+            console.log(`  WARNING: Another convergence process (pid: ${existing.self}) is already running.`);
+        }
+    }
+    catch {
+        // Corrupted PID file — remove it
+        try {
+            fs.unlinkSync(pidFilePath);
+        }
+        catch { /* ok */ }
+    }
+}
 function writePidFile() {
     const pids = {
         self: process.pid,

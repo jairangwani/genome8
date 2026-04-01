@@ -19,10 +19,20 @@ describe("DetectDuplicates", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → compilation/DuplicateDetection", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: compilation/ErrorReport records each duplicate as a validation error with both module locations", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records each duplicate as a validation error with both module locations
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/DuplicateDetection → compilation/ErrorReport", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
 });

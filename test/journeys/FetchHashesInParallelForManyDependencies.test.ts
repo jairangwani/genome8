@@ -6,6 +6,8 @@
 import { describe, it, expect } from 'vitest';
 
 // Implementation: src/sync.ts
+// Implementation: test/staleness.test.ts
+// Implementation: test/sync-loop.test.ts
 
 describe("FetchHashesInParallelForManyDependencies", () => {
   it("step 1: _actors/DependentBox initiates sync for a box with a large number of upstream dependencies", () => {
@@ -20,10 +22,20 @@ describe("FetchHashesInParallelForManyDependencies", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/DependentBox → sync/ReadDependencyList", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/DependencyFanOutLimit validates the dependency count is within the configured maximum", () => {
     // Node: sync/DependencyFanOutLimit (rule)
     // Action: validates the dependency count is within the configured maximum
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ReadDependencyList → sync/DependencyFanOutLimit", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/FetchDependencyHashesConcurrently partitions the dependency list into concurrency-limited batches", () => {
@@ -32,10 +44,20 @@ describe("FetchHashesInParallelForManyDependencies", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DependencyFanOutLimit → sync/FetchDependencyHashesConcurrently", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/FetchDependencyHashesConcurrently dispatches parallel hash reads for each batch up to the concurrency limit", () => {
     // Node: sync/FetchDependencyHashesConcurrently (process)
     // Action: dispatches parallel hash reads for each batch up to the concurrency limit
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/FetchDependencyHashesConcurrently → sync/FetchDependencyHashesConcurrently", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/FetchDependencyHashesConcurrently collects all fetched hashes as each parallel batch completes", () => {
@@ -44,10 +66,20 @@ describe("FetchHashesInParallelForManyDependencies", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/FetchDependencyHashesConcurrently → sync/FetchDependencyHashesConcurrently", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/InterfaceHash provides the current hash from each dependency's published interface", () => {
     // Node: publish/InterfaceHash (artifact)
     // Action: provides the current hash from each dependency's published interface
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/FetchDependencyHashesConcurrently → publish/InterfaceHash", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: sync/DependencyHashStore provides stored hashes for all dependencies", () => {
@@ -56,16 +88,31 @@ describe("FetchHashesInParallelForManyDependencies", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/InterfaceHash → sync/DependencyHashStore", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: sync/CompareStoredHash compares all fetched hashes against their stored counterparts", () => {
-    // Node: sync/CompareStoredHash (process)
+    // Node: sync/CompareStoredHash (process) — has code: src/sync.ts
     // Action: compares all fetched hashes against their stored counterparts
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DependencyHashStore → sync/CompareStoredHash", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
+  });
+
   it("step 10: sync/SyncResult records the comparison results for all dependencies", () => {
-    // Node: sync/SyncResult (artifact)
+    // Node: sync/SyncResult (artifact) — has code: test/sync-loop.test.ts
     // Action: records the comparison results for all dependencies
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/CompareStoredHash → sync/SyncResult", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
 });

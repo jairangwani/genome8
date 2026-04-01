@@ -23,10 +23,20 @@ describe("VerifyReconvergenceIsIdempotent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/TargetedReconvergence → _actors/Compiler", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: compilation/CompilationResult records the compilation result after the first pass", () => {
     // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: records the compilation result after the first pass
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: graph/CompiledIndex snapshots the compiled graph state after the first reconvergence", () => {
@@ -35,10 +45,20 @@ describe("VerifyReconvergenceIsIdempotent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/CompilationResult → graph/CompiledIndex", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: convergence/VerifyReconvergenceIdempotency stores the first-pass graph snapshot for comparison", () => {
     // Node: convergence/VerifyReconvergenceIdempotency (process)
     // Action: stores the first-pass graph snapshot for comparison
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → convergence/VerifyReconvergenceIdempotency", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: convergence/TargetedReconvergence runs a second reconvergence pass on the same stale module set", () => {
@@ -47,10 +67,20 @@ describe("VerifyReconvergenceIsIdempotent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/VerifyReconvergenceIdempotency → convergence/TargetedReconvergence", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: _actors/Compiler compiles the graph after the second reconvergence pass", () => {
     // Node: _actors/Compiler (actor)
     // Action: compiles the graph after the second reconvergence pass
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/TargetedReconvergence → _actors/Compiler", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: compilation/CompilationResult records the compilation result after the second pass", () => {
@@ -59,10 +89,20 @@ describe("VerifyReconvergenceIsIdempotent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: graph/CompiledIndex snapshots the compiled graph state after the second reconvergence", () => {
     // Node: graph/CompiledIndex (artifact) — has code: src/types.ts
     // Action: snapshots the compiled graph state after the second reconvergence
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → graph/CompiledIndex", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: convergence/VerifyReconvergenceIdempotency compares the second-pass graph snapshot against the first-pass snapshot node by node, journey by journey, and connection by connection", () => {
@@ -71,10 +111,20 @@ describe("VerifyReconvergenceIsIdempotent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → convergence/VerifyReconvergenceIdempotency", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: compilation/CompilationResultComparison checks that both compilation results are structurally identical", () => {
     // Node: compilation/CompilationResultComparison (process)
     // Action: checks that both compilation results are structurally identical
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/VerifyReconvergenceIdempotency → compilation/CompilationResultComparison", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: convergence/VerifyReconvergenceIdempotency flags any differences as reconvergence drift indicating non-deterministic LLM output", () => {
@@ -83,16 +133,31 @@ describe("VerifyReconvergenceIsIdempotent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/CompilationResultComparison → convergence/VerifyReconvergenceIdempotency", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: compilation/ErrorReport records any drift as an idempotency violation with the specific nodes or journeys that changed", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records any drift as an idempotency violation with the specific nodes or journeys that changed
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/VerifyReconvergenceIdempotency → compilation/ErrorReport", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
+  });
+
   it("step 14: convergence/ConvergenceState records whether reconvergence idempotency check passed or failed", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records whether reconvergence idempotency check passed or failed
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/ErrorReport → convergence/ConvergenceState", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
   });
 
 });

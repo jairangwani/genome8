@@ -41,3 +41,17 @@ export declare function publishInterface(publishedDir: string, index: CompiledIn
     changelog: Changelog;
     skipped: boolean;
 };
+/**
+ * On cold start, scan the publish output directory for orphan .tmp files
+ * left by atomic write operations that crashed between temp file creation
+ * and rename. Removes them to prevent disk accumulation.
+ * Enables CleanupOrphanTempFilesOnColdStart journey.
+ */
+export declare function detectOrphanTempFiles(publishedDir: string): string[];
+/**
+ * Before incrementing the event sequence counter, check if the last event
+ * file already has the expected next sequence number (indicating a retry
+ * of an already-written event). Skips increment to prevent double-counting.
+ * Enables GuardSequenceCounterOnPublishRetry journey.
+ */
+export declare function guardSequenceCounter(eventPath: string, expectedNext: number): boolean;

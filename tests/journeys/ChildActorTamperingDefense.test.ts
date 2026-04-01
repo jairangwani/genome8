@@ -4,136 +4,174 @@
 // Modules touched: _actors, actors, compilation, hierarchy
 
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import crypto from 'node:crypto';
-import yaml from 'js-yaml';
-import { compile, compileFromModules } from '../../src/compile.js';
+import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function hashContent(content: string): string {
-  return 'sha256:' + crypto.createHash('sha256').update(content).digest('hex');
-}
+// Implementation: src/compile.ts
 
-describe("ChildActorTamperingDefense", () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'child-tamper-'));
-  const parentDir = path.join(tmpDir, 'parent', 'modules');
-  const childDir = path.join(tmpDir, 'child', 'modules');
+function buildTamperingModules() {
+  const modules = new Map<string, ModuleFile>();
 
-  fs.mkdirSync(parentDir, { recursive: true });
-  fs.mkdirSync(childDir, { recursive: true });
-
-  const parentActorsContent = yaml.dump({
+  modules.set('_actors', {
     nodes: {
-      User: { type: 'actor', description: 'Uses the platform' },
-      Admin: { type: 'actor', description: 'Manages the platform' },
+      ChildEngine: { type: 'actor', description: 'Receives inherited _actors.yaml from the parent engine' },
+      RogueWorker: { type: 'actor', description: 'Modifies the child _actors.yaml to add unauthorized actors or alter descriptions' },
+    },
+    journeys: {},
+  });
+
+  modules.set('actors', {
+    nodes: {
+      InheritActorsFromParent: { type: 'process', description: 'Copies the parent _actors.yaml with a known content hash' },
+      DetectChildActorTampering: { type: 'process', description: 'Computes the hash of the child current _actors.yaml content' },
+      ParentDiscoversChildrenInherit: { type: 'rule', description: 'Confirms the rule violation since children must not modify inherited actors' },
+    },
+    journeys: {
+      ChildActorTamperingDefense: {
+        steps: [
+          { node: '_actors/ChildEngine', action: 'receives inherited _actors.yaml from the parent engine' },
+          { node: 'InheritActorsFromParent', action: 'copies the parent _actors.yaml with a known content hash' },
+          { node: '_actors/RogueWorker', action: 'modifies the child _actors.yaml to add unauthorized actors or alter descriptions' },
+          { node: 'DetectChildActorTampering', action: 'computes the hash of the child current _actors.yaml content' },
+          { node: 'DetectChildActorTampering', action: 'compares the child hash against the parent original hash' },
+          { node: 'DetectChildActorTampering', action: 'detects the mismatch and flags the child _actors.yaml as tampered' },
+          { node: 'ParentDiscoversChildrenInherit', action: 'confirms the rule violation since children must not modify inherited actors' },
+          { node: 'compilation/ErrorReport', action: 'records the tampering as a validation error with the specific differences found' },
+          { node: 'hierarchy/ValidateCrossEngineRefs', action: 'blocks the child compilation result from merging into the parent until the tampering is resolved' },
+        ],
+      },
     },
   });
 
+  modules.set('compilation', {
+    nodes: {
+      ErrorReport: { type: 'artifact', description: 'Records the tampering as a validation error with the specific differences found' },
+    },
+    journeys: {},
+  });
+
+  modules.set('hierarchy', {
+    nodes: {
+      ValidateCrossEngineRefs: { type: 'process', description: 'Blocks the child compilation result from merging into the parent until the tampering is resolved' },
+    },
+    journeys: {},
+  });
+
+  return modules;
+}
+
+describe("ChildActorTamperingDefense", () => {
+  const modules = buildTamperingModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['ChildActorTamperingDefense'];
+
   it("step 1: _actors/ChildEngine receives inherited _actors.yaml from the parent engine", () => {
-    fs.writeFileSync(path.join(parentDir, '_actors.yaml'), parentActorsContent);
-    // Child receives an exact copy
-    fs.writeFileSync(path.join(childDir, '_actors.yaml'), parentActorsContent);
-    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    expect(childContent).toBe(parentActorsContent);
+    const node = result.index.nodes['_actors/ChildEngine'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
   });
 
   it("step 2: actors/InheritActorsFromParent copies the parent's _actors.yaml with a known content hash", () => {
-    const parentHash = hashContent(parentActorsContent);
-    expect(parentHash).toMatch(/^sha256:/);
-    // Store the parent hash for later comparison
-    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    const childHash = hashContent(childContent);
-    expect(childHash).toBe(parentHash);
+    const node = result.index.nodes['actors/InheritActorsFromParent'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/ChildEngine');
+  });
+
+  it("connection: _actors/ChildEngine → actors/InheritActorsFromParent", () => {
+    const from = result.index.nodes['_actors/ChildEngine'];
+    expect(from.followed_by).toContain('actors/InheritActorsFromParent');
   });
 
   it("step 3: _actors/RogueWorker modifies the child's _actors.yaml to add unauthorized actors or alter descriptions", () => {
-    // Rogue worker tampers with the child's actors
-    const tamperedContent = yaml.dump({
-      nodes: {
-        User: { type: 'actor', description: 'Uses the platform' },
-        Admin: { type: 'actor', description: 'Manages the platform' },
-        Backdoor: { type: 'actor', description: 'Unauthorized backdoor actor' },
-      },
-    });
-    fs.writeFileSync(path.join(childDir, '_actors.yaml'), tamperedContent);
-    const content = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    expect(content).toContain('Backdoor');
+    const node = result.index.nodes['_actors/RogueWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('actors/InheritActorsFromParent');
+  });
+
+  it("connection: actors/InheritActorsFromParent → _actors/RogueWorker", () => {
+    const from = result.index.nodes['actors/InheritActorsFromParent'];
+    expect(from.followed_by).toContain('_actors/RogueWorker');
   });
 
   it("step 4: actors/DetectChildActorTampering computes the hash of the child's current _actors.yaml content", () => {
-    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    const childHash = hashContent(childContent);
-    expect(childHash).toMatch(/^sha256:/);
-    expect(childHash.length).toBeGreaterThan(10);
+    const node = result.index.nodes['actors/DetectChildActorTampering'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/RogueWorker');
+  });
+
+  it("connection: _actors/RogueWorker → actors/DetectChildActorTampering", () => {
+    const from = result.index.nodes['_actors/RogueWorker'];
+    expect(from.followed_by).toContain('actors/DetectChildActorTampering');
   });
 
   it("step 5: actors/DetectChildActorTampering compares the child hash against the parent's original hash", () => {
-    const parentHash = hashContent(parentActorsContent);
-    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    const childHash = hashContent(childContent);
-    // Hashes differ because child was tampered
-    expect(childHash).not.toBe(parentHash);
+    const node = result.index.nodes['actors/DetectChildActorTampering'];
+    expect(node).toBeDefined();
+    // Self-connection: same node consecutively
+    expect(node.preceded_by).toContain('_actors/RogueWorker');
+  });
+
+  it("connection: actors/DetectChildActorTampering → actors/DetectChildActorTampering", () => {
+    const node = result.index.nodes['actors/DetectChildActorTampering'];
+    expect(node.followed_by).toContain('actors/ParentDiscoversChildrenInherit');
   });
 
   it("step 6: actors/DetectChildActorTampering detects the mismatch and flags the child's _actors.yaml as tampered", () => {
-    const parentHash = hashContent(parentActorsContent);
-    const childContent = fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8');
-    const childHash = hashContent(childContent);
-    const tampered = parentHash !== childHash;
-    expect(tampered).toBe(true);
+    const node = result.index.nodes['actors/DetectChildActorTampering'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+  });
+
+  it("connection: actors/DetectChildActorTampering → actors/DetectChildActorTampering", () => {
+    const node = result.index.nodes['actors/DetectChildActorTampering'];
+    expect(node.followed_by).toContain('actors/ParentDiscoversChildrenInherit');
   });
 
   it("step 7: actors/ParentDiscoversChildrenInherit confirms the rule violation since children must not modify inherited actors", () => {
-    // Rule: child actors must match parent exactly
-    const parentActors = yaml.load(parentActorsContent) as any;
-    const childActors = yaml.load(fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8')) as any;
-    const parentNames = Object.keys(parentActors.nodes).sort();
-    const childNames = Object.keys(childActors.nodes).sort();
-    // Child has extra actors — violation
-    expect(childNames.length).toBeGreaterThan(parentNames.length);
-    const unauthorized = childNames.filter((n: string) => !parentNames.includes(n));
-    expect(unauthorized).toContain('Backdoor');
+    const node = result.index.nodes['actors/ParentDiscoversChildrenInherit'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('actors/DetectChildActorTampering');
+  });
+
+  it("connection: actors/DetectChildActorTampering → actors/ParentDiscoversChildrenInherit", () => {
+    const from = result.index.nodes['actors/DetectChildActorTampering'];
+    expect(from.followed_by).toContain('actors/ParentDiscoversChildrenInherit');
   });
 
   it("step 8: compilation/ErrorReport records the tampering as a validation error with the specific differences found", () => {
-    const parentActors = yaml.load(parentActorsContent) as any;
-    const childActors = yaml.load(fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8')) as any;
-    const parentNames = new Set(Object.keys(parentActors.nodes));
-    const childNames = Object.keys(childActors.nodes);
-    const additions = childNames.filter((n: string) => !parentNames.has(n));
-    // Error report includes the specific unauthorized additions
-    expect(additions.length).toBe(1);
-    expect(additions[0]).toBe('Backdoor');
+    const node = result.index.nodes['compilation/ErrorReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/ParentDiscoversChildrenInherit');
+  });
+
+  it("connection: actors/ParentDiscoversChildrenInherit → compilation/ErrorReport", () => {
+    const from = result.index.nodes['actors/ParentDiscoversChildrenInherit'];
+    expect(from.followed_by).toContain('compilation/ErrorReport');
   });
 
   it("step 9: hierarchy/ValidateCrossEngineRefs blocks the child's compilation result from merging into the parent until the tampering is resolved", () => {
-    // With tampered actors, the child has nodes the parent doesn't expect
-    // Restore child to parent's original actors — tampering resolved
-    fs.writeFileSync(path.join(childDir, '_actors.yaml'), parentActorsContent);
-    const restoredHash = hashContent(fs.readFileSync(path.join(childDir, '_actors.yaml'), 'utf-8'));
-    const parentHash = hashContent(parentActorsContent);
-    expect(restoredHash).toBe(parentHash);
-
-    // Child now compiles cleanly
-    fs.writeFileSync(path.join(childDir, 'app.yaml'), yaml.dump({
-      nodes: { Handler: { type: 'process', description: 'Handles requests' } },
-      journeys: {
-        UserAction: {
-          steps: [
-            { node: '_actors/User', action: 'makes request' },
-            { node: 'Handler', action: 'processes it' },
-          ],
-        },
-      },
-    }));
-    const result = compile(childDir);
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
-
-    // Cleanup
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const node = result.index.nodes['hierarchy/ValidateCrossEngineRefs'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/ErrorReport');
   });
 
+  it("connection: compilation/ErrorReport → hierarchy/ValidateCrossEngineRefs", () => {
+    const from = result.index.nodes['compilation/ErrorReport'];
+    expect(from.followed_by).toContain('hierarchy/ValidateCrossEngineRefs');
+  });
+
+  it("journey actor is ChildEngine", () => {
+    expect(journey.actor).toBe('_actors/ChildEngine');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

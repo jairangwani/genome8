@@ -21,10 +21,20 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/TriggerCodegen → graph/CompiledIndex", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: codegen/ReadConvergedGraph extracts all nodes from the compiled index organized by module", () => {
     // Node: codegen/ReadConvergedGraph (process) — has code: src/codegen.ts
     // Action: extracts all nodes from the compiled index organized by module
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → codegen/ReadConvergedGraph", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: codegen/ProcessNodesOnly filters to process-type nodes only, excluding artifact, interface, and rule nodes", () => {
@@ -33,10 +43,20 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/ReadConvergedGraph → codegen/ProcessNodesOnly", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: codegen/CodeComesFromNodes ensures every skeleton maps to exactly one graph node", () => {
     // Node: codegen/CodeComesFromNodes (rule)
     // Action: ensures every skeleton maps to exactly one graph node
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/ProcessNodesOnly → codegen/CodeComesFromNodes", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: codegen/GenerateProcessSkeletons creates TypeScript class skeletons for all process nodes that have a files field", () => {
@@ -45,10 +65,20 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/CodeComesFromNodes → codegen/GenerateProcessSkeletons", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: codegen/DispatchByFileExtension routes .ts and .js files to the TypeScript generator, others to generic comment skeleton", () => {
     // Node: codegen/DispatchByFileExtension (process) — has code: src/codegen.ts
     // Action: routes .ts and .js files to the TypeScript generator, others to generic comment skeleton
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/GenerateProcessSkeletons → codegen/DispatchByFileExtension", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: codegen/EnrichSkeletonWithConnectionContext writes JSDoc header with description, in_journeys, preceded_by, followed_by, and triggered_by_actors", () => {
@@ -57,10 +87,20 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/DispatchByFileExtension → codegen/EnrichSkeletonWithConnectionContext", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: codegen/GenerateConfigInterface generates a TypeScript interface from the node's properties map if properties exist", () => {
     // Node: codegen/GenerateConfigInterface (process) — has code: src/codegen.ts
     // Action: generates a TypeScript interface from the node's properties map if properties exist
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/EnrichSkeletonWithConnectionContext → codegen/GenerateConfigInterface", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: codegen/GenerateJourneyMethodStubs adds one async method stub per journey with camelCase name and throw NotImplemented body", () => {
@@ -69,10 +109,20 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/GenerateConfigInterface → codegen/GenerateJourneyMethodStubs", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: codegen/NeverOverwriteExisting skips any file path where a file already exists on disk", () => {
     // Node: codegen/NeverOverwriteExisting (rule)
     // Action: skips any file path where a file already exists on disk
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/GenerateJourneyMethodStubs → codegen/NeverOverwriteExisting", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: codegen/EnsureOutputDirectory creates the parent directory tree if it does not yet exist", () => {
@@ -81,10 +131,20 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/NeverOverwriteExisting → codegen/EnsureOutputDirectory", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: codegen/WriteGeneratedFile writes each skeleton to disk at the declared file path", () => {
     // Node: codegen/WriteGeneratedFile (process) — has code: src/codegen.ts
     // Action: writes each skeleton to disk at the declared file path
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/EnsureOutputDirectory → codegen/WriteGeneratedFile", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
   });
 
   it("step 14: codegen/SkeletonFile stores the generated skeleton file for each process node", () => {
@@ -93,16 +153,31 @@ describe("GenerateSkeletonsFromGraph", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/WriteGeneratedFile → codegen/SkeletonFile", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
+  });
+
   it("step 15: codegen/CodegenResultSummary records generated file paths and skip reasons in the result", () => {
     // Node: codegen/CodegenResultSummary (artifact) — has code: src/codegen.ts
     // Action: records generated file paths and skip reasons in the result
     // TODO: agent fills assertion
   });
 
+  it("connection: codegen/SkeletonFile → codegen/CodegenResultSummary", () => {
+    // Assert that the output of step 14 feeds into step 15
+    // TODO: agent fills connection assertion
+  });
+
   it("step 16: codegen/SkeletonBeforeFill confirms skeletons are complete before any LLM filling begins", () => {
     // Node: codegen/SkeletonBeforeFill (rule)
     // Action: confirms skeletons are complete before any LLM filling begins
     // TODO: agent fills assertion
+  });
+
+  it("connection: codegen/CodegenResultSummary → codegen/SkeletonBeforeFill", () => {
+    // Assert that the output of step 15 feeds into step 16
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -240,4 +240,107 @@ export function narrowChangelog(changelog, index) {
         changes: narrowedChanges,
     };
 }
+/**
+ * Clear a stale sync lock on startup.
+ * If the lock is older than maxAge (default 5 min), release it.
+ * Returns true if a stale lock was cleared.
+ */
+export function clearStaleSyncLock(syncStatePath, maxAge = 5 * 60 * 1000) {
+    if (!fs.existsSync(syncStatePath))
+        return false;
+    try {
+        const state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+        if (!state.sync_in_progress)
+            return false;
+        const age = state.sync_started_at
+            ? Date.now() - new Date(state.sync_started_at).getTime()
+            : Infinity;
+        if (age >= maxAge) {
+            state.sync_in_progress = false;
+            fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+            return true;
+        }
+        return false;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Detect gaps in event sequence numbers for a dependency.
+ * Returns the missing sequence numbers between last processed and current.
+ * Enables ScanForMissedEventsOnWake and DetectAndRecoverMissedEventSequence.
+ */
+export function detectMissedEvents(syncState, dependency, currentSequence) {
+    const lastProcessed = syncState.last_processed_sequence?.[dependency] ?? 0;
+    if (currentSequence <= lastProcessed + 1)
+        return []; // No gap
+    const missed = [];
+    for (let i = lastProcessed + 1; i < currentSequence; i++) {
+        missed.push(i);
+    }
+    return missed;
+}
+/**
+ * Update the last processed sequence number for a dependency.
+ * Called after successfully processing an event.
+ */
+export function updateProcessedSequence(syncStatePath, dependency, sequenceNumber) {
+    let state = { known_hashes: {} };
+    if (fs.existsSync(syncStatePath)) {
+        try {
+            state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+        }
+        catch { /* fresh start */ }
+    }
+    if (!state.last_processed_sequence)
+        state.last_processed_sequence = {};
+    state.last_processed_sequence[dependency] = sequenceNumber;
+    fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+}
+/**
+ * Check if the ripple origin chain exceeds the configured depth limit.
+ * Returns true if the chain is too deep and propagation should be suppressed.
+ * Enables EnforceSyncRippleDepthLimit journey.
+ */
+export function checkRippleDepthLimit(originChain, maxDepth) {
+    return originChain.length >= maxDepth;
+}
+/**
+ * Release the sync lock unconditionally — used in error recovery paths
+ * to prevent permanent lock deadlock after unexpected failures.
+ * Enables ReleaseSyncLockOnPipelineError journey.
+ */
+export function releaseSyncLockOnError(syncStatePath) {
+    if (!fs.existsSync(syncStatePath))
+        return;
+    try {
+        const state = JSON.parse(fs.readFileSync(syncStatePath, 'utf-8'));
+        if (state.sync_in_progress) {
+            state.sync_in_progress = false;
+            fs.writeFileSync(syncStatePath, JSON.stringify(state, null, 2));
+        }
+    }
+    catch { /* nothing to release */ }
+}
+/**
+ * After markModulesStale runs, reads back each expected stale marker
+ * to verify the writes succeeded. Returns modules where the marker is missing.
+ * Enables RecoverInterruptedStaleMarkingOnRestart journey.
+ */
+export function detectStaleMarkingWriteFailure(modulesDir, expectedStale) {
+    const failed = [];
+    for (const mod of expectedStale) {
+        const filePath = path.join(modulesDir, `${mod}.yaml`);
+        if (!fs.existsSync(filePath)) {
+            failed.push(mod);
+            continue;
+        }
+        const content = fs.readFileSync(filePath, 'utf-8');
+        if (!content.includes('_stale: true')) {
+            failed.push(mod);
+        }
+    }
+    return failed;
+}
 //# sourceMappingURL=sync.js.map

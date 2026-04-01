@@ -19,10 +19,20 @@ describe("RunTestsAndCollectResults", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ExecuteTests → testgen/FilledTestFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: testgen/RunTests executes all test files and captures output", () => {
     // Node: testgen/RunTests (process)
     // Action: executes all test files and captures output
     // TODO: agent fills assertion
+  });
+
+  it("connection: testgen/FilledTestFile → testgen/RunTests", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: testgen/DetectTestExecutionCrash checks whether the runner exited cleanly or crashed abnormally", () => {
@@ -31,10 +41,20 @@ describe("RunTestsAndCollectResults", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: testgen/RunTests → testgen/DetectTestExecutionCrash", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: testgen/TestResultReport stores the pass/fail results for every test case", () => {
     // Node: testgen/TestResultReport (artifact)
     // Action: stores the pass/fail results for every test case
     // TODO: agent fills assertion
+  });
+
+  it("connection: testgen/DetectTestExecutionCrash → testgen/TestResultReport", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: testgen/CollectFailures gathers failing tests with error messages and stack traces", () => {
@@ -43,10 +63,20 @@ describe("RunTestsAndCollectResults", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: testgen/TestResultReport → testgen/CollectFailures", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: testgen/FailureFixList stores the failure list for the fix cycle", () => {
     // Node: testgen/FailureFixList (artifact)
     // Action: stores the failure list for the fix cycle
     // TODO: agent fills assertion
+  });
+
+  it("connection: testgen/CollectFailures → testgen/FailureFixList", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

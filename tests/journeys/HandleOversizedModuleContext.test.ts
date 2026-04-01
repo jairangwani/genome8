@@ -17,10 +17,20 @@ describe("HandleOversizedModuleContext", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ConvergenceState → graph/ModuleFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/HandleLargeModuleFile detects that the module file exceeds the Read tool's line limit", () => {
     // Node: llm/HandleLargeModuleFile (process)
     // Action: detects that the module file exceeds the Read tool's line limit
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/ModuleFile → llm/HandleLargeModuleFile", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/HandleLargeModuleFile reads the first chunk of the module using offset zero and a bounded line limit", () => {
@@ -29,10 +39,20 @@ describe("HandleOversizedModuleContext", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/HandleLargeModuleFile → llm/HandleLargeModuleFile", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/HandleLargeModuleFile reads subsequent chunks using incremented offsets until the entire file is covered", () => {
     // Node: llm/HandleLargeModuleFile (process)
     // Action: reads subsequent chunks using incremented offsets until the entire file is covered
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/HandleLargeModuleFile → llm/HandleLargeModuleFile", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: llm/HandleLargeModuleFile reassembles the chunks into the complete module content in memory", () => {
@@ -41,10 +61,20 @@ describe("HandleOversizedModuleContext", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/HandleLargeModuleFile → llm/HandleLargeModuleFile", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: llm/PrioritizeContextByRelevance identifies which parts of the large module are most relevant to the current task", () => {
     // Node: llm/PrioritizeContextByRelevance (process)
     // Action: identifies which parts of the large module are most relevant to the current task
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/HandleLargeModuleFile → llm/PrioritizeContextByRelevance", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: llm/BuildTaskContext assembles the task context using prioritized sections of the large module", () => {
@@ -53,10 +83,20 @@ describe("HandleOversizedModuleContext", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/PrioritizeContextByRelevance → llm/BuildTaskContext", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: llm/PayloadSizeBudget checks whether the assembled context fits within the maximum payload size", () => {
     // Node: llm/PayloadSizeBudget (rule)
     // Action: checks whether the assembled context fits within the maximum payload size
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/BuildTaskContext → llm/PayloadSizeBudget", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: llm/TruncatePayloadToFit truncates the lowest-priority sections of the large module context to fit the budget", () => {
@@ -65,16 +105,31 @@ describe("HandleOversizedModuleContext", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/PayloadSizeBudget → llm/TruncatePayloadToFit", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: llm/TaskPayload stores the right-sized payload with the most relevant parts of the large module preserved", () => {
     // Node: llm/TaskPayload (artifact)
     // Action: stores the right-sized payload with the most relevant parts of the large module preserved
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/TruncatePayloadToFit → llm/TaskPayload", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
+  });
+
   it("step 12: llm/SendTask sends the payload to the worker within message size limits", () => {
     // Node: llm/SendTask (process)
     // Action: sends the payload to the worker within message size limits
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/TaskPayload → llm/SendTask", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
   });
 
 });

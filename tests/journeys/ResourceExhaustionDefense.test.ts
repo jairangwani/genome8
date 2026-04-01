@@ -7,66 +7,149 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
+function buildExhaustionModules(opts?: { manyModules?: boolean }) {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      ResourceExhauster: { type: 'actor', description: 'Submits a spec designed to spawn unbounded child engines' },
+    },
+    journeys: {},
+  });
+
+  modules.set('organization', {
+    nodes: {
+      IdentifyModules: { type: 'process', description: 'Discovers modules from the spec' },
+      ModuleList: { type: 'artifact', description: 'Stores the module list' },
+    },
+    journeys: {},
+  });
+
+  modules.set('hierarchy', {
+    nodes: {
+      DecideSplit: { type: 'process', description: 'Evaluates whether the large module count warrants splitting' },
+    },
+    journeys: {},
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      BoundedCreationRule: { type: 'rule', description: 'Enforces that creation is bounded by modules times lenses' },
+      DataDecidesWhenToStop: { type: 'rule', description: 'Allows convergence to complete based on data, not loops' },
+    },
+    journeys: {
+      ResourceExhaustionDefense: {
+        steps: [
+          { node: '_actors/ResourceExhauster', action: 'submits a spec designed to spawn unbounded child engines' },
+          { node: 'organization/IdentifyModules', action: 'discovers a very large number of modules from the adversarial spec' },
+          { node: 'organization/ModuleList', action: 'stores the inflated module list' },
+          { node: 'hierarchy/DecideSplit', action: 'evaluates whether the large module count warrants splitting' },
+          { node: 'BoundedCreationRule', action: 'enforces that creation is bounded by modules times lenses, not unbounded' },
+          { node: 'DataDecidesWhenToStop', action: 'allows convergence to complete even with many modules since creation is bounded' },
+        ],
+      },
+    },
+  });
+
+  // If testing many modules, create a large number of filler modules
+  if (opts?.manyModules) {
+    for (let i = 0; i < 20; i++) {
+      modules.set(`filler${i}`, {
+        nodes: { [`Process${i}`]: { type: 'process', description: `Filler process ${i}` } },
+        journeys: {},
+      });
+    }
+  }
+
+  return modules;
+}
+
 describe("ResourceExhaustionDefense", () => {
+  const modules = buildExhaustionModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['ResourceExhaustionDefense'];
+
   it("step 1: _actors/ResourceExhauster submits a spec designed to spawn unbounded child engines", () => {
-    // Adversarial spec tries to produce a huge number of modules
-    const adversarialSpec = Array.from({ length: 200 }, (_, i) =>
-      `## ${i + 1}. Module${i}\nThis module does thing ${i}.`
-    ).join('\n');
-    expect(adversarialSpec.length).toBeGreaterThan(0);
-    // The spec describes 200 modules — potential exhaustion
-    expect(adversarialSpec).toContain('Module199');
+    const node = result.index.nodes['_actors/ResourceExhauster'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
   });
 
   it("step 2: organization/IdentifyModules discovers a very large number of modules from the adversarial spec", () => {
-    // Organization step produces a module list — could be very large
-    const discoveredModules = Array.from({ length: 200 }, (_, i) => `module${i}`);
-    expect(discoveredModules.length).toBe(200);
+    const node = result.index.nodes['organization/IdentifyModules'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/ResourceExhauster');
+  });
+
+  it("connection: _actors/ResourceExhauster → organization/IdentifyModules", () => {
+    const from = result.index.nodes['_actors/ResourceExhauster'];
+    expect(from.followed_by).toContain('organization/IdentifyModules');
   });
 
   it("step 3: organization/ModuleList stores the inflated module list", () => {
-    const moduleList = Array.from({ length: 200 }, (_, i) => `module${i}`);
-    // The list exists but is bounded — it's finite, not infinite
-    expect(moduleList.length).toBeLessThan(Infinity);
-    expect(typeof moduleList.length).toBe('number');
+    const node = result.index.nodes['organization/ModuleList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('organization/IdentifyModules');
+  });
+
+  it("connection: organization/IdentifyModules → organization/ModuleList", () => {
+    const from = result.index.nodes['organization/IdentifyModules'];
+    expect(from.followed_by).toContain('organization/ModuleList');
   });
 
   it("step 4: hierarchy/DecideSplit evaluates whether the large module count warrants splitting", () => {
-    const moduleCount = 200;
-    const splitThreshold = 15; // typical threshold for child engines
-    const shouldSplit = moduleCount > splitThreshold;
-    expect(shouldSplit).toBe(true);
-    // Even with splitting, each child gets a bounded subset
-    const childCount = Math.ceil(moduleCount / splitThreshold);
-    expect(childCount).toBeGreaterThan(1);
-    expect(childCount).toBeLessThanOrEqual(Math.ceil(200 / splitThreshold));
+    const node = result.index.nodes['hierarchy/DecideSplit'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('organization/ModuleList');
+  });
+
+  it("connection: organization/ModuleList → hierarchy/DecideSplit", () => {
+    const from = result.index.nodes['organization/ModuleList'];
+    expect(from.followed_by).toContain('hierarchy/DecideSplit');
   });
 
   it("step 5: convergence/BoundedCreationRule enforces that creation is bounded by modules times lenses, not unbounded", () => {
-    // Bounded creation: each module gets a fixed number of creation rounds (lenses)
-    const moduleCount = 200;
-    const lenses = 3; // typical: create, audit, fix
-    const maxCreationCalls = moduleCount * lenses;
-    // Creation is bounded — not infinite
-    expect(maxCreationCalls).toBe(600);
-    expect(maxCreationCalls).toBeLessThan(Infinity);
-    // Even with 200 modules, total work is finite and predictable
+    const node = result.index.nodes['convergence/BoundedCreationRule'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('hierarchy/DecideSplit');
+  });
+
+  it("connection: hierarchy/DecideSplit → convergence/BoundedCreationRule", () => {
+    const from = result.index.nodes['hierarchy/DecideSplit'];
+    expect(from.followed_by).toContain('convergence/BoundedCreationRule');
   });
 
   it("step 6: convergence/DataDecidesWhenToStop allows convergence to complete even with many modules since creation is bounded", () => {
-    // Even with many modules, compilation still works — compile a large set
-    const moduleMap = new Map<string, ModuleFile>();
-    for (let i = 0; i < 50; i++) {
-      moduleMap.set(`mod${i}`, {
-        nodes: { [`Process${i}`]: { type: 'process', description: `Process ${i}` } },
-      });
-    }
-    const result = compileFromModules(moduleMap);
-    // Compiles successfully with 50 modules
-    expect(result.index._stats.total_nodes).toBe(50);
-    expect(result.index._stats.modules).toBe(50);
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
+    const node = result.index.nodes['convergence/DataDecidesWhenToStop'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('convergence/BoundedCreationRule');
   });
 
+  it("connection: convergence/BoundedCreationRule → convergence/DataDecidesWhenToStop", () => {
+    const from = result.index.nodes['convergence/BoundedCreationRule'];
+    expect(from.followed_by).toContain('convergence/DataDecidesWhenToStop');
+  });
+
+  it("compilation handles many modules without errors", () => {
+    const manyModules = buildExhaustionModules({ manyModules: true });
+    const manyResult = compileFromModules(manyModules);
+    // 20 filler modules + 4 core modules = 24 modules
+    expect(Object.keys(manyResult.coverage.modules).length).toBeGreaterThanOrEqual(24);
+    const errors = manyResult.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
+
+  it("journey actor is ResourceExhauster", () => {
+    expect(journey.actor).toBe('_actors/ResourceExhauster');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

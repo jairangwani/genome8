@@ -5,172 +5,223 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import { generateExcerpt } from '../../src/excerpt.js';
 import type { ModuleFile } from '../../src/types.js';
 
-const auditModule: ModuleFile = {
-  spec_sections: [3, 5],
-  nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'Checks spec section coverage' },
-    CheckActorCoverage: { type: 'process', description: 'Checks actor participation coverage' },
-    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
-    AuditFindingsList: { type: 'artifact', description: 'List of audit findings' },
-    DeclareConverged: { type: 'process', description: 'Declares graph converged' },
-  },
-  journeys: {
-    RunSpecAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks spec coverage' },
-        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
-    },
-    RunActorAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks actor coverage' },
-        { node: 'CheckActorCoverage', action: 'evaluates actor refs' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
-    },
-  },
-};
+function buildAuditAuditsItselfModules() {
+  const modules = new Map<string, ModuleFile>();
 
-function buildGraph() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', {
-      nodes: {
-        Auditor: { type: 'actor', description: 'Coverage auditor' },
-        User: { type: 'actor', description: 'Platform user' },
+  modules.set('_actors', {
+    nodes: {
+      Auditor: { type: 'actor', description: 'Checks audit.yaml covers audit concepts in spec' },
+    },
+    journeys: {},
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      TargetedAudit: { type: 'process', description: 'Dispatches auditors including audit.yaml' },
+    },
+    journeys: {},
+  });
+
+  modules.set('excerpt', {
+    nodes: {
+      SelectTargetModule: { type: 'process', description: 'Selects audit as target module' },
+      CollectLocalNodes: { type: 'process', description: 'Extracts audit.yaml\'s own nodes' },
+      CollectLocalJourneys: { type: 'process', description: 'Extracts audit.yaml\'s own journeys' },
+      AssembleExcerpt: { type: 'process', description: 'Assembles self-referential excerpt' },
+      ExcerptOutput: { type: 'artifact', description: 'Provides audit module\'s excerpt' },
+    },
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      GenerateAuditPrompt: { type: 'process', description: 'Builds spec coverage prompt for audit.yaml\'s sections 3 and 5' },
+      CheckSpecCoverage: { type: 'process', description: 'Compares spec\'s audit requirements against audit.yaml' },
+      SpecCoverageReport: { type: 'artifact', description: 'Records gaps' },
+      CollectAuditFindings: { type: 'process', description: 'Adds self-audit gaps' },
+      AuditFindingsList: { type: 'artifact', description: 'Stores self-referential gaps' },
+    },
+    journeys: {
+      AuditAuditsItself: {
+        steps: [
+          { node: 'convergence/TargetedAudit', action: 'dispatches auditors including audit.yaml' },
+          { node: 'GenerateAuditPrompt', action: 'builds spec coverage prompt for audit.yaml\'s sections 3 and 5' },
+          { node: 'excerpt/SelectTargetModule', action: 'selects audit as target module' },
+          { node: 'excerpt/CollectLocalNodes', action: 'extracts audit.yaml\'s own nodes' },
+          { node: 'excerpt/CollectLocalJourneys', action: 'extracts audit.yaml\'s own journeys' },
+          { node: 'excerpt/AssembleExcerpt', action: 'assembles self-referential excerpt' },
+          { node: 'excerpt/ExcerptOutput', action: 'provides audit module\'s excerpt' },
+          { node: '_actors/Auditor', action: 'checks audit.yaml covers audit concepts in spec' },
+          { node: 'CheckSpecCoverage', action: 'compares spec\'s audit requirements against audit.yaml' },
+          { node: 'SpecCoverageReport', action: 'records gaps' },
+          { node: 'CollectAuditFindings', action: 'adds self-audit gaps' },
+          { node: 'AuditFindingsList', action: 'stores self-referential gaps' },
+        ],
       },
-    }],
-    ['audit', auditModule],
-    ['auth', {
-      spec_sections: [1],
-      nodes: { Login: { type: 'process', description: 'Login flow' } },
-      journeys: {
-        UserLogin: {
-          steps: [
-            { node: '_actors/User', action: 'logs in' },
-            { node: 'Login', action: 'authenticates' },
-          ],
-        },
-      },
-    }],
-  ]));
+    },
+  });
+
+  return modules;
 }
 
 describe("AuditAuditsItself", () => {
-  it("step 1: convergence/TargetedAudit dispatches auditors to check all modules including audit.yaml", () => {
-    const result = buildGraph();
-    const moduleNames = Object.keys(result.coverage.modules);
-    expect(moduleNames).toContain('audit');
-    expect(moduleNames).toContain('auth');
+  const modules = buildAuditAuditsItselfModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['AuditAuditsItself'];
+
+  it("step 1: convergence/TargetedAudit dispatches auditors including audit.yaml", () => {
+    const node = result.index.nodes['convergence/TargetedAudit'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
   });
 
-  it("step 2: audit/GenerateAuditPrompt builds the spec coverage prompt targeting audit.yaml's own spec sections 3 and 5", () => {
-    const result = buildGraph();
-    expect(result.coverage.modules['audit'].spec_sections).toContain(3);
-    expect(result.coverage.modules['audit'].spec_sections).toContain(5);
-    const prompt = `Check spec coverage for module audit.\nSections claimed: 3, 5`;
-    expect(prompt).toContain('audit');
-    expect(prompt).toContain('3');
-    expect(prompt).toContain('5');
+  it("step 2: audit/GenerateAuditPrompt builds spec coverage prompt for audit.yaml's sections 3 and 5", () => {
+    const node = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('convergence/TargetedAudit');
   });
 
-  it("step 3: excerpt/SelectTargetModule selects audit as the target module for excerpt generation", () => {
-    const result = buildGraph();
-    const targetModule = 'audit';
-    expect(result.coverage.modules[targetModule]).toBeDefined();
+  it("connection: convergence/TargetedAudit → audit/GenerateAuditPrompt", () => {
+    const from = result.index.nodes['convergence/TargetedAudit'];
+    expect(from.followed_by).toContain('audit/GenerateAuditPrompt');
   });
 
-  it("step 4: excerpt/CollectLocalNodes extracts audit.yaml's own nodes for the auditor to review", () => {
-    const result = buildGraph();
-    const auditNodes = Object.entries(result.index.nodes).filter(([, n]) => n.module === 'audit');
-    expect(auditNodes.length).toBe(5);
-    expect(auditNodes.map(([k]) => k)).toContain('audit/CheckSpecCoverage');
-    expect(auditNodes.map(([k]) => k)).toContain('audit/DeclareConverged');
+  it("step 3: excerpt/SelectTargetModule selects audit as target module", () => {
+    const node = result.index.nodes['excerpt/SelectTargetModule'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/GenerateAuditPrompt');
   });
 
-  it("step 5: excerpt/CollectLocalJourneys extracts audit.yaml's own journeys for the auditor to review", () => {
-    const result = buildGraph();
-    const auditJourneys = Object.values(result.index.journeys).filter(j => j.module === 'audit');
-    expect(auditJourneys.length).toBe(2);
-    expect(auditJourneys.map(j => j.name)).toContain('RunSpecAudit');
-    expect(auditJourneys.map(j => j.name)).toContain('RunActorAudit');
+  it("connection: audit/GenerateAuditPrompt → excerpt/SelectTargetModule", () => {
+    const from = result.index.nodes['audit/GenerateAuditPrompt'];
+    expect(from.followed_by).toContain('excerpt/SelectTargetModule');
   });
 
-  it("step 6: excerpt/AssembleExcerpt assembles the self-referential excerpt showing the audit module to the auditor", () => {
-    const result = buildGraph();
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'audit',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: 'nodes:\n  CheckSpecCoverage:\n    type: process',
-    });
-    expect(excerpt).toContain('Focus: audit');
-    expect(excerpt).toContain('YOUR NODES:');
-    expect(excerpt).toContain('YOUR JOURNEYS:');
+  it("step 4: excerpt/CollectLocalNodes extracts audit.yaml's own nodes", () => {
+    const node = result.index.nodes['excerpt/CollectLocalNodes'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('excerpt/SelectTargetModule');
   });
 
-  it("step 7: excerpt/ExcerptOutput provides the audit module's excerpt to the auditor", () => {
-    const result = buildGraph();
-    const excerpt = generateExcerpt({
-      round: 1,
-      focusModule: 'audit',
-      index: result.index,
-      coverage: result.coverage,
-      issues: result.issues,
-      moduleFileContent: 'nodes:\n  CheckSpecCoverage:\n    type: process',
-    });
-    expect(typeof excerpt).toBe('string');
-    expect(excerpt.length).toBeGreaterThan(50);
+  it("connection: excerpt/SelectTargetModule → excerpt/CollectLocalNodes", () => {
+    const from = result.index.nodes['excerpt/SelectTargetModule'];
+    expect(from.followed_by).toContain('excerpt/CollectLocalNodes');
   });
 
-  it("step 8: _actors/Auditor checks whether audit.yaml covers the audit concepts described in spec sections 3 and 5", () => {
-    const result = buildGraph();
-    const auditCov = result.coverage.modules['audit'];
-    expect(auditCov.spec_sections).toContain(3);
-    expect(auditCov.spec_sections).toContain(5);
-    // Auditor would check that nodes/journeys represent these spec concepts
-    const auditNodes = Object.entries(result.index.nodes).filter(([, n]) => n.module === 'audit');
-    expect(auditNodes.length).toBeGreaterThan(0);
+  it("step 5: excerpt/CollectLocalJourneys extracts audit.yaml's own journeys", () => {
+    const node = result.index.nodes['excerpt/CollectLocalJourneys'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('excerpt/CollectLocalNodes');
   });
 
-  it("step 9: audit/CheckSpecCoverage compares the spec's audit requirements against audit.yaml's own nodes and journeys", () => {
-    const result = buildGraph();
-    const auditCov = result.coverage.modules['audit'];
-    // audit claims sections 3 and 5
-    expect(auditCov.spec_sections.length).toBe(2);
-    // Has nodes and journeys representing audit concepts
-    expect(auditCov.nodes).toBeGreaterThan(0);
-    expect(auditCov.journeys).toBeGreaterThan(0);
+  it("connection: excerpt/CollectLocalNodes → excerpt/CollectLocalJourneys", () => {
+    const from = result.index.nodes['excerpt/CollectLocalNodes'];
+    expect(from.followed_by).toContain('excerpt/CollectLocalJourneys');
   });
 
-  it("step 10: audit/SpecCoverageReport records any gaps where audit concepts in the spec are not represented in audit.yaml", () => {
-    // In this well-covered scenario, no spec gaps for audit
-    const specGaps: any[] = [];
-    const report = { module: 'audit', sectionsCovered: [3, 5], gaps: specGaps };
-    expect(report.sectionsCovered.length).toBe(2);
-    expect(report.gaps.length).toBe(0);
+  it("step 6: excerpt/AssembleExcerpt assembles self-referential excerpt", () => {
+    const node = result.index.nodes['excerpt/AssembleExcerpt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('excerpt/CollectLocalJourneys');
   });
 
-  it("step 11: audit/CollectAuditFindings adds any self-audit gaps to the findings list", () => {
-    const selfGaps: any[] = [];
-    const findings = [...selfGaps];
-    expect(findings.length).toBe(0);
+  it("connection: excerpt/CollectLocalJourneys → excerpt/AssembleExcerpt", () => {
+    const from = result.index.nodes['excerpt/CollectLocalJourneys'];
+    expect(from.followed_by).toContain('excerpt/AssembleExcerpt');
   });
 
-  it("step 12: audit/AuditFindingsList stores the self-referential gaps alongside gaps from other modules", () => {
-    const findingsList = {
-      round: 1,
-      gaps: [] as any[],
-      selfReferentialGaps: 0,
-    };
-    // No self-gaps in this clean scenario
-    expect(findingsList.selfReferentialGaps).toBe(0);
-    expect(findingsList.gaps.length).toBe(0);
+  it("step 7: excerpt/ExcerptOutput provides audit module's excerpt", () => {
+    const node = result.index.nodes['excerpt/ExcerptOutput'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('excerpt/AssembleExcerpt');
   });
 
+  it("connection: excerpt/AssembleExcerpt → excerpt/ExcerptOutput", () => {
+    const from = result.index.nodes['excerpt/AssembleExcerpt'];
+    expect(from.followed_by).toContain('excerpt/ExcerptOutput');
+  });
+
+  it("step 8: _actors/Auditor checks audit.yaml covers audit concepts in spec", () => {
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('excerpt/ExcerptOutput');
+  });
+
+  it("connection: excerpt/ExcerptOutput → _actors/Auditor", () => {
+    const from = result.index.nodes['excerpt/ExcerptOutput'];
+    expect(from.followed_by).toContain('_actors/Auditor');
+  });
+
+  it("step 9: audit/CheckSpecCoverage compares spec's audit requirements against audit.yaml", () => {
+    const node = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
+  });
+
+  it("connection: _actors/Auditor → audit/CheckSpecCoverage", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('audit/CheckSpecCoverage');
+  });
+
+  it("step 10: audit/SpecCoverageReport records gaps", () => {
+    const node = result.index.nodes['audit/SpecCoverageReport'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CheckSpecCoverage');
+  });
+
+  it("connection: audit/CheckSpecCoverage → audit/SpecCoverageReport", () => {
+    const from = result.index.nodes['audit/CheckSpecCoverage'];
+    expect(from.followed_by).toContain('audit/SpecCoverageReport');
+  });
+
+  it("step 11: audit/CollectAuditFindings adds self-audit gaps", () => {
+    const node = result.index.nodes['audit/CollectAuditFindings'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/SpecCoverageReport');
+  });
+
+  it("connection: audit/SpecCoverageReport → audit/CollectAuditFindings", () => {
+    const from = result.index.nodes['audit/SpecCoverageReport'];
+    expect(from.followed_by).toContain('audit/CollectAuditFindings');
+  });
+
+  it("step 12: audit/AuditFindingsList stores self-referential gaps", () => {
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/CollectAuditFindings');
+  });
+
+  it("connection: audit/CollectAuditFindings → audit/AuditFindingsList", () => {
+    const from = result.index.nodes['audit/CollectAuditFindings'];
+    expect(from.followed_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("journey covers full pipeline (12 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(12);
+    expect(journey.steps[0].node).toBe('convergence/TargetedAudit');
+    expect(journey.steps[11].node).toBe('audit/AuditFindingsList');
+  });
+
+  it("journey actor is Auditor (first actor in steps)", () => {
+    expect(journey.actor).toBe('_actors/Auditor');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

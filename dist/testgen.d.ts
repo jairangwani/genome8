@@ -38,3 +38,40 @@ export declare function runTests(testDir: string): TestResult;
  * Useful for in-memory testing.
  */
 export declare function generateJourneyTestString(name: string, journey: CompiledJourney, index: CompiledIndex): string;
+/**
+ * Scan filled test assertions for trivial patterns that pass without
+ * verifying actual journey step behavior. Returns flagged test names.
+ * Enables RejectTrivialAssertionFill journey.
+ */
+export declare function detectTrivialAssertions(testContent: string): string[];
+/**
+ * Compare describe/it blocks in a filled test file against the journey's
+ * step list. Returns mismatches (added, removed, or merged test cases).
+ * Enables RecoverFromTestCaseStructureMismatch journey.
+ */
+export declare function validateTestCaseStructure(testContent: string, journey: CompiledJourney): {
+    valid: boolean;
+    expected: string[];
+    actual: string[];
+    missing: string[];
+    extra: string[];
+};
+/**
+ * Classify a test failure's root cause after fix retries are exhausted.
+ * Returns 'code_bug', 'test_bug', or 'graph_bug'.
+ * Enables EscalateGraphBugToConvergence and EscalateGraphBugToAudit journeys.
+ */
+export declare function diagnoseFailureRoot(failure: {
+    file: string;
+    test: string;
+    error: string;
+}, fixHistory: Array<{
+    attempt: number;
+    error: string;
+}>): 'code_bug' | 'test_bug' | 'graph_bug';
+/**
+ * Check whether implementation files exist for a module's nodes before
+ * generating or filling test skeletons. Returns missing file paths.
+ * Enables SkipTestsForUnfilledModule journey.
+ */
+export declare function detectMissingImplementation(journey: CompiledJourney, index: CompiledIndex, projectDir: string): string[];

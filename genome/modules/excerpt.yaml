@@ -125,6 +125,18 @@ nodes:
   AdaptiveBudgetAllocation:
     type: rule
     description: the ~200 line budget is allocated dynamically across sections based on module complexity, giving more space to cross-module connections for highly-connected modules and more to source for complex modules
+  StabilizeRelevanceRankTiebreaking:
+    type: process
+    description: when two cross-module connections share the same relevance score during ranking, breaks ties using deterministic alphabetical ordering of module name then node name to prevent non-deterministic output ordering across runs
+  CompressLocalNodeList:
+    type: process
+    description: when a module's node count exceeds the per-section budget threshold, groups nodes by type with counts and lists only the most-connected node names per type instead of enumerating every node
+  CompressLocalJourneyList:
+    type: process
+    description: when a module's journey count exceeds the per-section budget threshold, groups journeys by category and lists only the most cross-connected journey names instead of enumerating every journey
+  TargetedCacheInvalidation:
+    type: process
+    description: when compilation changes specific modules, invalidates only cache entries for those modules and their direct cross-module neighbors instead of clearing the entire cache
   ExcerptCLI:
     type: interface
     description: command-line interface to run excerpt generation for a target module with an optional round number
@@ -655,8 +667,8 @@ journeys:
       - node: ExcerptOutput
         action: stores the excerpt with spec coverage gaps surfaced as actionable warnings
 
-  EnforceDeterministicCollectionOrder:
-    files: [test/journeys/EnforceDeterministicCollectionOrder.test.ts]
+  EnforceDeterministicExcerptCollectionOrder:
+    files: [test/journeys/EnforceDeterministicExcerptCollectionOrder.test.ts]
     steps:
       - node: SelectTargetModule
         action: identifies the target module for excerpt generation
@@ -939,3 +951,154 @@ journeys:
         action: includes the ranked dependency interface summaries in the cross-module section
       - node: TruncateToLimit
         action: trims to budget, giving higher priority to heavily-referenced dependency interfaces
+
+  ProvideExcerptForChildModuleCreation:
+    steps:
+      - node: convergence/SplitIntoChildEngines
+        action: requests focused context for creating a module inside a child engine after hierarchy split
+      - node: SelectTargetModule
+        action: identifies the child module to be created within the child engine's scope
+      - node: hierarchy/ChildOrganizationFile
+        action: provides the child engine's organization with the subset of spec sections assigned to this child
+      - node: CollectSpecSectionText
+        action: extracts the spec text for the child module's assigned sections from the child organization
+      - node: publish/InterfaceYamlFile
+        action: provides the parent engine's published interface so the child knows available cross-engine nodes
+      - node: graph/CompiledIndex
+        action: provides the child engine's compiled index with sibling modules already created
+      - node: CollectAllModuleSummaries
+        action: gathers summaries of sibling modules within the same child engine for cross-reference context
+      - node: CollectCrossModuleConnections
+        action: finds existing connections between sibling modules relevant to the new child module
+      - node: CollectReferencedActors
+        action: identifies actors relevant to the child module from the inherited actor list
+      - node: LensRelevance
+        action: filters context to what is relevant for this specific child module's spec scope
+      - node: AssembleExcerpt
+        action: builds the child-creation excerpt combining parent interface, sibling context, and spec sections
+      - node: TruncateToLimit
+        action: trims to the line budget while preserving spec text and parent interface as high priority
+      - node: ExcerptOutput
+        action: provides the child-creation excerpt to the child engine's worker for module creation
+
+  EnforceDeterministicRelevanceRanking:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a highly-connected module with many cross-module connections of varying relevance
+      - node: CollectCrossModuleConnections
+        action: gathers all cross-module connections for the target module in arbitrary enumeration order
+      - node: RankCrossModuleByRelevance
+        action: scores each connection by relevance, producing groups of connections with equal scores
+      - node: StabilizeRelevanceRankTiebreaking
+        action: within each equal-score group, sorts connections alphabetically by module name then node name
+      - node: StabilizeRelevanceRankTiebreaking
+        action: produces a fully ordered connection list where position is deterministic regardless of input enumeration order
+      - node: AssembleExcerpt
+        action: assembles the excerpt using the deterministically ranked and tiebroken connections
+      - node: VerifyExcerptReproducibility
+        action: generates the excerpt a second time and compares the ranked connection section byte-for-byte to confirm stable ordering
+
+  VerifyNoStateLeakageBetweenGenerations:
+    steps:
+      - node: SelectTargetModule
+        action: identifies module A as the first generation target
+      - node: graph/CompiledIndex
+        action: provides the compiled index as fixed input for all generation passes
+      - node: AssembleExcerpt
+        action: generates the excerpt for module A and stores the output
+      - node: ExcerptOutput
+        action: stores the first-pass excerpt for module A
+      - node: SelectTargetModule
+        action: identifies a different module B as an intervening generation target
+      - node: AssembleExcerpt
+        action: generates the excerpt for module B, exercising shared collection and assembly state
+      - node: SelectTargetModule
+        action: re-identifies module A as the generation target
+      - node: AssembleExcerpt
+        action: generates the excerpt for module A a second time after module B's generation
+      - node: VerifyExcerptReproducibility
+        action: compares the second module A excerpt byte-for-byte against the first module A excerpt
+      - node: VerifyExcerptReproducibility
+        action: flags any differences as state leakage between successive excerpt generation calls
+
+  VerifyBatchGenerationIdempotency:
+    steps:
+      - node: convergence/ParallelModuleCreation
+        action: requests batch excerpt generation for the same set of target modules
+      - node: graph/CompiledIndex
+        action: provides the compiled index as fixed input for both batch passes
+      - node: BatchGenerateExcerpts
+        action: generates excerpts for all target modules in the first batch pass
+      - node: ExcerptOutput
+        action: stores the first-pass excerpts for all modules in the batch
+      - node: BatchGenerateExcerpts
+        action: generates excerpts for the same target modules in a second batch pass
+      - node: VerifyExcerptReproducibility
+        action: compares each module's second-pass excerpt byte-for-byte against its first-pass excerpt
+      - node: VerifyExcerptReproducibility
+        action: flags any per-module differences as non-determinism in the batch generation pipeline
+
+  HandleHighNodeCountModule:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module with a high number of node definitions exceeding the per-section budget
+      - node: graph/CompiledIndex
+        action: provides the compiled index with connection counts per node for ranking
+      - node: CollectLocalNodes
+        action: gathers all nodes defined in the target module and detects the count exceeds the node budget threshold
+      - node: CompressLocalNodeList
+        action: groups nodes by type producing a count per type summary
+      - node: CompressLocalNodeList
+        action: selects the most-connected nodes per type to list by name based on cross-module connection count
+      - node: CompressLocalNodeList
+        action: formats remaining nodes as a count-per-type line omitting individual names
+      - node: AdaptiveBudgetAllocation
+        action: reallocates the saved lines from node compression to other sections
+      - node: AssembleExcerpt
+        action: includes the compressed YOUR NODES section with type groups and key node names
+      - node: TruncateToLimit
+        action: trims the excerpt to the line budget with the compressed node list
+      - node: ExcerptOutput
+        action: stores the excerpt with compressed node list fitting within budget
+
+  HandleHighJourneyCountModule:
+    steps:
+      - node: SelectTargetModule
+        action: identifies a module with a high number of journey definitions exceeding the per-section budget
+      - node: graph/CompiledIndex
+        action: provides the compiled index with cross-module connection data for ranking journey importance
+      - node: CollectLocalJourneys
+        action: gathers all journeys defined in the target module and detects the count exceeds the journey budget threshold
+      - node: CompressLocalJourneyList
+        action: identifies which journeys have cross-module steps making them high-priority for inclusion
+      - node: CompressLocalJourneyList
+        action: lists high-priority cross-module journeys by name with step counts
+      - node: CompressLocalJourneyList
+        action: groups remaining internal-only journeys into a count summary line
+      - node: AdaptiveBudgetAllocation
+        action: reallocates the saved lines from journey compression to other sections
+      - node: AssembleExcerpt
+        action: includes the compressed YOUR JOURNEYS section with key journeys and grouped counts
+      - node: TruncateToLimit
+        action: trims the excerpt to the line budget with the compressed journey list
+      - node: ExcerptOutput
+        action: stores the excerpt with compressed journey list fitting within budget
+
+  InvalidateOnlyAffectedExcerptCaches:
+    steps:
+      - node: _actors/Compiler
+        action: completes a compilation that changed specific modules in the compiled index
+      - node: graph/CompiledIndex
+        action: provides the new compiled index along with the list of modules whose data changed
+      - node: compilation/CompilationResult
+        action: identifies which module names had their nodes, journeys, or connections modified
+      - node: TargetedCacheInvalidation
+        action: collects the set of changed module names from the compilation diff
+      - node: CollectCrossModuleConnections
+        action: finds all modules that have cross-module connections to any changed module
+      - node: TargetedCacheInvalidation
+        action: expands the invalidation set to include direct cross-module neighbors of changed modules
+      - node: TargetedCacheInvalidation
+        action: evicts cache entries only for modules in the invalidation set, preserving valid entries for unaffected modules
+      - node: CacheExcerptByState
+        action: retains cached excerpts for all modules outside the invalidation set, avoiding unnecessary regeneration

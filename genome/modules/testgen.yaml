@@ -609,3 +609,83 @@ journeys:
         action: collects findings from the re-audit triggered by the test failure
       - node: audit/BuildGapFixPrompt
         action: generates a targeted fix for the graph gap that caused the test failure
+
+  RecoverFromWorkerCrashDuringTestFill:
+    steps:
+      - node: llm/SendTask
+        action: sends the fill task to the LLM worker
+      - node: _actors/LLMWorker
+        action: begins processing the fill task but crashes mid-response
+      - node: llm/ReceiveResult
+        action: detects the worker returned an error or partial response instead of a complete fill
+      - node: FilledTestFile
+        action: no valid filled file produced — discards any partial output
+      - node: TestSkeletonFile
+        action: provides the original skeleton for retry
+      - node: ProvideTestgenExcerpt
+        action: re-assembles context for the retry attempt
+      - node: llm/SendTask
+        action: re-sends the fill task to a fresh worker
+      - node: _actors/LLMWorker
+        action: processes the fill task on the replacement worker
+      - node: FillTestAssertions
+        action: LLM fills assertions on the retry attempt
+      - node: llm/ReceiveResult
+        action: receives the completed fill from the fresh worker
+      - node: ValidateFilledTestSyntax
+        action: validates the retry result before writing
+
+  HandleTestWriteFailure:
+    steps:
+      - node: FillTestAssertions
+        action: has produced a validated filled test file
+      - node: ValidateFilledTestSyntax
+        action: confirmed the fill compiles correctly
+      - node: WriteTestFile
+        action: attempts to write the test file to disk and encounters a write error
+      - node: WriteTestFile
+        action: retries the write after a brief delay
+      - node: WriteTestFile
+        action: if retry still fails, reports the error with the target path and error details
+      - node: TestResultReport
+        action: records the write failure for the affected journey's test
+      - node: SelectNextTestToFill
+        action: advances to the next test to avoid blocking the pipeline on one write failure
+      - node: convergence/ConvergenceState
+        action: records the write failure as a non-test issue requiring attention
+
+  HandleSkeletonGenerationFailure:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides journey data for skeleton generation
+      - node: ReadJourneySteps
+        action: attempts to extract steps from a journey and encounters malformed or missing step data
+      - node: ReadJourneySteps
+        action: logs the malformed journey with the specific parse error
+      - node: GenerateTestFilePerJourney
+        action: skips the malformed journey and continues with the next valid journey
+      - node: TestResultReport
+        action: records which journeys were skipped due to malformed data
+      - node: TestSkeletonFile
+        action: stores skeletons only for successfully parsed journeys
+      - node: convergence/ConvergenceState
+        action: reports the malformed journey data for graph re-audit
+
+  ValidateFixPreservesTestStructure:
+    steps:
+      - node: ApplyTestFix
+        action: has edited a test file to fix a failure
+      - node: ValidateTestCaseStructure
+        action: extracts the describe and it blocks from the post-fix test file
+      - node: graph/CompiledIndex
+        action: provides the journey's step list as the authoritative test case source
+      - node: ValidateTestCaseStructure
+        action: compares the post-fix test cases against the journey steps to detect removed or merged cases
+      - node: StepsAreTestCases
+        action: enforces that the fix preserved the 1-to-1 step-to-test mapping
+      - node: RevertFailedTestFix
+        action: if any test case was removed or merged by the fix, reverts as a destructive edit
+      - node: GenerateFixPrompt
+        action: rebuilds the fix prompt with explicit instruction that test cases must not be removed or restructured
+      - node: SelectNextFailureToFix
+        action: re-queues the failure for a non-destructive fix attempt

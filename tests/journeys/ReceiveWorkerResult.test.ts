@@ -18,16 +18,31 @@ describe("ReceiveWorkerResult", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → llm/StreamJsonProtocol", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/ReceiveResult parses the stream-json output into structured result data", () => {
     // Node: llm/ReceiveResult (process)
     // Action: parses the stream-json output into structured result data
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/StreamJsonProtocol → llm/ReceiveResult", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
+  });
+
   it("step 4: llm/TaskResult stores the parsed result for the orchestrator to consume", () => {
     // Node: llm/TaskResult (artifact)
     // Action: stores the parsed result for the orchestrator to consume
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/ReceiveResult → llm/TaskResult", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
   });
 
 });

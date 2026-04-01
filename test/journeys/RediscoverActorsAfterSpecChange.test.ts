@@ -18,10 +18,20 @@ describe("RediscoverActorsAfterSpecChange", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/TargetedReconvergence → convergence/SpecFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: actors/RediscoverActorsOnSpecChange reads the current _actors.yaml to know the existing actor set", () => {
     // Node: actors/RediscoverActorsOnSpecChange (process)
     // Action: reads the current _actors.yaml to know the existing actor set
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/SpecFile → actors/RediscoverActorsOnSpecChange", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: _actors/LLMWorker re-analyzes the changed spec from the activities perspective", () => {
@@ -30,10 +40,20 @@ describe("RediscoverActorsAfterSpecChange", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/RediscoverActorsOnSpecChange → _actors/LLMWorker", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: actors/DiscoverFromActivities re-identifies activity actors from the updated spec", () => {
     // Node: actors/DiscoverFromActivities (process)
     // Action: re-identifies activity actors from the updated spec
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromActivities", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: _actors/LLMWorker re-analyzes the changed spec from the threats perspective", () => {
@@ -42,10 +62,20 @@ describe("RediscoverActorsAfterSpecChange", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/DiscoverFromActivities → _actors/LLMWorker", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: actors/DiscoverFromThreats re-identifies threat actors from the updated spec", () => {
     // Node: actors/DiscoverFromThreats (process)
     // Action: re-identifies threat actors from the updated spec
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromThreats", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: _actors/LLMWorker re-analyzes the changed spec from the lifecycle perspective", () => {
@@ -54,10 +84,20 @@ describe("RediscoverActorsAfterSpecChange", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/DiscoverFromThreats → _actors/LLMWorker", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: actors/DiscoverFromLifecycle re-identifies lifecycle actors from the updated spec", () => {
     // Node: actors/DiscoverFromLifecycle (process)
     // Action: re-identifies lifecycle actors from the updated spec
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromLifecycle", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: actors/MergeAndDeduplicate merges the rediscovered actors and removes duplicates", () => {
@@ -66,10 +106,20 @@ describe("RediscoverActorsAfterSpecChange", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/DiscoverFromLifecycle → actors/MergeAndDeduplicate", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: actors/UpdateActorsFileAfterRediscovery diffs the rediscovered set against the existing actors to find additions and removals", () => {
     // Node: actors/UpdateActorsFileAfterRediscovery (process)
     // Action: diffs the rediscovered set against the existing actors to find additions and removals
     // TODO: agent fills assertion
+  });
+
+  it("connection: actors/MergeAndDeduplicate → actors/UpdateActorsFileAfterRediscovery", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: actors/UpdateActorsFileAfterRediscovery adds new actors to _actors.yaml and flags removed actors for orphan detection", () => {
@@ -78,16 +128,31 @@ describe("RediscoverActorsAfterSpecChange", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/UpdateActorsFileAfterRediscovery → actors/UpdateActorsFileAfterRediscovery", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: actors/WriteActorsFile writes the updated _actors.yaml to disk", () => {
     // Node: actors/WriteActorsFile (process)
     // Action: writes the updated _actors.yaml to disk
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/UpdateActorsFileAfterRediscovery → actors/WriteActorsFile", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
+  });
+
   it("step 14: actors/ActorsFile the updated actor file is ready for recompilation", () => {
     // Node: actors/ActorsFile (artifact)
     // Action: the updated actor file is ready for recompilation
     // TODO: agent fills assertion
+  });
+
+  it("connection: actors/WriteActorsFile → actors/ActorsFile", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
   });
 
 });

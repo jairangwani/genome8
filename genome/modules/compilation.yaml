@@ -39,6 +39,7 @@ nodes:
   StaleConnectionDetection:
     type: process
     description: validates that every edge in the ConnectionSet has both source and target nodes present in the NodeRegistry, catching connections left stale after node removal or module rewrite
+    files: ["src/compile.ts"]
   CompilationResultComparison:
     type: process
     description: compares two CompilationResults or CompiledIndexes field by field for structural equality, flagging any differences as non-determinism or merge-order drift
@@ -51,12 +52,23 @@ nodes:
   SchemaViolationDetection:
     type: process
     description: validates each parsed module file has the required top-level structure (spec_sections as number array, nodes as map, journeys as map) before content parsing proceeds
+    files: ["src/compile.ts"]
   FieldLossDetection:
     type: process
     description: compares a module file before and after an LLM rewrite to detect any fields (including extension fields like files) that were silently dropped during the edit
+    files: ["src/compile.ts"]
   ValidateDescriptionQuality:
     type: process
-    description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions
+    description: checks that every node has a meaningful description string, flagging nodes with empty or too-short descriptions as errors and descriptions exceeding 500 characters as warnings to prevent context window exhaustion
+    files: ["src/compile.ts"]
+  NodeNameValidation:
+    type: process
+    description: validates that each node name follows PascalCase format (uppercase letter followed by letters and digits only) and emits a warning for names containing special characters or path separators
+    files: ["src/compile.ts"]
+  JourneyNameValidation:
+    type: process
+    description: validates that each journey name follows PascalCase format (uppercase letter followed by letters and digits only) and emits a warning for names containing special characters or path separators
+    files: ["src/compile.ts"]
   CompilationResult:
     type: artifact
     description: the full output of compile.ts containing the CompiledIndex (all nodes with connections, all journeys with metadata, aggregate stats), a flat issues array of errors and warnings, and a per-module CoverageReport
@@ -94,9 +106,11 @@ nodes:
   EmptyModuleDirectoryDetection:
     type: process
     description: detects when the modules directory is missing or contains zero YAML files and reports a clear error instead of producing an empty compiled index
+    files: ["src/compile.ts"]
   FileReadFailureHandling:
     type: process
     description: catches file I/O errors (permission denied, file locked, disk error) when reading a module YAML file and records the failure without crashing the compilation run
+    files: ["src/compile.ts"]
   UnlistedModuleDetection:
     type: process
     description: compares compiled module files on disk against the ORGANIZATION.md module list and flags modules that exist as YAML files but are not listed in the organization
@@ -119,7 +133,7 @@ nodes:
     description: the coverage section of the compile result containing per-module metrics, orphan list, and isolated module list returned alongside errors and warnings
   CompileFromModules:
     type: process
-    description: in-memory compilation pipeline that accepts a pre-loaded module map and optional external interfaces, first collecting parse errors from malformed modules, then orchestrating node collection, journey resolution, connection computation, validation, stats, and coverage, merging issues from all four phases into a single flat array and stamping a compiled timestamp on the index
+    description: in-memory compilation pipeline that accepts a pre-loaded module map and optional external interfaces, first collecting parse errors from malformed modules, then orchestrating node collection, journey resolution, connection computation, validation, stale connection detection, stats, and coverage, merging issues from all five phases into a deterministically sorted flat array and stamping a compiled timestamp on the index
     files: [src/compile.ts]
   NodeTypeValidation:
     type: process
@@ -158,6 +172,10 @@ journeys:
         action: parses each node entry from the parsed YAML
       - node: NodeTypeValidation
         action: validates each node's type is one of actor, process, artifact, interface, or rule
+      - node: NodeNameValidation
+        action: validates each node name follows PascalCase format and warns on special characters
+      - node: JourneyNameValidation
+        action: validates each journey name follows PascalCase format and warns on special characters
       - node: graph/JourneyDefinition
         action: parses each journey entry from the parsed YAML
       - node: graph/NodeRegistry
@@ -268,6 +286,10 @@ journeys:
         action: checks for connections referencing nodes no longer in the registry
       - node: NodeTypeValidation
         action: validates each node's type is one of the five universal types
+      - node: NodeNameValidation
+        action: validates each node name follows PascalCase format
+      - node: JourneyNameValidation
+        action: validates each journey name follows PascalCase format
       - node: ValidationAggregation
         action: collects all errors and warnings into a single result
       - node: StatsComputation
@@ -425,7 +447,7 @@ journeys:
       - node: CompilationResult
         action: outputs a clean result confirming the fix resolved the errors
 
-  FinalConvergenceGate:
+  FinalCompilationGate:
     files: [test/journeys/FinalConvergenceGate.test.ts]
     steps:
       - node: convergence/ConvergenceState
@@ -780,6 +802,10 @@ journeys:
         action: scans all node names across all modules for duplicates
       - node: NodeTypeValidation
         action: validates each node's type field is one of the five universal types
+      - node: NodeNameValidation
+        action: validates each node name follows PascalCase format
+      - node: JourneyNameValidation
+        action: validates each journey name follows PascalCase format
       - node: DanglingRefDetection
         action: checks every journey step ref against the node registry
       - node: ExternalInterfaceResolution

@@ -20,10 +20,20 @@ describe("DiscardOutOfOrderEvent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/FileSystem → events/ReadEventFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/ParseEventPayload extracts the sequence number from the event payload", () => {
     // Node: sync/ParseEventPayload (process)
     // Action: extracts the sequence number from the event payload
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ReadEventFile → sync/ParseEventPayload", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/CheckEventSequenceNumber reads the incoming sequence number from the parsed event", () => {
@@ -32,10 +42,20 @@ describe("DiscardOutOfOrderEvent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/ParseEventPayload → sync/CheckEventSequenceNumber", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/LastProcessedSequence provides the last successfully processed sequence number for this dependency", () => {
     // Node: sync/LastProcessedSequence (artifact)
     // Action: provides the last successfully processed sequence number for this dependency
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/CheckEventSequenceNumber → sync/LastProcessedSequence", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/CheckEventSequenceNumber compares the incoming sequence against the stored sequence and finds it is less than or equal", () => {
@@ -44,16 +64,31 @@ describe("DiscardOutOfOrderEvent", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/LastProcessedSequence → sync/CheckEventSequenceNumber", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: sync/DiscardStaleEvent enforces that stale or duplicate events must be silently discarded", () => {
     // Node: sync/DiscardStaleEvent (rule)
     // Action: enforces that stale or duplicate events must be silently discarded
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/CheckEventSequenceNumber → sync/DiscardStaleEvent", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: sync/SyncResult records that the event was discarded as out-of-order with no sync triggered", () => {
     // Node: sync/SyncResult (artifact) — has code: test/sync-loop.test.ts
     // Action: records that the event was discarded as out-of-order with no sync triggered
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/DiscardStaleEvent → sync/SyncResult", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

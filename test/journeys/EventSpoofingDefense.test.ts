@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/sync.ts
+// Implementation: test/staleness.test.ts
+
 describe("EventSpoofingDefense", () => {
   it("step 1: _actors/EventSpoofer writes a fake event file to trigger unnecessary reconvergence", () => {
     // Node: _actors/EventSpoofer (actor)
@@ -18,10 +21,20 @@ describe("EventSpoofingDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/EventSpoofer → events/DetectEventFileChange", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/ReadEventFile reads the spoofed event content", () => {
     // Node: events/ReadEventFile (process)
     // Action: reads the spoofed event content
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/DetectEventFileChange → events/ReadEventFile", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/FetchDependencyHash fetches the actual dependency hash to compare", () => {
@@ -30,16 +43,31 @@ describe("EventSpoofingDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ReadEventFile → sync/FetchDependencyHash", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/CompareStoredHash compares and finds the hash has not actually changed", () => {
-    // Node: sync/CompareStoredHash (process)
+    // Node: sync/CompareStoredHash (process) — has code: src/sync.ts
     // Action: compares and finds the hash has not actually changed
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/FetchDependencyHash → sync/CompareStoredHash", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/SkipIfAllCurrent aborts sync because no real change occurred, neutralizing the spoof", () => {
     // Node: sync/SkipIfAllCurrent (process)
     // Action: aborts sync because no real change occurred, neutralizing the spoof
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/CompareStoredHash → sync/SkipIfAllCurrent", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
 });

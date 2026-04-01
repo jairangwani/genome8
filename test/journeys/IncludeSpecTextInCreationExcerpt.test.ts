@@ -19,10 +19,20 @@ describe("IncludeSpecTextInCreationExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ModuleCreation → excerpt/SelectTargetModule", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: organization/ProvideSpecSectionsToExcerpt supplies the spec_sections list for the target module from the organization plan", () => {
     // Node: organization/ProvideSpecSectionsToExcerpt (process)
     // Action: supplies the spec_sections list for the target module from the organization plan
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/SelectTargetModule → organization/ProvideSpecSectionsToExcerpt", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/CollectSpecSectionText reads the spec document and locates the sections matching the module's spec_sections numbers", () => {
@@ -31,10 +41,20 @@ describe("IncludeSpecTextInCreationExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: organization/ProvideSpecSectionsToExcerpt → excerpt/CollectSpecSectionText", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: excerpt/CollectSpecSectionText extracts the full text of each assigned spec section as authoritative content the module must cover", () => {
     // Node: excerpt/CollectSpecSectionText (process)
     // Action: extracts the full text of each assigned spec section as authoritative content the module must cover
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectSpecSectionText → excerpt/CollectSpecSectionText", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: excerpt/LensRelevance prioritizes spec section text as high-relevance content that must not be truncated", () => {
@@ -43,10 +63,20 @@ describe("IncludeSpecTextInCreationExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/CollectSpecSectionText → excerpt/LensRelevance", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: excerpt/AssembleExcerpt includes the spec section text in a dedicated SPEC SECTIONS section of the excerpt", () => {
     // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: includes the spec section text in a dedicated SPEC SECTIONS section of the excerpt
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/LensRelevance → excerpt/AssembleExcerpt", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: excerpt/TruncateToLimit trims other sections before spec text to ensure spec content is preserved", () => {
@@ -55,10 +85,20 @@ describe("IncludeSpecTextInCreationExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/AssembleExcerpt → excerpt/TruncateToLimit", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: excerpt/ExcerptOutput provides the creation excerpt with spec text so the worker knows exactly what concepts to cover", () => {
     // Node: excerpt/ExcerptOutput (artifact)
     // Action: provides the creation excerpt with spec text so the worker knows exactly what concepts to cover
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/TruncateToLimit → excerpt/ExcerptOutput", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -1,103 +1,166 @@
 // Auto-generated from journey: DetectSpecChangeToAuditDomain
 // Module: audit
+// Triggered by: none
 // Modules touched: convergence, audit
 
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
+
+function buildDetectSpecChangeToAuditDomainModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('convergence', {
+    nodes: {
+      TargetedReconvergence: { type: 'process', description: 'Signals spec has changed' },
+      SpecFile: { type: 'artifact', description: 'Provides changed spec content' },
+      ConvergenceState: { type: 'artifact', description: 'Records audit.yaml needs updating' },
+    },
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      DetectSpecChangeToAuditSections: { type: 'process', description: 'Reads updated spec sections 3 and 5' },
+      AuditFindingsList: { type: 'artifact', description: 'Adds spec-change-induced gaps' },
+      PrioritizeGaps: { type: 'process', description: 'Ranks new gaps alongside existing' },
+      DetectSelfAuditTarget: { type: 'process', description: 'Flags gaps as self-referential' },
+    },
+    journeys: {
+      DetectSpecChangeToAuditDomain: {
+        steps: [
+          { node: 'convergence/TargetedReconvergence', action: 'signals spec has changed' },
+          { node: 'convergence/SpecFile', action: 'provides changed spec content' },
+          { node: 'DetectSpecChangeToAuditSections', action: 'reads updated spec sections 3 and 5' },
+          { node: 'DetectSpecChangeToAuditSections', action: 'compares updated spec against audit.yaml' },
+          { node: 'DetectSpecChangeToAuditSections', action: 'identifies new audit requirements' },
+          { node: 'AuditFindingsList', action: 'adds spec-change-induced gaps' },
+          { node: 'PrioritizeGaps', action: 'ranks new gaps alongside existing' },
+          { node: 'DetectSelfAuditTarget', action: 'flags gaps as self-referential' },
+          { node: 'convergence/ConvergenceState', action: 'records audit.yaml needs updating' },
+        ],
+      },
+    },
+  });
+
+  return modules;
+}
 
 describe("DetectSpecChangeToAuditDomain", () => {
-  it("step 1: convergence/TargetedReconvergence signals that the spec has changed and modules may need updating", () => {
-    const signal = { type: 'spec_changed', affectedSections: [3, 5, 7] };
-    expect(signal.type).toBe('spec_changed');
-    expect(signal.affectedSections.length).toBeGreaterThan(0);
+  const modules = buildDetectSpecChangeToAuditDomainModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['DetectSpecChangeToAuditDomain'];
+
+  it("step 1: convergence/TargetedReconvergence signals spec has changed", () => {
+    const node = result.index.nodes['convergence/TargetedReconvergence'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
   });
 
-  it("step 2: convergence/SpecFile provides the changed spec content", () => {
-    const specContent = `## Section 3: Audit Pipeline
-The audit pipeline must validate all three coverage angles.
-
-## Section 5: Convergence
-Convergence requires zero errors and zero gaps.
-
-## Section 7: Self-Healing (NEW)
-The system must detect and recover from audit infrastructure failures.`;
-    expect(specContent).toContain('Section 3');
-    expect(specContent).toContain('Section 5');
-    expect(specContent).toContain('Section 7');
+  it("step 2: convergence/SpecFile provides changed spec content", () => {
+    const node = result.index.nodes['convergence/SpecFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/TargetedReconvergence');
   });
 
-  it("step 3: audit/DetectSpecChangeToAuditSections reads the updated spec sections 3 and 5 that audit.yaml references", () => {
-    const auditSpecSections = [3, 5];
-    const changedSections = [3, 5, 7];
-    const affectedAuditSections = auditSpecSections.filter(s => changedSections.includes(s));
-    expect(affectedAuditSections).toEqual([3, 5]);
+  it("connection: convergence/TargetedReconvergence → convergence/SpecFile", () => {
+    const from = result.index.nodes['convergence/TargetedReconvergence'];
+    expect(from.followed_by).toContain('convergence/SpecFile');
   });
 
-  it("step 4: audit/DetectSpecChangeToAuditSections compares the updated spec sections against audit.yaml's current node and journey coverage", () => {
-    const currentAuditNodes = ['CheckSpecCoverage', 'CheckActorCoverage', 'CheckCrossModuleCoverage', 'DeclareConverged'];
-    const currentAuditJourneys = ['RunSpecAudit', 'RunActorAudit'];
-    // Current coverage exists for sections 3 and 5
-    expect(currentAuditNodes.length).toBeGreaterThan(0);
-    expect(currentAuditJourneys.length).toBeGreaterThan(0);
+  it("step 3: audit/DetectSpecChangeToAuditSections reads updated spec sections 3 and 5", () => {
+    const node = result.index.nodes['audit/DetectSpecChangeToAuditSections'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('convergence/SpecFile');
   });
 
-  it("step 5: audit/DetectSpecChangeToAuditSections identifies new audit requirements in the spec that have no corresponding nodes or journeys", () => {
-    const newRequirements = [
-      { section: 7, concept: 'Self-Healing', hasNode: false, hasJourney: false },
-    ];
-    const uncoveredRequirements = newRequirements.filter(r => !r.hasNode || !r.hasJourney);
-    expect(uncoveredRequirements.length).toBe(1);
-    expect(uncoveredRequirements[0].concept).toBe('Self-Healing');
+  it("connection: convergence/SpecFile → audit/DetectSpecChangeToAuditSections", () => {
+    const from = result.index.nodes['convergence/SpecFile'];
+    expect(from.followed_by).toContain('audit/DetectSpecChangeToAuditSections');
   });
 
-  it("step 6: audit/AuditFindingsList adds the spec-change-induced gaps to the findings list as new coverage requirements", () => {
-    const findingsList = {
-      round: 1,
-      gaps: [
-        { type: 'spec_gap', module: 'audit', detail: 'Section 7 (Self-Healing) not covered in audit.yaml', severity: 'high', induced_by: 'spec_change' },
-      ],
-    };
-    expect(findingsList.gaps.length).toBe(1);
-    expect(findingsList.gaps[0].induced_by).toBe('spec_change');
-    expect(findingsList.gaps[0].module).toBe('audit');
+  it("step 4: audit/DetectSpecChangeToAuditSections compares updated spec against audit.yaml (self-loop)", () => {
+    const node = result.index.nodes['audit/DetectSpecChangeToAuditSections'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/DetectSpecChangeToAuditSections');
   });
 
-  it("step 7: audit/PrioritizeGaps ranks the new spec-driven gaps alongside any existing gaps", () => {
-    const gaps = [
-      { type: 'spec_gap', module: 'audit', detail: 'Section 7 not covered', severity: 'high', priority: 0 },
-      { type: 'actor_orphan', module: 'auth', detail: 'Admin orphan', severity: 'medium', priority: 0 },
-    ];
-    // High severity gets higher priority (lower number)
-    gaps.sort((a, b) => {
-      const sev = { high: 1, medium: 2, low: 3 } as Record<string, number>;
-      return (sev[a.severity] || 3) - (sev[b.severity] || 3);
-    });
-    gaps.forEach((g, i) => { g.priority = i + 1; });
-    expect(gaps[0].severity).toBe('high');
-    expect(gaps[0].module).toBe('audit');
-    expect(gaps[0].priority).toBe(1);
+  it("connection: audit/DetectSpecChangeToAuditSections → audit/DetectSpecChangeToAuditSections", () => {
+    const from = result.index.nodes['audit/DetectSpecChangeToAuditSections'];
+    expect(from.followed_by).toContain('audit/DetectSpecChangeToAuditSections');
   });
 
-  it("step 8: audit/DetectSelfAuditTarget flags all new gaps as self-referential since they target audit.yaml", () => {
-    const gaps = [
-      { type: 'spec_gap', module: 'audit', detail: 'Section 7 not covered', isSelfTarget: false },
-    ];
-    for (const gap of gaps) {
-      if (gap.module === 'audit') gap.isSelfTarget = true;
-    }
-    expect(gaps.every(g => g.isSelfTarget)).toBe(true);
+  it("step 5: audit/DetectSpecChangeToAuditSections identifies new audit requirements (self-loop)", () => {
+    const node = result.index.nodes['audit/DetectSpecChangeToAuditSections'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/DetectSpecChangeToAuditSections');
   });
 
-  it("step 9: convergence/ConvergenceState records that audit.yaml needs updating due to spec changes in its own domain", () => {
-    const state = {
-      step: 'RECONVERGENCE',
-      reason: 'spec_change_to_audit_domain',
-      modulesAffected: ['audit'],
-      newGaps: 1,
-    };
-    expect(state.step).toBe('RECONVERGENCE');
-    expect(state.reason).toContain('audit');
-    expect(state.modulesAffected).toContain('audit');
-    expect(state.newGaps).toBeGreaterThan(0);
+  it("step 6: audit/AuditFindingsList adds spec-change-induced gaps", () => {
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/DetectSpecChangeToAuditSections');
   });
 
+  it("connection: audit/DetectSpecChangeToAuditSections → audit/AuditFindingsList", () => {
+    const from = result.index.nodes['audit/DetectSpecChangeToAuditSections'];
+    expect(from.followed_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("step 7: audit/PrioritizeGaps ranks new gaps alongside existing", () => {
+    const node = result.index.nodes['audit/PrioritizeGaps'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("connection: audit/AuditFindingsList → audit/PrioritizeGaps", () => {
+    const from = result.index.nodes['audit/AuditFindingsList'];
+    expect(from.followed_by).toContain('audit/PrioritizeGaps');
+  });
+
+  it("step 8: audit/DetectSelfAuditTarget flags gaps as self-referential", () => {
+    const node = result.index.nodes['audit/DetectSelfAuditTarget'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/PrioritizeGaps');
+  });
+
+  it("connection: audit/PrioritizeGaps → audit/DetectSelfAuditTarget", () => {
+    const from = result.index.nodes['audit/PrioritizeGaps'];
+    expect(from.followed_by).toContain('audit/DetectSelfAuditTarget');
+  });
+
+  it("step 9: convergence/ConvergenceState records audit.yaml needs updating", () => {
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/DetectSelfAuditTarget');
+  });
+
+  it("connection: audit/DetectSelfAuditTarget → convergence/ConvergenceState", () => {
+    const from = result.index.nodes['audit/DetectSelfAuditTarget'];
+    expect(from.followed_by).toContain('convergence/ConvergenceState');
+  });
+
+  it("journey covers full pipeline (9 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(9);
+    expect(journey.steps[0].node).toBe('convergence/TargetedReconvergence');
+    expect(journey.steps[8].node).toBe('convergence/ConvergenceState');
+  });
+
+  it("journey actor is correct", () => {
+    expect(journey.actor).toBeNull();
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

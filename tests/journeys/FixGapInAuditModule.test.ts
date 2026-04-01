@@ -5,202 +5,244 @@
 
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
-import yaml from 'js-yaml';
 import type { ModuleFile } from '../../src/types.js';
 
-// Pre-fix audit module: missing a journey for cross-module coverage check
-const preFixAudit: ModuleFile = {
-  spec_sections: [3, 5],
-  nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'Checks spec coverage' },
-    CheckActorCoverage: { type: 'process', description: 'Checks actor coverage' },
-    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
-    AuditFindingsList: { type: 'artifact', description: 'Gap list' },
-    DeclareConverged: { type: 'process', description: 'Declares convergence' },
-    VerifyFixCompiles: { type: 'process', description: 'Verifies fix compiles' },
-  },
-  journeys: {
-    RunSpecAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks spec' },
-        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
+function buildFixGapInAuditModuleModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      LLMWorker: { type: 'actor', description: 'Receives self-fix prompt' },
+      Compiler: { type: 'actor', description: 'Validates 0 errors' },
     },
-  },
-};
+    journeys: {},
+  });
 
-// Post-fix audit module: added RunCrossModuleAudit journey
-const postFixAudit: ModuleFile = {
-  spec_sections: [3, 5],
-  nodes: {
-    CheckSpecCoverage: { type: 'process', description: 'Checks spec coverage' },
-    CheckActorCoverage: { type: 'process', description: 'Checks actor coverage' },
-    CheckCrossModuleCoverage: { type: 'process', description: 'Checks cross-module connections' },
-    AuditFindingsList: { type: 'artifact', description: 'Gap list' },
-    DeclareConverged: { type: 'process', description: 'Declares convergence' },
-    VerifyFixCompiles: { type: 'process', description: 'Verifies fix compiles' },
-  },
-  journeys: {
-    RunSpecAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks spec' },
-        { node: 'CheckSpecCoverage', action: 'evaluates sections' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'Confirms self-fix did not break compilation' },
     },
-    RunCrossModuleAudit: {
-      steps: [
-        { node: '_actors/Auditor', action: 'checks cross-module connections' },
-        { node: 'CheckCrossModuleCoverage', action: 'evaluates module links' },
-        { node: 'AuditFindingsList', action: 'stores gaps' },
-      ],
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      AuditFindingsList: { type: 'artifact', description: 'Provides a gap targeting audit.yaml' },
+      SelectNextGapToFix: { type: 'process', description: 'Picks the self-referential gap' },
+      DetectSelfAuditTarget: { type: 'process', description: 'Confirms gap targets audit.yaml' },
+      ScopeFixToAvoidAuditBreak: { type: 'process', description: 'Analyzes proposed fix scope' },
+      BuildGapFixPrompt: { type: 'process', description: 'Builds fix prompt preserving audit infrastructure' },
+      ProvideFixContext: { type: 'process', description: 'Includes full audit.yaml source' },
+      ApplyFix: { type: 'process', description: 'Edits audit.yaml to close gap' },
+      VerifyFixCompiles: { type: 'process', description: 'Compiles modified audit.yaml' },
+      ReauditAfterSelfFix: { type: 'process', description: 'Triggers full re-audit' },
+      TrackAuditRound: { type: 'artifact', description: 'Records self-fix attempt' },
     },
-  },
-};
+    journeys: {
+      FixGapInAuditModule: {
+        steps: [
+          { node: 'AuditFindingsList', action: 'provides a gap targeting audit.yaml' },
+          { node: 'SelectNextGapToFix', action: 'picks the self-referential gap' },
+          { node: 'DetectSelfAuditTarget', action: 'confirms gap targets audit.yaml' },
+          { node: 'ScopeFixToAvoidAuditBreak', action: 'analyzes proposed fix scope' },
+          { node: 'ScopeFixToAvoidAuditBreak', action: 'verifies fix will not break critical nodes' },
+          { node: 'BuildGapFixPrompt', action: 'builds fix prompt preserving audit infrastructure' },
+          { node: 'ProvideFixContext', action: 'includes full audit.yaml source' },
+          { node: '_actors/LLMWorker', action: 'receives self-fix prompt' },
+          { node: 'ApplyFix', action: 'edits audit.yaml to close gap' },
+          { node: 'VerifyFixCompiles', action: 'compiles modified audit.yaml' },
+          { node: '_actors/Compiler', action: 'validates 0 errors' },
+          { node: 'compilation/CompilationResult', action: 'confirms self-fix did not break compilation' },
+          { node: 'ReauditAfterSelfFix', action: 'triggers full re-audit' },
+          { node: 'TrackAuditRound', action: 'records self-fix attempt' },
+        ],
+      },
+    },
+  });
 
-const criticalNodes = ['CheckSpecCoverage', 'CheckActorCoverage', 'CheckCrossModuleCoverage', 'VerifyFixCompiles', 'DeclareConverged'];
-
-function buildPreFix() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', { nodes: { Auditor: { type: 'actor', description: 'Auditor' } } }],
-    ['audit', preFixAudit],
-  ]));
-}
-
-function buildPostFix() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', { nodes: { Auditor: { type: 'actor', description: 'Auditor' } } }],
-    ['audit', postFixAudit],
-  ]));
+  return modules;
 }
 
 describe("FixGapInAuditModule", () => {
-  it("step 1: audit/AuditFindingsList provides a gap that targets audit.yaml itself", () => {
-    const gap = { type: 'spec_gap', module: 'audit', detail: 'Cross-module audit journey missing', severity: 'medium' };
-    expect(gap.module).toBe('audit');
-    expect(gap.detail).toContain('Cross-module');
+  const modules = buildFixGapInAuditModuleModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['FixGapInAuditModule'];
+
+  it("step 1: audit/AuditFindingsList provides a gap targeting audit.yaml", () => {
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
   });
 
-  it("step 2: audit/SelectNextGapToFix picks the self-referential gap from the prioritized list", () => {
-    const gaps = [
-      { type: 'spec_gap', module: 'audit', detail: 'Cross-module audit journey missing', priority: 1 },
-      { type: 'actor_orphan', module: 'auth', detail: 'Admin orphan', priority: 2 },
-    ];
-    const nextGap = gaps.find(g => !('fixed' in g) || !g.fixed);
-    expect(nextGap).toBeDefined();
-    expect(nextGap!.module).toBe('audit');
+  it("step 2: audit/SelectNextGapToFix picks the self-referential gap", () => {
+    const node = result.index.nodes['audit/SelectNextGapToFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
   });
 
-  it("step 3: audit/DetectSelfAuditTarget confirms the gap targets audit.yaml and flags it for extra safeguards", () => {
-    const gap = { module: 'audit', detail: 'Cross-module audit journey missing' };
-    const isSelfTarget = gap.module === 'audit';
-    expect(isSelfTarget).toBe(true);
+  it("connection: audit/AuditFindingsList → audit/SelectNextGapToFix", () => {
+    const from = result.index.nodes['audit/AuditFindingsList'];
+    expect(from.followed_by).toContain('audit/SelectNextGapToFix');
   });
 
-  it("step 4: audit/ScopeFixToAvoidAuditBreak analyzes the proposed fix scope to ensure it will not remove existing audit processes", () => {
-    const existingNodes = Object.keys(preFixAudit.nodes!);
-    const proposedNodes = Object.keys(postFixAudit.nodes!);
-    // All existing nodes must still be present after fix
-    for (const node of existingNodes) {
-      expect(proposedNodes).toContain(node);
-    }
+  it("step 3: audit/DetectSelfAuditTarget confirms gap targets audit.yaml", () => {
+    const node = result.index.nodes['audit/DetectSelfAuditTarget'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/SelectNextGapToFix');
   });
 
-  it("step 5: audit/ScopeFixToAvoidAuditBreak verifies the fix will not break CheckSpecCoverage, VerifyFixCompiles, DeclareConverged, or other critical audit nodes", () => {
-    const proposedNodes = Object.keys(postFixAudit.nodes!);
-    for (const critical of criticalNodes) {
-      expect(proposedNodes).toContain(critical);
-    }
+  it("connection: audit/SelectNextGapToFix → audit/DetectSelfAuditTarget", () => {
+    const from = result.index.nodes['audit/SelectNextGapToFix'];
+    expect(from.followed_by).toContain('audit/DetectSelfAuditTarget');
   });
 
-  it("step 6: audit/BuildGapFixPrompt builds the fix prompt with explicit instructions to preserve existing audit infrastructure", () => {
-    const prompt = `Fix the following gap in module "audit":
-Gap: Cross-module audit journey missing
-
-CRITICAL: You MUST preserve all existing nodes: ${criticalNodes.join(', ')}.
-Do NOT remove any existing journeys. Only ADD new content.`;
-    expect(prompt).toContain('CRITICAL');
-    expect(prompt).toContain('preserve');
-    for (const node of criticalNodes) {
-      expect(prompt).toContain(node);
-    }
+  it("step 4: audit/ScopeFixToAvoidAuditBreak analyzes proposed fix scope", () => {
+    const node = result.index.nodes['audit/ScopeFixToAvoidAuditBreak'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/DetectSelfAuditTarget');
   });
 
-  it("step 7: audit/ProvideFixContext includes the full audit.yaml source and the safeguard constraints in the fix payload", () => {
-    const fixContext = {
-      targetModule: 'audit',
-      isSelfTarget: true,
-      moduleYaml: yaml.dump(preFixAudit),
-      safeguards: { preserveNodes: criticalNodes, preserveJourneys: ['RunSpecAudit'] },
-    };
-    expect(fixContext.isSelfTarget).toBe(true);
-    expect(fixContext.moduleYaml).toContain('CheckSpecCoverage');
-    expect(fixContext.safeguards.preserveNodes.length).toBe(5);
+  it("connection: audit/DetectSelfAuditTarget → audit/ScopeFixToAvoidAuditBreak", () => {
+    const from = result.index.nodes['audit/DetectSelfAuditTarget'];
+    expect(from.followed_by).toContain('audit/ScopeFixToAvoidAuditBreak');
   });
 
-  it("step 8: _actors/LLMWorker receives the self-fix prompt with clear boundaries on what must not be changed", () => {
-    const workerInput = {
-      module: 'audit',
-      mustPreserve: criticalNodes,
-      currentYaml: yaml.dump(preFixAudit),
-    };
-    expect(workerInput.module).toBe('audit');
-    expect(workerInput.mustPreserve).toContain('DeclareConverged');
-    expect(workerInput.currentYaml).toContain('RunSpecAudit');
+  it("step 5: audit/ScopeFixToAvoidAuditBreak verifies fix will not break critical nodes (self-loop)", () => {
+    const node = result.index.nodes['audit/ScopeFixToAvoidAuditBreak'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ScopeFixToAvoidAuditBreak');
   });
 
-  it("step 9: audit/ApplyFix edits audit.yaml to close the gap while preserving all existing audit processes", () => {
-    // Verify fix added new journey without removing anything
-    const preJourneys = Object.keys(preFixAudit.journeys!);
-    const postJourneys = Object.keys(postFixAudit.journeys!);
-    for (const j of preJourneys) {
-      expect(postJourneys).toContain(j);
-    }
-    expect(postJourneys.length).toBeGreaterThan(preJourneys.length);
-    expect(postJourneys).toContain('RunCrossModuleAudit');
+  it("connection: audit/ScopeFixToAvoidAuditBreak → audit/ScopeFixToAvoidAuditBreak", () => {
+    const from = result.index.nodes['audit/ScopeFixToAvoidAuditBreak'];
+    expect(from.followed_by).toContain('audit/ScopeFixToAvoidAuditBreak');
   });
 
-  it("step 10: audit/VerifyFixCompiles compiles the modified audit.yaml to check for errors", () => {
-    const result = buildPostFix();
-    expect(result.index).toBeDefined();
-    expect(result.issues).toBeDefined();
+  it("step 6: audit/BuildGapFixPrompt builds fix prompt preserving audit infrastructure", () => {
+    const node = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ScopeFixToAvoidAuditBreak');
   });
 
-  it("step 11: _actors/Compiler validates the self-modified audit module has 0 errors", () => {
-    const result = buildPostFix();
+  it("connection: audit/ScopeFixToAvoidAuditBreak → audit/BuildGapFixPrompt", () => {
+    const from = result.index.nodes['audit/ScopeFixToAvoidAuditBreak'];
+    expect(from.followed_by).toContain('audit/BuildGapFixPrompt');
+  });
+
+  it("step 7: audit/ProvideFixContext includes full audit.yaml source", () => {
+    const node = result.index.nodes['audit/ProvideFixContext'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/BuildGapFixPrompt');
+  });
+
+  it("connection: audit/BuildGapFixPrompt → audit/ProvideFixContext", () => {
+    const from = result.index.nodes['audit/BuildGapFixPrompt'];
+    expect(from.followed_by).toContain('audit/ProvideFixContext');
+  });
+
+  it("step 8: _actors/LLMWorker receives self-fix prompt", () => {
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('audit/ProvideFixContext');
+  });
+
+  it("connection: audit/ProvideFixContext → _actors/LLMWorker", () => {
+    const from = result.index.nodes['audit/ProvideFixContext'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
+  });
+
+  it("step 9: audit/ApplyFix edits audit.yaml to close gap", () => {
+    const node = result.index.nodes['audit/ApplyFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
+  });
+
+  it("connection: _actors/LLMWorker → audit/ApplyFix", () => {
+    const from = result.index.nodes['_actors/LLMWorker'];
+    expect(from.followed_by).toContain('audit/ApplyFix');
+  });
+
+  it("step 10: audit/VerifyFixCompiles compiles modified audit.yaml", () => {
+    const node = result.index.nodes['audit/VerifyFixCompiles'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ApplyFix');
+  });
+
+  it("connection: audit/ApplyFix → audit/VerifyFixCompiles", () => {
+    const from = result.index.nodes['audit/ApplyFix'];
+    expect(from.followed_by).toContain('audit/VerifyFixCompiles');
+  });
+
+  it("step 11: _actors/Compiler validates 0 errors", () => {
+    const node = result.index.nodes['_actors/Compiler'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('audit/VerifyFixCompiles');
+  });
+
+  it("connection: audit/VerifyFixCompiles → _actors/Compiler", () => {
+    const from = result.index.nodes['audit/VerifyFixCompiles'];
+    expect(from.followed_by).toContain('_actors/Compiler');
+  });
+
+  it("step 12: compilation/CompilationResult confirms self-fix did not break compilation", () => {
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('_actors/Compiler');
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    const from = result.index.nodes['_actors/Compiler'];
+    expect(from.followed_by).toContain('compilation/CompilationResult');
+  });
+
+  it("step 13: audit/ReauditAfterSelfFix triggers full re-audit", () => {
+    const node = result.index.nodes['audit/ReauditAfterSelfFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
+  });
+
+  it("connection: compilation/CompilationResult → audit/ReauditAfterSelfFix", () => {
+    const from = result.index.nodes['compilation/CompilationResult'];
+    expect(from.followed_by).toContain('audit/ReauditAfterSelfFix');
+  });
+
+  it("step 14: audit/TrackAuditRound records self-fix attempt", () => {
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/ReauditAfterSelfFix');
+  });
+
+  it("connection: audit/ReauditAfterSelfFix → audit/TrackAuditRound", () => {
+    const from = result.index.nodes['audit/ReauditAfterSelfFix'];
+    expect(from.followed_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("journey covers full pipeline (14 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(14);
+    expect(journey.steps[0].node).toBe('audit/AuditFindingsList');
+    expect(journey.steps[13].node).toBe('audit/TrackAuditRound');
+  });
+
+  it("journey actor is LLMWorker (first actor in steps)", () => {
+    expect(journey.actor).toBe('_actors/LLMWorker');
+  });
+
+  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
+    expect(errors).toHaveLength(0);
   });
-
-  it("step 12: compilation/CompilationResult confirms the self-fix did not break compilation", () => {
-    const result = buildPostFix();
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
-    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
-    expect(result.index._stats.duplicate_names).toBe(0);
-  });
-
-  it("step 13: audit/ReauditAfterSelfFix triggers a full re-audit to verify the self-fix did not invalidate audit's own integrity", () => {
-    const result = buildPostFix();
-    // All critical nodes still present
-    for (const node of criticalNodes) {
-      expect(result.index.nodes[`audit/${node}`]).toBeDefined();
-    }
-    // Journeys intact
-    const auditJourneys = Object.values(result.index.journeys).filter(j => j.module === 'audit');
-    expect(auditJourneys.length).toBe(2);
-  });
-
-  it("step 14: audit/TrackAuditRound records the self-fix attempt for progress tracking", () => {
-    const tracker = {
-      round: 1,
-      selfFixAttempts: 1,
-      successfulFixes: 1,
-      failedFixes: 0,
-    };
-    expect(tracker.selfFixAttempts).toBe(1);
-    expect(tracker.successfulFixes).toBe(1);
-  });
-
 });

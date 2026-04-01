@@ -4,144 +4,235 @@
 // Modules touched: convergence, actors, _actors
 
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
-import yaml from 'js-yaml';
-import { compile } from '../../src/compile.js';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
 
-// Original spec actors
-const originalActors = {
-  User: { type: 'actor', description: 'Uses the platform' },
-  Admin: { type: 'actor', description: 'Manages the platform' },
-  Attacker: { type: 'actor', description: 'Attempts exploitation' },
-};
+function buildRediscoveryModules() {
+  const modules = new Map<string, ModuleFile>();
 
-// After spec change: new actors discovered, one removed
-const rediscoveredActivities = ['User', 'Admin', 'Operator'];
-const rediscoveredThreats = ['Attacker', 'Insider'];
-const rediscoveredLifecycle = ['NewUser'];
+  // _actors module: existing + new actors after spec change
+  modules.set('_actors', {
+    nodes: {
+      LLMWorker: { type: 'actor', description: 'LLM that analyzes the spec to discover actors' },
+      ProjectOwner: { type: 'actor', description: 'Person who wrote the spec' },
+      APIConsumer: { type: 'actor', description: 'External service consuming the API (newly discovered)' },
+    },
+    journeys: {},
+  });
 
-const allRediscovered = [...new Set([...rediscoveredActivities, ...rediscoveredThreats, ...rediscoveredLifecycle])];
+  // convergence module
+  modules.set('convergence', {
+    nodes: {
+      TargetedReconvergence: { type: 'process', description: 'Signals that the spec has changed and actors may need updating' },
+      SpecFile: { type: 'artifact', description: 'The spec.md file on disk' },
+    },
+    journeys: {},
+  });
+
+  // actors module: rediscovery + update processes
+  modules.set('actors', {
+    nodes: {
+      RediscoverActorsOnSpecChange: { type: 'process', description: 'Reads the current _actors.yaml to know the existing actor set' },
+      DiscoverFromActivities: { type: 'process', description: 'Identifies who uses, creates, operates, governs, and visits the system' },
+      DiscoverFromThreats: { type: 'process', description: 'Identifies attackers, abusers, failure scenarios, and exploitation vectors' },
+      DiscoverFromLifecycle: { type: 'process', description: 'Identifies first visit, onboarding, power use, decline, exit, and return actors' },
+      MergeAndDeduplicate: { type: 'process', description: 'Merges rediscovered actors and removes duplicates' },
+      UpdateActorsFileAfterRediscovery: { type: 'process', description: 'Diffs rediscovered set against existing actors to find additions and removals' },
+      WriteActorsFile: { type: 'process', description: 'Writes the updated _actors.yaml to disk' },
+      ActorsFile: { type: 'artifact', description: 'The updated actor file ready for recompilation' },
+    },
+    journeys: {
+      RediscoverActorsAfterSpecChange: {
+        steps: [
+          { node: 'convergence/TargetedReconvergence', action: 'signals that the spec has changed and actors may need updating' },
+          { node: 'convergence/SpecFile', action: 'provides the changed spec content' },
+          { node: 'RediscoverActorsOnSpecChange', action: 'reads the current _actors.yaml to know the existing actor set' },
+          { node: '_actors/LLMWorker', action: 're-analyzes the changed spec from the activities perspective' },
+          { node: 'DiscoverFromActivities', action: 're-identifies activity actors from the updated spec' },
+          { node: '_actors/LLMWorker', action: 're-analyzes the changed spec from the threats perspective' },
+          { node: 'DiscoverFromThreats', action: 're-identifies threat actors from the updated spec' },
+          { node: '_actors/LLMWorker', action: 're-analyzes the changed spec from the lifecycle perspective' },
+          { node: 'DiscoverFromLifecycle', action: 're-identifies lifecycle actors from the updated spec' },
+          { node: 'MergeAndDeduplicate', action: 'merges the rediscovered actors and removes duplicates' },
+          { node: 'UpdateActorsFileAfterRediscovery', action: 'diffs the rediscovered set against the existing actors to find additions and removals' },
+          { node: 'UpdateActorsFileAfterRediscovery', action: 'adds new actors to _actors.yaml and flags removed actors for orphan detection' },
+          { node: 'WriteActorsFile', action: 'writes the updated _actors.yaml to disk' },
+          { node: 'ActorsFile', action: 'the updated actor file is ready for recompilation' },
+        ],
+      },
+    },
+  });
+
+  return modules;
+}
 
 describe("RediscoverActorsAfterSpecChange", () => {
+  const modules = buildRediscoveryModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['RediscoverActorsAfterSpecChange'];
+
   it("step 1: convergence/TargetedReconvergence signals that the spec has changed and actors may need updating", () => {
-    // Spec changed — old hash differs from new hash
-    const oldSpecHash = 'abc123';
-    const newSpecHash = 'def456';
-    expect(oldSpecHash).not.toBe(newSpecHash);
+    const node = result.index.nodes['convergence/TargetedReconvergence'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
   });
 
   it("step 2: convergence/SpecFile provides the changed spec content", () => {
-    const newSpec = '## 1. System\nA platform with Users, Admins, Operators, and insider threat vectors.';
-    expect(newSpec.length).toBeGreaterThan(0);
-    expect(newSpec).toContain('Operators'); // new actor
-    expect(newSpec).toContain('insider');   // new threat actor
+    const node = result.index.nodes['convergence/SpecFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/TargetedReconvergence');
+  });
+
+  it("connection: convergence/TargetedReconvergence → convergence/SpecFile", () => {
+    const from = result.index.nodes['convergence/TargetedReconvergence'];
+    expect(from.followed_by).toContain('convergence/SpecFile');
   });
 
   it("step 3: actors/RediscoverActorsOnSpecChange reads the current _actors.yaml to know the existing actor set", () => {
-    const existingNames = Object.keys(originalActors);
-    expect(existingNames).toContain('User');
-    expect(existingNames).toContain('Admin');
-    expect(existingNames).toContain('Attacker');
-    expect(existingNames.length).toBe(3);
+    const node = result.index.nodes['actors/RediscoverActorsOnSpecChange'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('convergence/SpecFile');
+  });
+
+  it("connection: convergence/SpecFile → actors/RediscoverActorsOnSpecChange", () => {
+    const from = result.index.nodes['convergence/SpecFile'];
+    expect(from.followed_by).toContain('actors/RediscoverActorsOnSpecChange');
   });
 
   it("step 4: _actors/LLMWorker re-analyzes the changed spec from the activities perspective", () => {
-    expect(rediscoveredActivities).toContain('User');
-    expect(rediscoveredActivities).toContain('Operator'); // new
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('actors/RediscoverActorsOnSpecChange');
+  });
+
+  it("connection: actors/RediscoverActorsOnSpecChange → _actors/LLMWorker", () => {
+    const from = result.index.nodes['actors/RediscoverActorsOnSpecChange'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 5: actors/DiscoverFromActivities re-identifies activity actors from the updated spec", () => {
-    expect(rediscoveredActivities.length).toBeGreaterThanOrEqual(1);
-    for (const actor of rediscoveredActivities) {
-      expect(actor).toMatch(/^[A-Z]/); // PascalCase
-    }
+    const node = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromActivities", () => {
+    const from = result.index.nodes['_actors/LLMWorker'];
+    expect(from.followed_by).toContain('actors/DiscoverFromActivities');
   });
 
   it("step 6: _actors/LLMWorker re-analyzes the changed spec from the threats perspective", () => {
-    expect(rediscoveredThreats).toContain('Attacker');
-    expect(rediscoveredThreats).toContain('Insider'); // new
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.preceded_by).toContain('actors/DiscoverFromActivities');
+  });
+
+  it("connection: actors/DiscoverFromActivities → _actors/LLMWorker", () => {
+    const from = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 7: actors/DiscoverFromThreats re-identifies threat actors from the updated spec", () => {
-    expect(rediscoveredThreats.length).toBeGreaterThanOrEqual(1);
-    for (const actor of rediscoveredThreats) {
-      expect(actor).toMatch(/^[A-Z]/);
-    }
+    const node = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromThreats", () => {
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.followed_by).toContain('actors/DiscoverFromThreats');
   });
 
   it("step 8: _actors/LLMWorker re-analyzes the changed spec from the lifecycle perspective", () => {
-    expect(rediscoveredLifecycle).toContain('NewUser');
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.preceded_by).toContain('actors/DiscoverFromThreats');
+  });
+
+  it("connection: actors/DiscoverFromThreats → _actors/LLMWorker", () => {
+    const from = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 9: actors/DiscoverFromLifecycle re-identifies lifecycle actors from the updated spec", () => {
-    expect(rediscoveredLifecycle.length).toBeGreaterThanOrEqual(1);
-    for (const actor of rediscoveredLifecycle) {
-      expect(actor).toMatch(/^[A-Z]/);
-    }
+    const node = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(node).toBeDefined();
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromLifecycle", () => {
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.followed_by).toContain('actors/DiscoverFromLifecycle');
   });
 
   it("step 10: actors/MergeAndDeduplicate merges the rediscovered actors and removes duplicates", () => {
-    // allRediscovered: User, Admin, Operator, Attacker, Insider, NewUser = 6
-    const merged = [...new Set([...rediscoveredActivities, ...rediscoveredThreats, ...rediscoveredLifecycle])];
-    expect(merged.length).toBe(6);
-    expect(allRediscovered.length).toBe(6);
-    expect(new Set(merged).size).toBe(merged.length); // no duplicates
+    const node = result.index.nodes['actors/MergeAndDeduplicate'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/DiscoverFromLifecycle');
+  });
+
+  it("connection: actors/DiscoverFromLifecycle → actors/MergeAndDeduplicate", () => {
+    const from = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(from.followed_by).toContain('actors/MergeAndDeduplicate');
   });
 
   it("step 11: actors/UpdateActorsFileAfterRediscovery diffs the rediscovered set against the existing actors to find additions and removals", () => {
-    const existingNames = new Set(Object.keys(originalActors));
-    const rediscoveredSet = new Set(allRediscovered);
-    const additions = allRediscovered.filter(a => !existingNames.has(a));
-    const removals = [...existingNames].filter(a => !rediscoveredSet.has(a));
-    // Operator, Insider, NewUser are new
-    expect(additions).toContain('Operator');
-    expect(additions).toContain('Insider');
-    expect(additions).toContain('NewUser');
-    // No actors removed in this scenario (all originals still present)
-    expect(removals.length).toBe(0);
+    const node = result.index.nodes['actors/UpdateActorsFileAfterRediscovery'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/MergeAndDeduplicate');
+  });
+
+  it("connection: actors/MergeAndDeduplicate → actors/UpdateActorsFileAfterRediscovery", () => {
+    const from = result.index.nodes['actors/MergeAndDeduplicate'];
+    expect(from.followed_by).toContain('actors/UpdateActorsFileAfterRediscovery');
   });
 
   it("step 12: actors/UpdateActorsFileAfterRediscovery adds new actors to _actors.yaml and flags removed actors for orphan detection", () => {
-    const existingNames = new Set(Object.keys(originalActors));
-    const updated = { ...originalActors } as Record<string, any>;
-    for (const name of allRediscovered) {
-      if (!existingNames.has(name)) {
-        updated[name] = { type: 'actor', description: `${name} of the system` };
-      }
-    }
-    expect(Object.keys(updated).length).toBe(6); // 3 original + 3 new
-    expect(updated['Operator']).toBeDefined();
-    expect(updated['Insider']).toBeDefined();
-    expect(updated['NewUser']).toBeDefined();
+    // Self-connection: same node appears in consecutive steps
+    const node = result.index.nodes['actors/UpdateActorsFileAfterRediscovery'];
+    expect(node.preceded_by).toContain('actors/UpdateActorsFileAfterRediscovery');
+    expect(node.followed_by).toContain('actors/UpdateActorsFileAfterRediscovery');
+  });
+
+  it("connection: actors/UpdateActorsFileAfterRediscovery → actors/UpdateActorsFileAfterRediscovery", () => {
+    const node = result.index.nodes['actors/UpdateActorsFileAfterRediscovery'];
+    expect(node.preceded_by).toContain('actors/UpdateActorsFileAfterRediscovery');
   });
 
   it("step 13: actors/WriteActorsFile writes the updated _actors.yaml to disk", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rediscover-'));
-    const updatedActors: Record<string, any> = {};
-    for (const name of allRediscovered) {
-      updatedActors[name] = { type: 'actor', description: `${name} of the system` };
-    }
-    fs.writeFileSync(path.join(tmpDir, '_actors.yaml'), yaml.dump({ nodes: updatedActors }));
-    expect(fs.existsSync(path.join(tmpDir, '_actors.yaml'))).toBe(true);
-    const content = yaml.load(fs.readFileSync(path.join(tmpDir, '_actors.yaml'), 'utf-8')) as any;
-    expect(Object.keys(content.nodes).length).toBe(6);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const node = result.index.nodes['actors/WriteActorsFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/UpdateActorsFileAfterRediscovery');
+  });
+
+  it("connection: actors/UpdateActorsFileAfterRediscovery → actors/WriteActorsFile", () => {
+    const from = result.index.nodes['actors/UpdateActorsFileAfterRediscovery'];
+    expect(from.followed_by).toContain('actors/WriteActorsFile');
   });
 
   it("step 14: actors/ActorsFile the updated actor file is ready for recompilation", () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rediscover-'));
-    const updatedActors: Record<string, any> = {};
-    for (const name of allRediscovered) {
-      updatedActors[name] = { type: 'actor', description: `${name} of the system` };
-    }
-    fs.writeFileSync(path.join(tmpDir, '_actors.yaml'), yaml.dump({ nodes: updatedActors }));
-    const result = compile(tmpDir);
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
-    expect(result.index._stats.total_nodes).toBe(6);
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    const node = result.index.nodes['actors/ActorsFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/WriteActorsFile');
   });
 
+  it("connection: actors/WriteActorsFile → actors/ActorsFile", () => {
+    const from = result.index.nodes['actors/WriteActorsFile'];
+    expect(from.followed_by).toContain('actors/ActorsFile');
+  });
+
+  it("newly discovered actor (APIConsumer) exists in compiled index", () => {
+    expect(result.index.nodes['_actors/APIConsumer']).toBeDefined();
+    expect(result.index.nodes['_actors/APIConsumer'].type).toBe('actor');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

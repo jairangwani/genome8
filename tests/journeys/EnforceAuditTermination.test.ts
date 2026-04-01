@@ -1,123 +1,145 @@
-// Auto-generated from journey: EnforceAuditTermination
-// Module: audit
-// Modules touched: audit, convergence, compilation
-
 import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-const MAX_AUDIT_ROUNDS = 3;
+function buildEnforceAuditTerminationModules() {
+  const modules = new Map<string, ModuleFile>();
 
-function buildGraph() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', {
-      nodes: {
-        User: { type: 'actor', description: 'User' },
+  modules.set('convergence', {
+    nodes: {
+      DataDecidesWhenToStop: { type: 'rule', description: 'Detects that gap count has not decreased for consecutive rounds' },
+      ConvergenceState: { type: 'artifact', description: 'Records that audit has stalled or hit the round limit' },
+    },
+    journeys: {},
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'Provides the final compilation state at the point of termination' },
+    },
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      TrackAuditRound: { type: 'artifact', description: 'Provides the current round number and gap count history' },
+      AuditRoundLimit: { type: 'rule', description: 'Checks whether the current round exceeds the maximum allowed cycles' },
+      AuditFindingsList: { type: 'artifact', description: 'Provides the remaining unresolvable gaps' },
+    },
+    journeys: {
+      EnforceAuditTermination: {
+        steps: [
+          { node: 'TrackAuditRound', action: 'provides the current round number and gap count history' },
+          { node: 'AuditRoundLimit', action: 'checks whether the current round exceeds the maximum allowed cycles' },
+          { node: 'TrackAuditRound', action: 'compares the gap count from this round against the previous round' },
+          { node: 'convergence/DataDecidesWhenToStop', action: 'detects that gap count has not decreased for consecutive rounds' },
+          { node: 'AuditFindingsList', action: 'provides the remaining unresolvable gaps' },
+          { node: 'convergence/ConvergenceState', action: 'records that audit has stalled or hit the round limit' },
+          { node: 'compilation/CompilationResult', action: 'provides the final compilation state at the point of termination' },
+        ],
       },
-    }],
-    ['auth', {
-      spec_sections: [1],
-      nodes: {
-        Login: { type: 'process', description: 'Login' },
-      },
-      journeys: {
-        UserLogin: {
-          steps: [
-            { node: '_actors/User', action: 'logs in' },
-            { node: 'Login', action: 'authenticates' },
-          ],
-        },
-      },
-    }],
-  ]));
+    },
+  });
+
+  return modules;
 }
 
 describe("EnforceAuditTermination", () => {
-  it("step 1: audit/TrackAuditRound provides the current round number and gap count history across rounds", () => {
-    const tracker = {
-      round: 3,
-      history: [
-        { round: 1, gapCount: 5 },
-        { round: 2, gapCount: 4 },
-        { round: 3, gapCount: 4 },
-      ],
-    };
-    expect(tracker.round).toBe(3);
-    expect(tracker.history.length).toBe(3);
+  const modules = buildEnforceAuditTerminationModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['EnforceAuditTermination'];
+
+  it("step 1: audit/TrackAuditRound provides the current round number and gap count history", () => {
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
   });
 
   it("step 2: audit/AuditRoundLimit checks whether the current round exceeds the maximum allowed cycles", () => {
-    let round = 3;
-    expect(round <= MAX_AUDIT_ROUNDS).toBe(true);
-    round = 4;
-    expect(round <= MAX_AUDIT_ROUNDS).toBe(false);
-    // At round 4 we would stop
-    expect(round > MAX_AUDIT_ROUNDS).toBe(true);
+    const node = result.index.nodes['audit/AuditRoundLimit'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('audit/TrackAuditRound');
   });
 
-  it("step 3: audit/TrackAuditRound compares the gap count from this round against the previous round", () => {
-    const history = [
-      { round: 1, gapCount: 5 },
-      { round: 2, gapCount: 4 },
-      { round: 3, gapCount: 4 },
-    ];
-    const current = history[history.length - 1];
-    const previous = history[history.length - 2];
-    const delta = previous.gapCount - current.gapCount;
-    expect(delta).toBe(0); // no progress this round
+  it("connection: audit/TrackAuditRound -> audit/AuditRoundLimit", () => {
+    const from = result.index.nodes['audit/TrackAuditRound'];
+    expect(from.followed_by).toContain('audit/AuditRoundLimit');
   });
 
-  it("step 4: convergence/DataDecidesWhenToStop detects that gap count has not decreased for consecutive rounds indicating a stall", () => {
-    const history = [
-      { round: 1, gapCount: 5 },
-      { round: 2, gapCount: 4 },
-      { round: 3, gapCount: 4 },
-    ];
-    // Check last two rounds for stall
-    const stalled = history.length >= 2 &&
-      history[history.length - 1].gapCount >= history[history.length - 2].gapCount;
-    expect(stalled).toBe(true);
+  it("step 3: audit/TrackAuditRound compares the gap count from this round against the previous round (revisited)", () => {
+    const node = result.index.nodes['audit/TrackAuditRound'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/AuditRoundLimit');
+  });
+
+  it("connection: audit/AuditRoundLimit -> audit/TrackAuditRound", () => {
+    const from = result.index.nodes['audit/AuditRoundLimit'];
+    expect(from.followed_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("step 4: convergence/DataDecidesWhenToStop detects that gap count has not decreased for consecutive rounds", () => {
+    const node = result.index.nodes['convergence/DataDecidesWhenToStop'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('audit/TrackAuditRound');
+  });
+
+  it("connection: audit/TrackAuditRound -> convergence/DataDecidesWhenToStop", () => {
+    const from = result.index.nodes['audit/TrackAuditRound'];
+    expect(from.followed_by).toContain('convergence/DataDecidesWhenToStop');
   });
 
   it("step 5: audit/AuditFindingsList provides the remaining unresolvable gaps", () => {
-    const findingsList = {
-      round: 3,
-      total_gaps: 4,
-      gaps: [
-        { type: 'spec_gap', module: 'billing', detail: 'Section 3 not covered', severity: 'medium' },
-        { type: 'spec_gap', module: 'billing', detail: 'Section 4 not covered', severity: 'medium' },
-        { type: 'actor_orphan', module: 'admin', detail: 'Operator not in journeys', severity: 'medium' },
-        { type: 'cross_module', module: 'reports', detail: 'No cross-module connections', severity: 'low' },
-      ],
-      unresolvable: true,
-    };
-    expect(findingsList.total_gaps).toBe(4);
-    expect(findingsList.unresolvable).toBe(true);
-    expect(findingsList.gaps.length).toBeGreaterThan(0);
+    const node = result.index.nodes['audit/AuditFindingsList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/DataDecidesWhenToStop');
   });
 
-  it("step 6: convergence/ConvergenceState records that audit has stalled or hit the round limit with gaps still remaining", () => {
-    const state = {
-      step: 'AUDIT',
-      status: 'STALLED',
-      round: 3,
-      gapsRemaining: 4,
-      reason: 'Gap count did not decrease between rounds 2 and 3',
-      hitRoundLimit: true,
-    };
-    expect(state.status).toBe('STALLED');
-    expect(state.gapsRemaining).toBeGreaterThan(0);
-    expect(state.hitRoundLimit).toBe(true);
-    expect(state.reason).toContain('did not decrease');
+  it("connection: convergence/DataDecidesWhenToStop -> audit/AuditFindingsList", () => {
+    const from = result.index.nodes['convergence/DataDecidesWhenToStop'];
+    expect(from.followed_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("step 6: convergence/ConvergenceState records that audit has stalled or hit the round limit", () => {
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('audit/AuditFindingsList');
+  });
+
+  it("connection: audit/AuditFindingsList -> convergence/ConvergenceState", () => {
+    const from = result.index.nodes['audit/AuditFindingsList'];
+    expect(from.followed_by).toContain('convergence/ConvergenceState');
   });
 
   it("step 7: compilation/CompilationResult provides the final compilation state at the point of termination", () => {
-    const result = buildGraph();
-    // Graph still compiles cleanly even if audit gaps remain
-    const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
-    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
-    expect(result.index._compiled).toBeDefined();
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/ConvergenceState');
   });
 
+  it("connection: convergence/ConvergenceState -> compilation/CompilationResult", () => {
+    const from = result.index.nodes['convergence/ConvergenceState'];
+    expect(from.followed_by).toContain('compilation/CompilationResult');
+  });
+
+  it("journey covers full pipeline (7 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(7);
+    expect(journey.steps[0].node).toBe('audit/TrackAuditRound');
+    expect(journey.steps[6].node).toBe('compilation/CompilationResult');
+  });
+
+  it("journey has no actor (no actor nodes in steps)", () => {
+    expect(journey.actor).toBeNull();
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

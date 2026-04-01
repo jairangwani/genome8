@@ -5,6 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: test/sync-loop.test.ts
+
 describe("ClearOrphanSyncLockOnStartup", () => {
   it("step 1: _actors/DependentBox starts the sync subsystem after a process restart or cold boot", () => {
     // Node: _actors/DependentBox (actor)
@@ -18,10 +20,20 @@ describe("ClearOrphanSyncLockOnStartup", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/DependentBox → sync/SyncLock", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/DetectAndClearOrphanSyncLock reads the lock file and extracts the process ID or timestamp of the previous holder", () => {
     // Node: sync/DetectAndClearOrphanSyncLock (process)
     // Action: reads the lock file and extracts the process ID or timestamp of the previous holder
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/SyncLock → sync/DetectAndClearOrphanSyncLock", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/DetectAndClearOrphanSyncLock checks whether the previous holder process is still running", () => {
@@ -30,10 +42,20 @@ describe("ClearOrphanSyncLockOnStartup", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DetectAndClearOrphanSyncLock → sync/DetectAndClearOrphanSyncLock", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/DetectAndClearOrphanSyncLock determines the previous holder is dead and the lock is orphaned", () => {
     // Node: sync/DetectAndClearOrphanSyncLock (process)
     // Action: determines the previous holder is dead and the lock is orphaned
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/DetectAndClearOrphanSyncLock → sync/DetectAndClearOrphanSyncLock", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/SyncLock is cleared by removing the stale lock file from disk", () => {
@@ -42,16 +64,31 @@ describe("ClearOrphanSyncLockOnStartup", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DetectAndClearOrphanSyncLock → sync/SyncLock", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: sync/GuardAgainstConcurrentSync confirms the lock is now available for new sync cycles", () => {
     // Node: sync/GuardAgainstConcurrentSync (process)
     // Action: confirms the lock is now available for new sync cycles
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/SyncLock → sync/GuardAgainstConcurrentSync", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: sync/SyncResult records that an orphan sync lock was detected and cleared during startup", () => {
-    // Node: sync/SyncResult (artifact)
+    // Node: sync/SyncResult (artifact) — has code: test/sync-loop.test.ts
     // Action: records that an orphan sync lock was detected and cleared during startup
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/GuardAgainstConcurrentSync → sync/SyncResult", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

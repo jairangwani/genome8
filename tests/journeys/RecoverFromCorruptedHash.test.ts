@@ -21,10 +21,20 @@ describe("RecoverFromCorruptedHash", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/PreviousHash → publish/DetectCorruptedPreviousHash", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/DetectCorruptedPreviousHash flags the hash as corrupted and signals that comparison cannot proceed normally", () => {
     // Node: publish/DetectCorruptedPreviousHash (process)
     // Action: flags the hash as corrupted and signals that comparison cannot proceed normally
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/DetectCorruptedPreviousHash → publish/DetectCorruptedPreviousHash", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/ComparePreviousHash receives the corruption flag and treats this as a first-time publish scenario", () => {
@@ -33,10 +43,20 @@ describe("RecoverFromCorruptedHash", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/DetectCorruptedPreviousHash → publish/ComparePreviousHash", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/GenerateInterfaceYaml proceeds to write interface.yaml since corrupted hash means change status is unknown", () => {
     // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: proceeds to write interface.yaml since corrupted hash means change status is unknown
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/ComparePreviousHash → publish/GenerateInterfaceYaml", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/InterfaceYamlFile stores the interface on disk", () => {
@@ -45,10 +65,20 @@ describe("RecoverFromCorruptedHash", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/GenerateInterfaceYaml → publish/InterfaceYamlFile", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/StorePreviousHash overwrites the corrupted hash file with the fresh valid hash, restoring the baseline", () => {
     // Node: publish/StorePreviousHash (process)
     // Action: overwrites the corrupted hash file with the fresh valid hash, restoring the baseline
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/InterfaceYamlFile → publish/StorePreviousHash", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: publish/WriteEventFile writes the event file since dependents should be notified after a corrupted hash recovery", () => {
@@ -57,10 +87,20 @@ describe("RecoverFromCorruptedHash", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/StorePreviousHash → publish/WriteEventFile", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: publish/EventFile the event file signals dependents to resync since hash continuity was broken", () => {
     // Node: publish/EventFile (interface)
     // Action: the event file signals dependents to resync since hash continuity was broken
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/WriteEventFile → publish/EventFile", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -42,7 +42,7 @@ nodes:
     description: assembles the target module excerpt, the specific gap description, and surrounding graph context into a complete fix payload for the LLM worker
   MergeAuditReports:
     type: process
-    description: combines the 3 individual coverage reports into a unified view with normalized gap format before feeding into findings collection
+    description: combines the 4 individual coverage reports into a unified view with normalized gap format before feeding into findings collection
   ConfirmAllGapsResolved:
     type: process
     description: checks that the re-audit findings list is empty and compilation is clean before allowing convergence declaration to proceed
@@ -127,6 +127,9 @@ nodes:
   SafeguardNodesAreImmutableDuringFix:
     type: rule
     description: the self-reference safety nodes (ScopeFixToAvoidAuditBreak, DetectSelfAuditTarget, ReauditAfterSelfFix, DetectFixContentLoss) must not be modified or removed by any audit fix — they can only be changed through spec-driven reconvergence, preventing a fix from disabling its own safety checks
+  ValidateAuditorOutput:
+    type: process
+    description: checks that each auditor's raw LLM output is parseable into structured coverage findings with valid module names that exist in the compiled index, non-empty gap descriptions, and a recognized gap type before the output enters the findings collection pipeline
 
 journeys:
   DepthAudit:
@@ -139,7 +142,7 @@ journeys:
       - node: AuditAfterZeroErrors
         action: verifies the graph is error-free before starting audit
       - node: convergence/TargetedAudit
-        action: triggers the depth audit with 3 auditors
+        action: triggers the depth audit with 4 auditors
       - node: ExactlyFourAuditors
         action: enforces that all 4 coverage angles will be checked
       - node: TrackAuditRound
@@ -170,8 +173,16 @@ journeys:
         action: checks each module for at least one cross-module connection
       - node: CrossModuleCoverageReport
         action: records which modules are connected and which are isolated
+      - node: GenerateAuditPrompt
+        action: builds the goal coverage prompt for auditor 4
+      - node: _actors/Auditor
+        action: checks goal coverage — which goals have journeys proving achievement
+      - node: CheckGoalCoverage
+        action: compares goal rule nodes against journeys exercising each goal's achievement path
+      - node: GoalCoverageReport
+        action: records which goals are covered by proving journeys and which are orphaned
       - node: MergeAuditReports
-        action: combines the 3 individual reports into a unified gap format
+        action: combines the 4 individual reports into a unified gap format
       - node: CollectAuditFindings
         action: gathers all findings from the merged reports into a single gap list
       - node: AuditFindingsList
@@ -235,7 +246,7 @@ journeys:
       - node: convergence/ReauditAfterFix
         action: triggers a re-audit to check for remaining gaps
       - node: GenerateAuditPrompt
-        action: rebuilds audit prompts for all 3 angles
+        action: rebuilds audit prompts for all 4 angles
       - node: _actors/Auditor
         action: re-checks spec coverage after fixes
       - node: CheckSpecCoverage
@@ -248,8 +259,12 @@ journeys:
         action: re-checks cross-module coverage after fixes
       - node: CheckCrossModuleCoverage
         action: re-examines module connections in the updated graph
+      - node: _actors/Auditor
+        action: re-checks goal coverage after fixes
+      - node: CheckGoalCoverage
+        action: re-examines goal rule nodes against journeys in the updated graph
       - node: MergeAuditReports
-        action: combines the re-audit reports into unified format
+        action: combines the 4 re-audit reports into unified format
       - node: CollectAuditFindings
         action: gathers findings from the re-audit
       - node: AuditFindingsList
@@ -261,7 +276,7 @@ journeys:
       - node: AuditFindingsList
         action: provides the gap list from the latest audit round
       - node: ConfirmAllGapsResolved
-        action: verifies the findings list is empty across all 3 coverage angles
+        action: verifies the findings list is empty across all 4 coverage angles
       - node: compilation/CompilationResult
         action: confirms 0 errors and 0 orphans in the final compilation
       - node: compilation/ZeroErrorConvergence
@@ -381,17 +396,19 @@ journeys:
       - node: AuditAfterZeroErrors
         action: confirms the graph is clean enough to audit
       - node: convergence/TargetedAudit
-        action: dispatches 3 auditors to check coverage
+        action: dispatches 4 auditors to check coverage
       - node: GenerateAuditPrompt
-        action: builds prompts for all 3 auditors with excerpt context
+        action: builds prompts for all 4 auditors with excerpt context
       - node: CheckSpecCoverage
         action: auditor 1 checks spec section coverage
       - node: CheckActorCoverage
         action: auditor 2 checks actor participation coverage
       - node: CheckCrossModuleCoverage
         action: auditor 3 checks cross-module connection coverage
+      - node: CheckGoalCoverage
+        action: auditor 4 checks goal rule node coverage
       - node: MergeAuditReports
-        action: combines the 3 audit reports into unified format
+        action: combines the 4 audit reports into unified format
       - node: CollectAuditFindings
         action: collects all gaps into the findings list
       - node: AuditFindingsList
@@ -471,13 +488,15 @@ journeys:
       - node: VerifyGapClosed
         action: confirms the targeted gap is now closed
       - node: DetectFixInducedGaps
-        action: re-runs all 3 coverage checks against the post-fix graph
+        action: re-runs all 4 coverage checks against the post-fix graph
       - node: CheckSpecCoverage
         action: checks whether the fix changed spec coverage in other modules
       - node: CheckActorCoverage
         action: checks whether the fix created new orphan actors
       - node: CheckCrossModuleCoverage
         action: checks whether the fix disrupted cross-module connections
+      - node: CheckGoalCoverage
+        action: checks whether the fix affected goal coverage in other modules
       - node: DetectFixInducedGaps
         action: compares pre-fix and post-fix findings to identify any newly opened gaps
       - node: CollectAuditFindings
@@ -675,7 +694,7 @@ journeys:
       - node: ValidateGraphInvariantsPostFix
         action: confirms all convergence invariants still hold after the self-fix
       - node: GenerateAuditPrompt
-        action: rebuilds all 3 audit prompts using the modified audit module's definitions
+        action: rebuilds all 4 audit prompts using the modified audit module's definitions
       - node: _actors/Auditor
         action: re-checks spec coverage with the self-fixed audit module in the graph
       - node: CheckSpecCoverage
@@ -688,8 +707,12 @@ journeys:
         action: re-checks cross-module coverage with the updated audit module
       - node: CheckCrossModuleCoverage
         action: re-examines module connections including audit's updated cross-module refs
+      - node: _actors/Auditor
+        action: re-checks goal coverage with the updated audit module
+      - node: CheckGoalCoverage
+        action: re-examines goal rule nodes against journeys in the self-fixed graph
       - node: MergeAuditReports
-        action: combines the post-self-fix re-audit reports
+        action: combines the 4 post-self-fix re-audit reports
       - node: CollectAuditFindings
         action: gathers findings to verify the self-fix resolved the gap without opening new ones
       - node: AuditFindingsList
@@ -755,6 +778,7 @@ journeys:
         action: records the destructive fix attempt for progress tracking
 
   AuditCompletionTriggersPublish:
+    files: [tests/journeys/AuditCompletionTriggersPublish.test.ts]
     steps:
       - node: _actors/Auditor
         action: completes the final audit round with zero remaining gaps
@@ -772,6 +796,7 @@ journeys:
         action: writes the event file notifying dependents of the converged interface
 
   AuditPassTriggersCodegen:
+    files: [tests/journeys/AuditPassTriggersCodegen.test.ts]
     steps:
       - node: _actors/Auditor
         action: completes the final audit round with all coverage gaps resolved
@@ -794,6 +819,16 @@ journeys:
         action: provides the compiled graph with all journeys across all modules
       - node: GenerateAuditPrompt
         action: builds the goal coverage prompt including the full goal list as ground truth
+      - node: _goals/SolveContextProblem
+        action: loaded as ground truth goal to verify journey coverage proves context scoping at any scale
+      - node: _goals/BuildPando
+        action: loaded as ground truth goal to verify journey coverage proves Pando ships at scale
+      - node: _goals/GenomeIsTheProduct
+        action: loaded as ground truth goal to verify journey coverage proves genome is an adoptable protocol
+      - node: _goals/ProductionReady
+        action: loaded as ground truth goal to verify journey coverage proves production reliability
+      - node: _goals/SelfSustaining
+        action: loaded as ground truth goal to verify journey coverage proves autonomous operation
       - node: _actors/Auditor
         action: compares each goal rule node against journeys that exercise its achievement path
       - node: CheckGoalCoverage
@@ -935,3 +970,47 @@ journeys:
         action: retains the gap with an annotation that it requires spec-driven reconvergence to resolve
       - node: TrackAuditRound
         action: records that the fix was rejected due to safeguard immutability protection
+
+  HandleMalformedAuditReport:
+    steps:
+      - node: GenerateAuditPrompt
+        action: has built and sent a coverage check prompt to one of the 4 auditors
+      - node: _actors/Auditor
+        action: returns raw output from the coverage check
+      - node: ValidateAuditorOutput
+        action: attempts to parse the raw output into structured coverage findings
+      - node: ValidateAuditorOutput
+        action: detects that the output is unparseable, references non-existent module names, contains empty gap descriptions, or uses unrecognized gap types
+      - node: ValidateAuditorOutput
+        action: classifies the failure as either fully malformed (no usable findings) or partially malformed (some findings valid, others not)
+      - node: GenerateAuditPrompt
+        action: rebuilds the coverage prompt with explicit output format instructions and an example of a valid finding entry
+      - node: llm/SendTask
+        action: sends the clarified prompt as a retry task to the auditor
+      - node: _actors/Auditor
+        action: re-runs the coverage check with the clarified format instructions
+      - node: ValidateAuditorOutput
+        action: re-validates the retried output and confirms it parses into valid structured findings
+      - node: CollectAuditFindings
+        action: accepts the validated findings into the collection pipeline
+      - node: TrackAuditRound
+        action: records the auditor retry for progress tracking
+
+  CheckCrossModuleCoverageAgainstGraph:
+    steps:
+      - node: graph/CompiledIndex
+        action: provides the compiled graph with all modules and their computed connections
+      - node: graph/ConnectionSet
+        action: provides the cross-module connection edges derived from journey step references
+      - node: GenerateAuditPrompt
+        action: builds the cross-module coverage prompt including the connection graph as ground truth
+      - node: _actors/Auditor
+        action: examines each module's connections to determine if it participates in cross-module journeys
+      - node: CheckCrossModuleCoverage
+        action: flags modules that have zero outgoing or incoming cross-module references as isolated
+      - node: CheckCrossModuleCoverage
+        action: flags modules where all cross-module references point to a single other module as weakly connected
+      - node: CrossModuleCoverageReport
+        action: records which modules are well-connected, which are isolated, and which are weakly connected
+      - node: CollectAuditFindings
+        action: adds cross-module coverage gaps to the findings list with the isolated module name and missing connection direction as context

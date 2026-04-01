@@ -27,10 +27,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/HierarchyDecision → hierarchy/AnalyzeModuleIndependence", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/DecideSplit confirms the split decision and defines the child engine boundaries", () => {
     // Node: hierarchy/DecideSplit (process)
     // Action: confirms the split decision and defines the child engine boundaries
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/AnalyzeModuleIndependence → hierarchy/DecideSplit", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: hierarchy/CreateChildDirectory creates a directory structure for each child engine", () => {
@@ -39,10 +49,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/DecideSplit → hierarchy/CreateChildDirectory", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: hierarchy/GenerateScopedSpec generates a scoped spec.md for each child engine from the parent spec", () => {
     // Node: hierarchy/GenerateScopedSpec (process)
     // Action: generates a scoped spec.md for each child engine from the parent spec
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/CreateChildDirectory → hierarchy/GenerateScopedSpec", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: hierarchy/DistributeSharedActors copies shared actors to each child engine's _actors.yaml", () => {
@@ -51,10 +71,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/GenerateScopedSpec → hierarchy/DistributeSharedActors", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: hierarchy/AssignModulesToChildren maps each module from ORGANIZATION.md to its child engine", () => {
     // Node: hierarchy/AssignModulesToChildren (process)
     // Action: maps each module from ORGANIZATION.md to its child engine
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/DistributeSharedActors → hierarchy/AssignModulesToChildren", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: convergence/SplitIntoChildEngines prepares each child engine with its scoped spec, actors, and module assignments", () => {
@@ -63,10 +93,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/AssignModulesToChildren → convergence/SplitIntoChildEngines", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: hierarchy/SpawnChildEngine launches an independent convergence pipeline for the first child engine", () => {
     // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches an independent convergence pipeline for the first child engine
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/SplitIntoChildEngines → hierarchy/SpawnChildEngine", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: hierarchy/SpawnChildEngine launches an independent convergence pipeline for the second child engine", () => {
@@ -75,10 +115,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/SpawnChildEngine → hierarchy/SpawnChildEngine", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: hierarchy/WaitForAllChildren blocks until all child engines have reached CONVERGED status", () => {
     // Node: hierarchy/WaitForAllChildren (process)
     // Action: blocks until all child engines have reached CONVERGED status
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/SpawnChildEngine → hierarchy/WaitForAllChildren", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: convergence/CollectChildResults reads the published interface from each child engine", () => {
@@ -87,10 +137,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/WaitForAllChildren → convergence/CollectChildResults", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: hierarchy/CollectChildInterfaces gathers all child interface.yaml files into the parent", () => {
     // Node: hierarchy/CollectChildInterfaces (process)
     // Action: gathers all child interface.yaml files into the parent
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/CollectChildResults → hierarchy/CollectChildInterfaces", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
   });
 
   it("step 14: hierarchy/ValidateCrossEngineRefs checks that cross-engine references between children resolve correctly", () => {
@@ -99,10 +159,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/CollectChildInterfaces → hierarchy/ValidateCrossEngineRefs", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
+  });
+
   it("step 15: hierarchy/CreateCrossEngineJourneys builds journeys that span child engine boundaries in the parent graph", () => {
     // Node: hierarchy/CreateCrossEngineJourneys (process) — has code: src/convergence.ts
     // Action: builds journeys that span child engine boundaries in the parent graph
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/ValidateCrossEngineRefs → hierarchy/CreateCrossEngineJourneys", () => {
+    // Assert that the output of step 14 feeds into step 15
+    // TODO: agent fills connection assertion
   });
 
   it("step 16: hierarchy/PromoteExternalRefsToErrors promotes any unresolved cross-engine refs from warnings to errors at parent level", () => {
@@ -111,10 +181,20 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/CreateCrossEngineJourneys → hierarchy/PromoteExternalRefsToErrors", () => {
+    // Assert that the output of step 15 feeds into step 16
+    // TODO: agent fills connection assertion
+  });
+
   it("step 17: convergence/CompileCheck runs parent-level compilation across all child interfaces and cross-engine journeys", () => {
     // Node: convergence/CompileCheck (process)
     // Action: runs parent-level compilation across all child interfaces and cross-engine journeys
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/PromoteExternalRefsToErrors → convergence/CompileCheck", () => {
+    // Assert that the output of step 16 feeds into step 17
+    // TODO: agent fills connection assertion
   });
 
   it("step 18: _actors/Compiler validates the parent graph with all child interfaces integrated", () => {
@@ -123,16 +203,31 @@ describe("HierarchySplitPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/CompileCheck → _actors/Compiler", () => {
+    // Assert that the output of step 17 feeds into step 18
+    // TODO: agent fills connection assertion
+  });
+
   it("step 19: compilation/CompilationResult provides the parent-level compilation result", () => {
     // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: provides the parent-level compilation result
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 18 feeds into step 19
+    // TODO: agent fills connection assertion
+  });
+
   it("step 20: convergence/ConvergenceState records that hierarchy split is complete and all children have converged", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records that hierarchy split is complete and all children have converged
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → convergence/ConvergenceState", () => {
+    // Assert that the output of step 19 feeds into step 20
+    // TODO: agent fills connection assertion
   });
 
 });

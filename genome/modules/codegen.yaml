@@ -28,6 +28,10 @@ nodes:
   ConfirmAllModulesFilled:
     type: process
     description: checks that every module in the dependency-ordered build list has a filled source file on disk before signaling codegen completion
+  BuildFillPrompt:
+    type: process
+    description: builds a structured fill prompt from the skeleton content, node name, description, and connection context (preceded_by, followed_by, triggered_by_actors) with rules instructing the LLM to replace stubs with working code while preserving signatures
+    files: ["src/codegen.ts"]
   ProvideCodegenExcerpt:
     type: process
     description: assembles codegen-specific excerpt context including node descriptions, journey flows, and cross-module imports to guide the LLM fill
@@ -163,8 +167,10 @@ journeys:
         action: assembles codegen-specific context including node descriptions and journey flows
       - node: excerpt/ExcerptOutput
         action: provides focused context for the module to guide implementation
+      - node: BuildFillPrompt
+        action: builds the structured fill prompt combining skeleton content, node metadata, connection context, and fill rules
       - node: llm/TaskPayload
-        action: packages the skeleton and excerpt into a task for the worker
+        action: packages the prompt into a task for the worker
       - node: llm/SendTask
         action: sends the fill task to the LLM worker
       - node: _actors/LLMWorker
@@ -191,6 +197,8 @@ journeys:
         action: picks the first module in build order which has no internal dependencies
       - node: SkeletonFile
         action: provides the selected module's skeleton
+      - node: BuildFillPrompt
+        action: builds the fill prompt from the skeleton and node metadata with connection context and fill rules
       - node: FillImplementation
         action: LLM fills the first module
       - node: FilledSourceFile
@@ -295,6 +303,8 @@ journeys:
         action: picks each module in dependency order
       - node: ProvideCodegenExcerpt
         action: assembles codegen-specific context for each module
+      - node: BuildFillPrompt
+        action: builds the fill prompt from skeleton, node metadata, and connection context for the LLM worker
       - node: FillImplementation
         action: LLM fills each skeleton with working code
       - node: FilledSourceFile
@@ -655,3 +665,86 @@ journeys:
         action: runs compilation to verify the edited code introduces no errors
       - node: StageFilledModule
         action: stages the successfully updated module in the codegen result
+
+  RollbackFillThatBreaksDependents:
+    steps:
+      - node: FillImplementation
+        action: LLM has produced a filled file for a module
+      - node: ValidateFilledSyntax
+        action: confirms the filled file itself has valid syntax and types
+      - node: WriteGeneratedFile
+        action: writes the filled file to disk so dependent modules can import it
+      - node: SelectNextModuleToFill
+        action: advances to the next module in build order which depends on the just-filled module
+      - node: FillImplementation
+        action: LLM fills the dependent module importing the previously filled file
+      - node: ValidateFilledSyntax
+        action: runs type checking on the dependent and detects type errors caused by the upstream fill
+      - node: ValidateFilledSyntax
+        action: traces the type errors back to exported signatures in the upstream filled module
+      - node: RollbackCorruptedFill
+        action: reads the original skeleton for the upstream module that caused the type errors
+      - node: RollbackCorruptedFill
+        action: reverts the upstream file on disk back to its skeleton state
+      - node: RetryFillWithErrorFeedback
+        action: packages the downstream type errors as feedback showing how the upstream exports broke dependents
+      - node: SkeletonFile
+        action: provides the original skeleton as the base for the corrected fill attempt
+      - node: llm/SendTask
+        action: sends the retry task with downstream type error context to the worker
+      - node: _actors/LLMWorker
+        action: re-fills the upstream skeleton with exports that satisfy dependent module type requirements
+      - node: FillImplementation
+        action: LLM produces a corrected fill with compatible exported signatures
+      - node: llm/ReceiveResult
+        action: receives the corrected upstream fill
+      - node: ValidateFilledSyntax
+        action: re-checks the corrected fill for syntax errors before re-attempting dependents
+
+  RecoverFromMode2UpdateFailure:
+    steps:
+      - node: ApplyEditToExistingCode
+        action: LLM has applied edits to an existing source file during Mode 2 update
+      - node: ValidateFilledSyntax
+        action: runs syntax and type checking on the edited file and detects errors introduced by the edit
+      - node: ValidateFilledSyntax
+        action: collects the specific error messages with line numbers from the failed edit
+      - node: Mode2UpdateExisting
+        action: confirms the file must be preserved not regenerated so the recovery must revert and retry
+      - node: RollbackCorruptedFill
+        action: reads the pre-edit backup of the source file taken before the LLM edit was applied
+      - node: RollbackCorruptedFill
+        action: restores the source file to its pre-edit state on disk
+      - node: _actors/Compiler
+        action: recompiles to confirm the revert restored the previous working state
+      - node: GenerateUpdateContext
+        action: re-assembles the graph diff with additional context about what the previous edit broke
+      - node: RetryFillWithErrorFeedback
+        action: packages the edit errors as feedback specifying which lines and types failed
+      - node: _actors/LLMWorker
+        action: receives the retry task with error feedback and instructions to apply a more conservative edit
+      - node: ApplyEditToExistingCode
+        action: LLM re-applies edits avoiding the patterns that caused the previous failure
+      - node: ValidateFilledSyntax
+        action: re-checks the corrected edit for syntax and type errors
+      - node: _actors/Compiler
+        action: runs compilation to confirm the corrected edit introduces no errors
+      - node: StageFilledModule
+        action: stages the successfully updated module after recovery
+
+  ValidateMode2PreservesStructure:
+    steps:
+      - node: ApplyEditToExistingCode
+        action: LLM has applied edits to an existing source file during Mode 2 update
+      - node: ValidateFilledSyntax
+        action: confirms the edited file has valid syntax and types
+      - node: DetectNodeStubMismatch
+        action: compares exported functions and classes in the edited file against the module's node list from the graph
+      - node: CodeComesFromNodes
+        action: verifies every graph node still has a corresponding function or class in the edited file
+      - node: DetectNodeStubMismatch
+        action: confirms no stubs were removed by the edit and no extra functions were added
+      - node: DetectPlaceholderFill
+        action: checks that the edit did not hollow out function bodies replacing implementations with placeholders
+      - node: StageFilledModule
+        action: stages the structurally validated updated module in the codegen result

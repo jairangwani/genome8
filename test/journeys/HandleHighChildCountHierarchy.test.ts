@@ -5,6 +5,11 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: src/convergence.ts
+// Implementation: test/multi-engine.test.ts
+// Implementation: src/compile.ts
+// Implementation: test/cross-project.test.ts
+
 describe("HandleHighChildCountHierarchy", () => {
   it("step 1: _actors/ParentEngine decides to split into a large number of children", () => {
     // Node: _actors/ParentEngine (actor)
@@ -18,10 +23,20 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/ParentEngine → hierarchy/AssignModulesToChildren", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/BatchChildDirectoryCreation creates all child directories in a single batch pass", () => {
     // Node: hierarchy/BatchChildDirectoryCreation (process)
     // Action: creates all child directories in a single batch pass
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/AssignModulesToChildren → hierarchy/BatchChildDirectoryCreation", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: hierarchy/BatchChildDirectoryCreation writes all scoped specs in the same batch pass", () => {
@@ -30,10 +45,20 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/BatchChildDirectoryCreation → hierarchy/BatchChildDirectoryCreation", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: hierarchy/BatchChildDirectoryCreation writes all scoped organizations in the same batch pass", () => {
     // Node: hierarchy/BatchChildDirectoryCreation (process)
     // Action: writes all scoped organizations in the same batch pass
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/BatchChildDirectoryCreation → hierarchy/BatchChildDirectoryCreation", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: hierarchy/BatchChildDirectoryCreation copies _actors.yaml into all child directories in the same batch pass", () => {
@@ -42,10 +67,20 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/BatchChildDirectoryCreation → hierarchy/BatchChildDirectoryCreation", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: hierarchy/ChildConcurrencyLimit caps simultaneous child processes to prevent resource exhaustion", () => {
     // Node: hierarchy/ChildConcurrencyLimit (rule)
     // Action: caps simultaneous child processes to prevent resource exhaustion
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/BatchChildDirectoryCreation → hierarchy/ChildConcurrencyLimit", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: hierarchy/LimitConcurrentChildren queues all children and spawns the first batch up to the limit", () => {
@@ -54,10 +89,20 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/ChildConcurrencyLimit → hierarchy/LimitConcurrentChildren", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: hierarchy/SpawnChildEngine launches the initial batch of children", () => {
-    // Node: hierarchy/SpawnChildEngine (process)
+    // Node: hierarchy/SpawnChildEngine (process) — has code: src/convergence.ts
     // Action: launches the initial batch of children
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/LimitConcurrentChildren → hierarchy/SpawnChildEngine", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: hierarchy/DetectChildTimeout monitors for slow children in the batch", () => {
@@ -66,10 +111,20 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/SpawnChildEngine → hierarchy/DetectChildTimeout", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: hierarchy/LimitConcurrentChildren spawns queued children as slots open from completed ones", () => {
     // Node: hierarchy/LimitConcurrentChildren (process)
     // Action: spawns queued children as slots open from completed ones
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/DetectChildTimeout → hierarchy/LimitConcurrentChildren", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
   it("step 12: hierarchy/WaitForAllChildren blocks until all batches have completed", () => {
@@ -78,16 +133,31 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/LimitConcurrentChildren → hierarchy/WaitForAllChildren", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
+  });
+
   it("step 13: hierarchy/IndexChildNodesForRefLookup builds a hash index of all child interface node names", () => {
     // Node: hierarchy/IndexChildNodesForRefLookup (process)
     // Action: builds a hash index of all child interface node names
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/WaitForAllChildren → hierarchy/IndexChildNodesForRefLookup", () => {
+    // Assert that the output of step 12 feeds into step 13
+    // TODO: agent fills connection assertion
+  });
+
   it("step 14: hierarchy/ValidateCrossEngineRefs validates cross-engine refs using the indexed lookup instead of linear scan", () => {
-    // Node: hierarchy/ValidateCrossEngineRefs (process)
+    // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: validates cross-engine refs using the indexed lookup instead of linear scan
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/IndexChildNodesForRefLookup → hierarchy/ValidateCrossEngineRefs", () => {
+    // Assert that the output of step 13 feeds into step 14
+    // TODO: agent fills connection assertion
   });
 
   it("step 15: hierarchy/StreamingInterfaceMerge merges child interfaces one at a time into the parent index", () => {
@@ -96,10 +166,20 @@ describe("HandleHighChildCountHierarchy", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/ValidateCrossEngineRefs → hierarchy/StreamingInterfaceMerge", () => {
+    // Assert that the output of step 14 feeds into step 15
+    // TODO: agent fills connection assertion
+  });
+
   it("step 16: hierarchy/MergeChildGraphsIntoParent completes the parent compiled index with all child content", () => {
     // Node: hierarchy/MergeChildGraphsIntoParent (process)
     // Action: completes the parent compiled index with all child content
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/StreamingInterfaceMerge → hierarchy/MergeChildGraphsIntoParent", () => {
+    // Assert that the output of step 15 feeds into step 16
+    // TODO: agent fills connection assertion
   });
 
 });

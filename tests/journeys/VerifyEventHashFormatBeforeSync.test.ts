@@ -17,10 +17,20 @@ describe("VerifyEventHashFormatBeforeSync", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DetectEventFileChange → events/ReadEventFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/ValidateEventFileFormat validates the event file has the required JSON structure", () => {
     // Node: events/ValidateEventFileFormat (process)
     // Action: validates the event file has the required JSON structure
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ReadEventFile → events/ValidateEventFileFormat", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: events/ValidateEventHashFormat checks that the interface hash field is a non-empty string", () => {
@@ -29,10 +39,20 @@ describe("VerifyEventHashFormatBeforeSync", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ValidateEventFileFormat → events/ValidateEventHashFormat", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: events/ValidateEventHashFormat verifies the hash matches the expected SHA256 hex pattern of exactly 64 lowercase hex characters", () => {
     // Node: events/ValidateEventHashFormat (process)
     // Action: verifies the hash matches the expected SHA256 hex pattern of exactly 64 lowercase hex characters
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ValidateEventHashFormat → events/ValidateEventHashFormat", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: events/HandleInvalidEventPayload rejects the event if the hash is empty, too short, contains non-hex characters, or is otherwise malformed", () => {
@@ -41,10 +61,20 @@ describe("VerifyEventHashFormatBeforeSync", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ValidateEventHashFormat → events/HandleInvalidEventPayload", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: events/LogEventFailure records the hash format violation with the invalid hash value and expected format", () => {
     // Node: events/LogEventFailure (process)
     // Action: records the hash format violation with the invalid hash value and expected format
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/HandleInvalidEventPayload → events/LogEventFailure", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: events/EventLog persists the hash format rejection log entry", () => {
@@ -53,10 +83,20 @@ describe("VerifyEventHashFormatBeforeSync", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/LogEventFailure → events/EventLog", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: events/EnterSleep returns to sleep without triggering sync since the hash cannot be trusted", () => {
     // Node: events/EnterSleep (process)
     // Action: returns to sleep without triggering sync since the hash cannot be trusted
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/EventLog → events/EnterSleep", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -18,10 +18,20 @@ describe("RestoreSequenceCounterOnColdStart", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → publish/EventFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/RestoreSequenceCounterFromDisk reads the sequence number field from the last event file", () => {
     // Node: publish/RestoreSequenceCounterFromDisk (process)
     // Action: reads the sequence number field from the last event file
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/EventFile → publish/RestoreSequenceCounterFromDisk", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/RestoreSequenceCounterFromDisk validates the sequence number is a positive integer and not corrupted", () => {
@@ -30,10 +40,20 @@ describe("RestoreSequenceCounterOnColdStart", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/RestoreSequenceCounterFromDisk → publish/RestoreSequenceCounterFromDisk", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/RestoreSequenceCounterFromDisk sets the in-memory EventSequenceCounter to the recovered value", () => {
     // Node: publish/RestoreSequenceCounterFromDisk (process)
     // Action: sets the in-memory EventSequenceCounter to the recovered value
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/RestoreSequenceCounterFromDisk → publish/RestoreSequenceCounterFromDisk", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/EventSequenceCounter is restored to the last persisted sequence number ready for the next increment", () => {
@@ -42,10 +62,20 @@ describe("RestoreSequenceCounterOnColdStart", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/RestoreSequenceCounterFromDisk → publish/EventSequenceCounter", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/MonotonicEventSequencing confirms the restored counter maintains the monotonic guarantee with respect to all previously written events", () => {
     // Node: publish/MonotonicEventSequencing (rule)
     // Action: confirms the restored counter maintains the monotonic guarantee with respect to all previously written events
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/EventSequenceCounter → publish/MonotonicEventSequencing", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

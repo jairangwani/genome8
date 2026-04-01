@@ -19,10 +19,20 @@ describe("CompressLargeWarningSet", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/SelectTargetModule → excerpt/CollectWarnings", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: excerpt/PrioritizeAndCompressWarnings groups warnings by type into categories such as orphans, dangling refs, spec gaps, and scope violations", () => {
     // Node: excerpt/PrioritizeAndCompressWarnings (process)
     // Action: groups warnings by type into categories such as orphans, dangling refs, spec gaps, and scope violations
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectWarnings → excerpt/PrioritizeAndCompressWarnings", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/PrioritizeAndCompressWarnings retains the highest-severity warnings in full detail with specific node and journey names", () => {
@@ -31,10 +41,20 @@ describe("CompressLargeWarningSet", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/PrioritizeAndCompressWarnings → excerpt/PrioritizeAndCompressWarnings", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: excerpt/PrioritizeAndCompressWarnings compresses remaining warnings in each group into a count-per-type summary line", () => {
     // Node: excerpt/PrioritizeAndCompressWarnings (process)
     // Action: compresses remaining warnings in each group into a count-per-type summary line
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/PrioritizeAndCompressWarnings → excerpt/PrioritizeAndCompressWarnings", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: excerpt/AdaptiveBudgetAllocation reallocates the saved lines from warning compression to other sections", () => {
@@ -43,10 +63,20 @@ describe("CompressLargeWarningSet", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/PrioritizeAndCompressWarnings → excerpt/AdaptiveBudgetAllocation", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: excerpt/AssembleExcerpt includes the prioritized and compressed warnings in the ISSUES section", () => {
     // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: includes the prioritized and compressed warnings in the ISSUES section
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/AdaptiveBudgetAllocation → excerpt/AssembleExcerpt", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: excerpt/TruncateToLimit trims the excerpt with compressed warnings fitting within the line budget", () => {
@@ -55,10 +85,20 @@ describe("CompressLargeWarningSet", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/AssembleExcerpt → excerpt/TruncateToLimit", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: excerpt/ExcerptOutput stores the excerpt with compressed warnings preserving the most actionable issues", () => {
     // Node: excerpt/ExcerptOutput (artifact)
     // Action: stores the excerpt with compressed warnings preserving the most actionable issues
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/TruncateToLimit → excerpt/ExcerptOutput", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

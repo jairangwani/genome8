@@ -6,6 +6,8 @@ import { describe, it, expect } from 'vitest';
 
 // Implementation: src/types.ts
 // Implementation: src/publish.ts
+// Implementation: test/publish.test.ts
+// Implementation: test/pando9-publish.test.ts
 
 describe("PreserveExtensionFieldsDuringExport", () => {
   it("step 1: graph/CompiledIndex provides the full compiled graph including nodes with extension fields like files", () => {
@@ -20,10 +22,20 @@ describe("PreserveExtensionFieldsDuringExport", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/CompiledIndex → publish/CollectExportedNodes", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/PreserveExtensionFieldsInInterface reads all fields from the compiled index node entry, not just type and description", () => {
     // Node: publish/PreserveExtensionFieldsInInterface (process)
     // Action: reads all fields from the compiled index node entry, not just type and description
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/CollectExportedNodes → publish/PreserveExtensionFieldsInInterface", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/PreserveExtensionFieldsInInterface copies extension fields like files into the exported node entry", () => {
@@ -32,10 +44,20 @@ describe("PreserveExtensionFieldsDuringExport", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/PreserveExtensionFieldsInInterface → publish/PreserveExtensionFieldsInInterface", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/PreserveExtensionFieldsInInterface verifies that the exported node entry has the same field count as the source node entry", () => {
     // Node: publish/PreserveExtensionFieldsInInterface (process)
     // Action: verifies that the exported node entry has the same field count as the source node entry
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/PreserveExtensionFieldsInInterface → publish/PreserveExtensionFieldsInInterface", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/ValidateInterfaceYamlSchema confirms the extension fields do not violate the interface schema since extension fields are allowed", () => {
@@ -44,16 +66,31 @@ describe("PreserveExtensionFieldsDuringExport", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/PreserveExtensionFieldsInInterface → publish/ValidateInterfaceYamlSchema", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/GenerateInterfaceYaml serializes the complete node entries including extension fields into interface.yaml", () => {
     // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: serializes the complete node entries including extension fields into interface.yaml
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ValidateInterfaceYamlSchema → publish/GenerateInterfaceYaml", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: publish/InterfaceYamlFile stores the interface with extension fields preserved for dependents that need them", () => {
-    // Node: publish/InterfaceYamlFile (artifact)
+    // Node: publish/InterfaceYamlFile (artifact) — has code: test/publish.test.ts
     // Action: stores the interface with extension fields preserved for dependents that need them
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/GenerateInterfaceYaml → publish/InterfaceYamlFile", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

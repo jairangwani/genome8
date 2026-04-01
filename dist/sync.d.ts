@@ -72,3 +72,38 @@ export declare function appendToOriginChain(existingChain: string[], boxId: stri
  * Removes entries for nodes not referenced by any local module.
  */
 export declare function narrowChangelog(changelog: Changelog, index: CompiledIndex): Changelog;
+/**
+ * Clear a stale sync lock on startup.
+ * If the lock is older than maxAge (default 5 min), release it.
+ * Returns true if a stale lock was cleared.
+ */
+export declare function clearStaleSyncLock(syncStatePath: string, maxAge?: number): boolean;
+/**
+ * Detect gaps in event sequence numbers for a dependency.
+ * Returns the missing sequence numbers between last processed and current.
+ * Enables ScanForMissedEventsOnWake and DetectAndRecoverMissedEventSequence.
+ */
+export declare function detectMissedEvents(syncState: SyncState, dependency: string, currentSequence: number): number[];
+/**
+ * Update the last processed sequence number for a dependency.
+ * Called after successfully processing an event.
+ */
+export declare function updateProcessedSequence(syncStatePath: string, dependency: string, sequenceNumber: number): void;
+/**
+ * Check if the ripple origin chain exceeds the configured depth limit.
+ * Returns true if the chain is too deep and propagation should be suppressed.
+ * Enables EnforceSyncRippleDepthLimit journey.
+ */
+export declare function checkRippleDepthLimit(originChain: string[], maxDepth: number): boolean;
+/**
+ * Release the sync lock unconditionally — used in error recovery paths
+ * to prevent permanent lock deadlock after unexpected failures.
+ * Enables ReleaseSyncLockOnPipelineError journey.
+ */
+export declare function releaseSyncLockOnError(syncStatePath: string): void;
+/**
+ * After markModulesStale runs, reads back each expected stale marker
+ * to verify the writes succeeded. Returns modules where the marker is missing.
+ * Enables RecoverInterruptedStaleMarkingOnRestart journey.
+ */
+export declare function detectStaleMarkingWriteFailure(modulesDir: string, expectedStale: string[]): string[];

@@ -18,10 +18,20 @@ describe("DetectAndReportStreamFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → llm/StreamJsonProtocol", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/DetectStreamInterruption detects the incomplete stream and flags the communication failure", () => {
     // Node: llm/DetectStreamInterruption (process)
     // Action: detects the incomplete stream and flags the communication failure
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/StreamJsonProtocol → llm/DetectStreamInterruption", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/DrainPartialOutput reads whatever partial stream data was received before the break", () => {
@@ -30,10 +40,20 @@ describe("DetectAndReportStreamFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/DetectStreamInterruption → llm/DrainPartialOutput", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/TaskPayload provides the task that was being processed when the stream broke", () => {
     // Node: llm/TaskPayload (artifact)
     // Action: provides the task that was being processed when the stream broke
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/DrainPartialOutput → llm/TaskPayload", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: llm/CrashReport records the stream failure with partial data and last task context", () => {
@@ -42,16 +62,31 @@ describe("DetectAndReportStreamFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/TaskPayload → llm/CrashReport", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: llm/CleanupFailedSession closes the broken channel and discards the corrupted session state", () => {
     // Node: llm/CleanupFailedSession (process)
     // Action: closes the broken channel and discards the corrupted session state
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/CrashReport → llm/CleanupFailedSession", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
+  });
+
   it("step 8: convergence/DetectWorkerFailure receives the stream failure report for recovery decision", () => {
     // Node: convergence/DetectWorkerFailure (process)
     // Action: receives the stream failure report for recovery decision
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/CleanupFailedSession → convergence/DetectWorkerFailure", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
   });
 
 });

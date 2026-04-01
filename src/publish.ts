@@ -262,3 +262,42 @@ export function publishInterface(
 
   return { interface_, changelog, skipped: false };
 }
+
+/**
+ * On cold start, scan the publish output directory for orphan .tmp files
+ * left by atomic write operations that crashed between temp file creation
+ * and rename. Removes them to prevent disk accumulation.
+ * Enables CleanupOrphanTempFilesOnColdStart journey.
+ */
+export function detectOrphanTempFiles(publishedDir: string): string[] {
+  if (!fs.existsSync(publishedDir)) return [];
+  const removed: string[] = [];
+  const entries = fs.readdirSync(publishedDir);
+  for (const entry of entries) {
+    if (entry.endsWith('.tmp')) {
+      const tmpPath = path.join(publishedDir, entry);
+      fs.unlinkSync(tmpPath);
+      removed.push(entry);
+    }
+  }
+  return removed;
+}
+
+/**
+ * Before incrementing the event sequence counter, check if the last event
+ * file already has the expected next sequence number (indicating a retry
+ * of an already-written event). Skips increment to prevent double-counting.
+ * Enables GuardSequenceCounterOnPublishRetry journey.
+ */
+export function guardSequenceCounter(
+  eventPath: string,
+  expectedNext: number
+): boolean {
+  if (!fs.existsSync(eventPath)) return false;
+  try {
+    const existing = JSON.parse(fs.readFileSync(eventPath, 'utf-8'));
+    return existing.sequence_number === expectedNext;
+  } catch {
+    return false;
+  }
+}

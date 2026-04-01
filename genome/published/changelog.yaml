@@ -1,3 +1,128 @@
-previous_hash: sha256:21a6e2d35836e06fe55cff1b8983cb53c00f146a29ea616ee332c5f48456c01b
-current_hash: sha256:af41ed169b824f8ccfee28d91c1105a73abf6e6c5da86a6130d0ead8a2026293
-changes: []
+previous_hash: sha256:1e9a9d2fd2dc9510b4e565c325dadb465d5ef32219d91e332f865e53f5c4008b
+current_hash: sha256:15de6c6b729ff81013e6b38cb9c77aa3854a94cb83f4cf23a5a3990df6a9352d
+changes:
+  - node: audit/ValidateAuditorOutput
+    type: added
+    impact: >-
+      New process: checks that each auditor's raw LLM output is parseable into structured coverage findings with valid
+      module names that exist in the compiled index, non-empty gap descriptions, and a recognized gap type before the
+      output enters the findings collection pipeline
+  - node: compilation/JourneyNameValidation
+    type: added
+    impact: >-
+      New process: validates that each journey name follows PascalCase format (uppercase letter followed by letters and
+      digits only) and emits a warning for names containing special characters or path separators
+  - node: events/DetectTotalWatcherLoss
+    type: added
+    impact: >-
+      New process: after a watcher crash or termination, checks EventWatcherSet and detects when zero active watchers
+      remain, indicating complete event blindness requiring immediate bulk re-registration or critical escalation
+  - node: events/EnforceDeterministicBatchOrder
+    type: added
+    impact: >-
+      New process: after PrioritizeEventsByImpact sorts events by impact count, breaks ties among equal-impact events by
+      sorting on dependency name alphabetically, ensuring the same batch always produces the same processing, shedding,
+      and spill order regardless of fs.watch arrival order
+  - node: excerpt/StabilizeRelevanceRankTiebreaking
+    type: added
+    impact: >-
+      New process: when two cross-module connections share the same relevance score during ranking, breaks ties using
+      deterministic alphabetical ordering of module name then node name to prevent non-deterministic output ordering
+      across runs
+  - node: excerpt/CompressLocalNodeList
+    type: added
+    impact: >-
+      New process: when a module's node count exceeds the per-section budget threshold, groups nodes by type with counts
+      and lists only the most-connected node names per type instead of enumerating every node
+  - node: excerpt/CompressLocalJourneyList
+    type: added
+    impact: >-
+      New process: when a module's journey count exceeds the per-section budget threshold, groups journeys by category
+      and lists only the most cross-connected journey names instead of enumerating every journey
+  - node: excerpt/TargetedCacheInvalidation
+    type: added
+    impact: >-
+      New process: when compilation changes specific modules, invalidates only cache entries for those modules and their
+      direct cross-module neighbors instead of clearing the entire cache
+  - node: graph/ClassifyExternalRef
+    type: added
+    impact: >-
+      New process: classifies an unresolvable cross-module reference as either external (targeting a sibling engine's
+      published interface namespace) or dangling (truly missing), enabling AllRefsResolveRule to treat external refs as
+      deferred warnings rather than errors
+  - node: graph/ModulePurge
+    type: added
+    impact: >-
+      New process: removes all nodes, journeys, and connections contributed by a specific module from the compiled index
+      in a single atomic operation, the inverse of IncrementalMerge
+  - node: graph/CanonicalCollectionOrderRule
+    type: added
+    impact: >-
+      New rule: enforces that NodeRegistry is sorted by node name, JourneyRegistry by journey name, and ConnectionSet by
+      source-target-journey tuple, ensuring identical output regardless of module processing order
+  - node: hierarchy/DetectChildPreparationFailure
+    type: added
+    impact: >-
+      New process: detects when CreateChildDirectory, GenerateScopedSpec, GenerateChildOrganization, or
+      DistributeSharedActors fails due to disk I/O error during the child preparation phase, captures which children
+      were fully prepared and which were not, and removes any partially created directories to prevent stale state
+  - node: hierarchy/DetectOrphanedChildState
+    type: added
+    impact: >-
+      New process: on engine startup before hierarchy decision, scans for existing child directories from a previous
+      hierarchy run and checks each for a published interface.yaml to determine whether completed child results can be
+      adopted or stale incomplete directories must be cleaned up before re-preparing
+  - node: hierarchy/IdentifyChildrenAffectedBySpecChange
+    type: added
+    impact: >-
+      New process: when the parent's spec changes, diffs old vs new spec to find changed section numbers, maps those
+      sections to modules via spec_sections metadata, then maps affected modules to children using the stored split
+      decision to produce the list of children whose scoped specs need regeneration
+  - node: hierarchy/TerminateChildEngines
+    type: added
+    impact: >-
+      New process: sends a shutdown signal to all running child engine subprocesses, waits for each to exit within the
+      configured timeout, and force-kills any child that fails to exit gracefully before the parent proceeds with its
+      own shutdown
+  - node: organization/HandleOrganizationRepairExhaustion
+    type: added
+    impact: >-
+      New process: detects when an organization-level repair loop — malformed output, circular dependency, spec coverage
+      gap, empty module list, duplicate names, dangling dependency ref, or ungrounded module — has exhausted its bounded
+      retry budget without producing valid output, and reports the unresolvable validation failure to convergence to
+      halt the pipeline
+  - node: publish/DetectCorruptedPreviousInterface
+    type: added
+    impact: >-
+      New process: detects when the previous interface.yaml on disk is present but unparsable as YAML or missing
+      required fields like provides or version_hash, flagging it as corrupted so the pipeline falls back to first-time
+      publish behavior
+  - node: sync/ReleaseSyncLockOnError
+    type: added
+    impact: >-
+      New process: ensures the SyncLock is released in a finally block when any step in the sync pipeline throws an
+      unexpected error after lock acquisition, preventing permanent lock deadlock that would block all future sync
+      cycles
+  - node: sync/DetectStaleMarkingWriteFailure
+    type: added
+    impact: >-
+      New process: after MarkModulesStale runs, reads back each expected stale marker from the module files on disk and
+      identifies any modules where the marker write silently failed or was lost due to I/O error
+  - node: audit/MergeAuditReports
+    type: modified
+    field: description
+    was: >-
+      combines the 3 individual coverage reports into a unified view with normalized gap format before feeding into
+      findings collection
+    now: >-
+      combines the 4 individual coverage reports into a unified view with normalized gap format before feeding into
+      findings collection
+    impact: audit/MergeAuditReports description changed. Dependents should review.
+  - node: graph/DestructiveEditDetection
+    type: modified
+    field: description
+    was: compares node and journey counts before and after a module rewrite to detect content loss caused by LLM overwrites
+    now: >-
+      compares per-module node counts before and after a module rewrite to detect content loss caused by LLM overwrites,
+      returning which nodes were lost
+    impact: graph/DestructiveEditDetection description changed. Dependents should review.

@@ -4,94 +4,159 @@
 // Modules touched: _actors, actors, llm
 
 import { describe, it, expect } from 'vitest';
+import { compileFromModules } from '../../src/compile.js';
+import type { ModuleFile } from '../../src/types.js';
 
-const PASCAL_CASE_REGEX = /^[A-Z][a-zA-Z0-9]*$/;
+function buildInvalidNameModules() {
+  const modules = new Map<string, ModuleFile>();
 
-function validateActorName(name: string): boolean {
-  return PASCAL_CASE_REGEX.test(name);
-}
+  modules.set('_actors', {
+    nodes: {
+      LLMWorker: { type: 'actor', description: 'Produces actor entries from the 3-angle discovery' },
+    },
+    journeys: {},
+  });
 
-function toPascalCase(input: string): string {
-  return input
-    .replace(/[^a-zA-Z0-9\s\-_]/g, '') // remove special chars except separators
-    .split(/[\s_-]+/)
-    .filter(w => w.length > 0)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('');
+  modules.set('actors', {
+    nodes: {
+      MergedActorList: { type: 'artifact', description: 'Provides the merged actor list with names for format validation' },
+      ValidateActorNameFormat: { type: 'process', description: 'Checks each actor name against valid PascalCase identifier rules' },
+      MergeAndDeduplicate: { type: 'process', description: 'Re-merges with the corrected name to check for new duplicates against existing actors' },
+    },
+    journeys: {
+      RejectInvalidActorName: {
+        steps: [
+          { node: '_actors/LLMWorker', action: 'produces actor entries from the 3-angle discovery' },
+          { node: 'MergedActorList', action: 'provides the merged actor list with names for format validation' },
+          { node: 'ValidateActorNameFormat', action: 'checks each actor name against valid PascalCase identifier rules' },
+          { node: 'ValidateActorNameFormat', action: 'detects an actor name containing spaces, hyphens, special characters, or lowercase-start' },
+          { node: 'llm/SendTask', action: 'sends the invalid name with the PascalCase naming convention as a correction task' },
+          { node: '_actors/LLMWorker', action: 're-formats the actor name to valid PascalCase matching the convention' },
+          { node: 'MergeAndDeduplicate', action: 're-merges with the corrected name to check for new duplicates against existing actors' },
+          { node: 'ValidateActorNameFormat', action: 're-validates and confirms all actor names are now valid identifiers' },
+        ],
+      },
+    },
+  });
+
+  modules.set('llm', {
+    nodes: {
+      SendTask: { type: 'process', description: 'Sends the invalid name with the PascalCase naming convention as a correction task' },
+    },
+    journeys: {},
+  });
+
+  return modules;
 }
 
 describe("RejectInvalidActorName", () => {
+  const modules = buildInvalidNameModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['RejectInvalidActorName'];
+
   it("step 1: _actors/LLMWorker produces actor entries from the 3-angle discovery", () => {
-    const discovered = [
-      { name: 'User', description: 'Uses the platform' },
-      { name: 'system-admin', description: 'Manages systems' },
-      { name: 'new user', description: 'First time visitor' },
-      { name: 'attacker!', description: 'Tries to exploit' },
-    ];
-    expect(discovered.length).toBe(4);
-    // Mix of valid and invalid names
-    expect(validateActorName(discovered[0].name)).toBe(true);
-    expect(validateActorName(discovered[1].name)).toBe(false);
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
   });
 
   it("step 2: actors/MergedActorList provides the merged actor list with names for format validation", () => {
-    const mergedNames = ['User', 'system-admin', 'new user', 'attacker!'];
-    expect(mergedNames.length).toBe(4);
+    const node = result.index.nodes['actors/MergedActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
+  });
+
+  it("connection: _actors/LLMWorker → actors/MergedActorList", () => {
+    const from = result.index.nodes['_actors/LLMWorker'];
+    expect(from.followed_by).toContain('actors/MergedActorList');
   });
 
   it("step 3: actors/ValidateActorNameFormat checks each actor name against valid PascalCase identifier rules", () => {
-    const names = ['User', 'system-admin', 'new user', 'attacker!', 'Admin'];
-    const valid = names.filter(n => validateActorName(n));
-    const invalid = names.filter(n => !validateActorName(n));
-    expect(valid).toEqual(['User', 'Admin']);
-    expect(invalid).toEqual(['system-admin', 'new user', 'attacker!']);
+    const node = result.index.nodes['actors/ValidateActorNameFormat'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/MergedActorList');
+  });
+
+  it("connection: actors/MergedActorList → actors/ValidateActorNameFormat", () => {
+    const from = result.index.nodes['actors/MergedActorList'];
+    expect(from.followed_by).toContain('actors/ValidateActorNameFormat');
   });
 
   it("step 4: actors/ValidateActorNameFormat detects an actor name containing spaces, hyphens, special characters, or lowercase-start", () => {
-    expect(validateActorName('system-admin')).toBe(false); // hyphen
-    expect(validateActorName('new user')).toBe(false);      // space
-    expect(validateActorName('attacker!')).toBe(false);     // special char
-    expect(validateActorName('lowercaseStart')).toBe(false); // lowercase start
-    expect(validateActorName('ValidName')).toBe(true);
+    const node = result.index.nodes['actors/ValidateActorNameFormat'];
+    expect(node).toBeDefined();
+    // Self-connection: same node consecutively
+    expect(node.followed_by).toContain('llm/SendTask');
+  });
+
+  it("connection: actors/ValidateActorNameFormat → actors/ValidateActorNameFormat", () => {
+    const node = result.index.nodes['actors/ValidateActorNameFormat'];
+    expect(node.preceded_by).toContain('actors/MergedActorList');
   });
 
   it("step 5: llm/SendTask sends the invalid name with the PascalCase naming convention as a correction task", () => {
-    const correctionTask = {
-      instruction: 'Convert the following actor name to PascalCase format',
-      invalidName: 'system-admin',
-      convention: 'PascalCase: first letter of each word capitalized, no spaces/hyphens/special chars',
-    };
-    expect(correctionTask.invalidName).toBe('system-admin');
-    expect(correctionTask.convention).toContain('PascalCase');
+    const node = result.index.nodes['llm/SendTask'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/ValidateActorNameFormat');
+  });
+
+  it("connection: actors/ValidateActorNameFormat → llm/SendTask", () => {
+    const from = result.index.nodes['actors/ValidateActorNameFormat'];
+    expect(from.followed_by).toContain('llm/SendTask');
   });
 
   it("step 6: _actors/LLMWorker re-formats the actor name to valid PascalCase matching the convention", () => {
-    expect(toPascalCase('system-admin')).toBe('SystemAdmin');
-    expect(toPascalCase('new user')).toBe('NewUser');
-    expect(toPascalCase('attacker!')).toBe('Attacker');
-    // All corrected names pass validation
-    expect(validateActorName(toPascalCase('system-admin'))).toBe(true);
-    expect(validateActorName(toPascalCase('new user'))).toBe(true);
-    expect(validateActorName(toPascalCase('attacker!'))).toBe(true);
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('llm/SendTask');
+  });
+
+  it("connection: llm/SendTask → _actors/LLMWorker", () => {
+    const from = result.index.nodes['llm/SendTask'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 7: actors/MergeAndDeduplicate re-merges with the corrected name to check for new duplicates against existing actors", () => {
-    const existing = ['User', 'Admin'];
-    const corrected = ['SystemAdmin', 'NewUser', 'Attacker'];
-    const merged = [...new Set([...existing, ...corrected])];
-    expect(merged.length).toBe(5); // no duplicates
-    // Check if correction created a conflict — 'Admin' vs 'SystemAdmin' are different
-    expect(new Set(merged).size).toBe(merged.length);
+    const node = result.index.nodes['actors/MergeAndDeduplicate'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/LLMWorker');
+  });
+
+  it("connection: _actors/LLMWorker → actors/MergeAndDeduplicate", () => {
+    const from = result.index.nodes['_actors/LLMWorker'];
+    expect(from.followed_by).toContain('actors/MergeAndDeduplicate');
   });
 
   it("step 8: actors/ValidateActorNameFormat re-validates and confirms all actor names are now valid identifiers", () => {
-    const finalNames = ['User', 'Admin', 'SystemAdmin', 'NewUser', 'Attacker'];
-    for (const name of finalNames) {
-      expect(validateActorName(name)).toBe(true);
-    }
-    // All pass PascalCase validation
-    const allValid = finalNames.every(n => validateActorName(n));
-    expect(allValid).toBe(true);
+    const node = result.index.nodes['actors/ValidateActorNameFormat'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('actors/MergeAndDeduplicate');
   });
 
+  it("connection: actors/MergeAndDeduplicate → actors/ValidateActorNameFormat", () => {
+    const from = result.index.nodes['actors/MergeAndDeduplicate'];
+    expect(from.followed_by).toContain('actors/ValidateActorNameFormat');
+  });
+
+  it("journey covers full name validation cycle (8 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(8);
+    expect(journey.steps[0].node).toBe('_actors/LLMWorker');
+    expect(journey.steps[7].node).toBe('actors/ValidateActorNameFormat');
+  });
+
+  it("journey actor is LLMWorker", () => {
+    expect(journey.actor).toBe('_actors/LLMWorker');
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

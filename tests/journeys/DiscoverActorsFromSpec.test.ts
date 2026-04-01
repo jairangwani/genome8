@@ -7,109 +7,245 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-// Simulate the three-angle actor discovery pipeline by building modules
-// that represent the discovery output at each stage.
+function buildActorModules() {
+  const modules = new Map<string, ModuleFile>();
 
-const spec = '## 1. System\nA platform where Users create content, Admins moderate, and Attackers try to exploit.';
+  // _actors module: actors discovered from 3 angles
+  modules.set('_actors', {
+    nodes: {
+      LLMWorker: { type: 'actor', description: 'LLM that analyzes the spec to discover actors' },
+      ProjectOwner: { type: 'actor', description: 'Person who wrote the spec and owns the project' },
+      HumanDeveloper: { type: 'actor', description: 'Developer who builds and maintains the system' },
+      MaliciousSpecAuthor: { type: 'actor', description: 'Adversary who injects malicious content into specs' },
+      YAMLTamperer: { type: 'actor', description: 'Adversary who directly edits YAML files to corrupt entries' },
+      NewProjectAdopter: { type: 'actor', description: 'First-time user onboarding to the system' },
+      ReturningOwner: { type: 'actor', description: 'Owner returning after absence to check on progress' },
+    },
+    journeys: {},
+  });
 
-// Activities angle: who uses, creates, operates, governs, visits
-const activitiesActors = ['User', 'Admin', 'ContentCreator'];
-// Threats angle: attackers, abusers, failure scenarios
-const threatsActors = ['Attacker', 'Spammer'];
-// Lifecycle angle: onboarding, power use, decline, exit, return
-const lifecycleActors = ['NewUser', 'ReturningUser'];
+  // actors module: discovery processes and artifacts
+  modules.set('actors', {
+    nodes: {
+      ThreeAngleDiscovery: { type: 'rule', description: 'Enforces that all 3 discovery angles will be executed' },
+      DiscoverFromActivities: { type: 'process', description: 'Identifies who uses, creates, operates, governs, and visits the system' },
+      ActivitiesActorList: { type: 'artifact', description: 'Stores the activities-perspective actors' },
+      DiscoverFromThreats: { type: 'process', description: 'Identifies attackers, abusers, failure scenarios, and exploitation vectors' },
+      ThreatsActorList: { type: 'artifact', description: 'Stores the threats-perspective actors' },
+      DiscoverFromLifecycle: { type: 'process', description: 'Identifies first visit, onboarding, power use, decline, exit, and return actors' },
+      LifecycleActorList: { type: 'artifact', description: 'Stores the lifecycle-perspective actors' },
+    },
+    journeys: {
+      DiscoverActorsFromSpec: {
+        steps: [
+          { node: 'convergence/DiscoverActors', action: 'triggers actor discovery after organization step is complete' },
+          { node: 'organization/OrganizationFile', action: 'provides the organizational context for actor analysis' },
+          { node: 'convergence/SpecFile', action: 'provides the raw spec for actor extraction' },
+          { node: 'ThreeAngleDiscovery', action: 'enforces that all 3 discovery angles will be executed' },
+          { node: '_actors/LLMWorker', action: 'reads the spec to discover actors from the activities perspective' },
+          { node: 'DiscoverFromActivities', action: 'identifies who uses, creates, operates, governs, and visits the system' },
+          { node: 'ActivitiesActorList', action: 'stores the activities-perspective actors' },
+          { node: '_actors/LLMWorker', action: 'reads the spec to discover actors from the threats perspective' },
+          { node: 'DiscoverFromThreats', action: 'identifies attackers, abusers, failure scenarios, and exploitation vectors' },
+          { node: 'ThreatsActorList', action: 'stores the threats-perspective actors' },
+          { node: '_actors/LLMWorker', action: 'reads the spec to discover actors from the lifecycle perspective' },
+          { node: 'DiscoverFromLifecycle', action: 'identifies first visit, onboarding, power use, decline, exit, and return actors' },
+          { node: 'LifecycleActorList', action: 'stores the lifecycle-perspective actors' },
+        ],
+      },
+    },
+  });
 
-// Merged set (User appears in activities, deduped)
-const allActors = ['User', 'Admin', 'ContentCreator', 'Attacker', 'Spammer', 'NewUser', 'ReturningUser'];
+  // convergence module: provides DiscoverActors + SpecFile nodes
+  modules.set('convergence', {
+    nodes: {
+      DiscoverActors: { type: 'process', description: 'Triggers actor discovery after organization is complete' },
+      SpecFile: { type: 'artifact', description: 'The spec.md file on disk' },
+    },
+    journeys: {},
+  });
 
-function buildActorsModule(): ModuleFile {
-  const nodes: Record<string, any> = {};
-  for (const name of allActors) {
-    nodes[name] = { type: 'actor', description: `${name} of the system` };
-  }
-  return { nodes };
+  // organization module: provides OrganizationFile node
+  modules.set('organization', {
+    nodes: {
+      OrganizationFile: { type: 'artifact', description: 'The organization.yaml listing modules and their spec sections' },
+    },
+    journeys: {},
+  });
+
+  return modules;
 }
 
 describe("DiscoverActorsFromSpec", () => {
+  const modules = buildActorModules();
+  const result = compileFromModules(modules);
+
   it("step 1: convergence/DiscoverActors triggers actor discovery after organization step is complete", () => {
-    // Discovery is triggered only after organization produces a module list.
-    // Verify: actors module can be compiled (discovery output is valid YAML structure).
-    const modules = new Map<string, ModuleFile>([
-      ['_actors', buildActorsModule()],
-    ]);
-    const result = compileFromModules(modules);
-    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
+    const node = result.index.nodes['convergence/DiscoverActors'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.in_journeys.length).toBeGreaterThanOrEqual(1);
   });
 
   it("step 2: organization/OrganizationFile provides the organizational context for actor analysis", () => {
-    // Organization must exist before actors — it tells us what modules to expect.
-    // Verified by: actors module references organization context.
-    expect(spec).toContain('platform');
+    const node = result.index.nodes['organization/OrganizationFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('convergence/DiscoverActors');
+  });
+
+  it("connection: convergence/DiscoverActors → organization/OrganizationFile", () => {
+    const from = result.index.nodes['convergence/DiscoverActors'];
+    const to = result.index.nodes['organization/OrganizationFile'];
+    expect(from.followed_by).toContain('organization/OrganizationFile');
+    expect(to.preceded_by).toContain('convergence/DiscoverActors');
   });
 
   it("step 3: convergence/SpecFile provides the raw spec for actor extraction", () => {
-    // The spec is the sole input for actor discovery.
-    expect(spec.length).toBeGreaterThan(0);
-    expect(spec).toContain('Users');
-    expect(spec).toContain('Attackers');
+    const node = result.index.nodes['convergence/SpecFile'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('organization/OrganizationFile');
+  });
+
+  it("connection: organization/OrganizationFile → convergence/SpecFile", () => {
+    const from = result.index.nodes['organization/OrganizationFile'];
+    expect(from.followed_by).toContain('convergence/SpecFile');
   });
 
   it("step 4: actors/ThreeAngleDiscovery enforces that all 3 discovery angles will be executed", () => {
-    // Rule: exactly 3 angles must produce results.
-    const angles = [activitiesActors, threatsActors, lifecycleActors];
-    expect(angles.length).toBe(3);
-    for (const angle of angles) {
-      expect(angle.length).toBeGreaterThan(0);
-    }
+    const node = result.index.nodes['actors/ThreeAngleDiscovery'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+  });
+
+  it("connection: convergence/SpecFile → actors/ThreeAngleDiscovery", () => {
+    const from = result.index.nodes['convergence/SpecFile'];
+    expect(from.followed_by).toContain('actors/ThreeAngleDiscovery');
   });
 
   it("step 5: _actors/LLMWorker reads the spec to discover actors from the activities perspective", () => {
-    // Activities angle produces actors who use/create/operate/govern/visit.
-    expect(activitiesActors).toContain('User');
-    expect(activitiesActors).toContain('Admin');
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.in_journeys.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("connection: actors/ThreeAngleDiscovery → _actors/LLMWorker", () => {
+    const from = result.index.nodes['actors/ThreeAngleDiscovery'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 6: actors/DiscoverFromActivities identifies who uses, creates, operates, governs, and visits the system", () => {
-    // Each activity actor has a role in the system.
-    expect(activitiesActors.length).toBeGreaterThanOrEqual(1);
-    for (const actor of activitiesActors) {
-      expect(actor).toMatch(/^[A-Z]/); // PascalCase
-    }
+    const node = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.description).toContain('uses');
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromActivities", () => {
+    const from = result.index.nodes['_actors/LLMWorker'];
+    expect(from.followed_by).toContain('actors/DiscoverFromActivities');
   });
 
   it("step 7: actors/ActivitiesActorList stores the activities-perspective actors", () => {
-    // Artifact: list of actors from activities angle, ready for merging.
-    expect(activitiesActors).toEqual(expect.arrayContaining(['User', 'Admin']));
+    const node = result.index.nodes['actors/ActivitiesActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/DiscoverFromActivities');
+  });
+
+  it("connection: actors/DiscoverFromActivities → actors/ActivitiesActorList", () => {
+    const from = result.index.nodes['actors/DiscoverFromActivities'];
+    expect(from.followed_by).toContain('actors/ActivitiesActorList');
   });
 
   it("step 8: _actors/LLMWorker reads the spec to discover actors from the threats perspective", () => {
-    // Threats angle produces adversarial actors.
-    expect(threatsActors).toContain('Attacker');
+    // LLMWorker is reused — preceded_by should include ActivitiesActorList
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.preceded_by).toContain('actors/ActivitiesActorList');
+  });
+
+  it("connection: actors/ActivitiesActorList → _actors/LLMWorker", () => {
+    const from = result.index.nodes['actors/ActivitiesActorList'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 9: actors/DiscoverFromThreats identifies attackers, abusers, failure scenarios, and exploitation vectors", () => {
-    expect(threatsActors.length).toBeGreaterThanOrEqual(1);
-    for (const actor of threatsActors) {
-      expect(actor).toMatch(/^[A-Z]/);
-    }
+    const node = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromThreats", () => {
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.followed_by).toContain('actors/DiscoverFromThreats');
   });
 
   it("step 10: actors/ThreatsActorList stores the threats-perspective actors", () => {
-    expect(threatsActors).toEqual(expect.arrayContaining(['Attacker']));
+    const node = result.index.nodes['actors/ThreatsActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/DiscoverFromThreats');
+  });
+
+  it("connection: actors/DiscoverFromThreats → actors/ThreatsActorList", () => {
+    const from = result.index.nodes['actors/DiscoverFromThreats'];
+    expect(from.followed_by).toContain('actors/ThreatsActorList');
   });
 
   it("step 11: _actors/LLMWorker reads the spec to discover actors from the lifecycle perspective", () => {
-    // Lifecycle angle produces actors at different stages.
-    expect(lifecycleActors).toContain('NewUser');
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.preceded_by).toContain('actors/ThreatsActorList');
+  });
+
+  it("connection: actors/ThreatsActorList → _actors/LLMWorker", () => {
+    const from = result.index.nodes['actors/ThreatsActorList'];
+    expect(from.followed_by).toContain('_actors/LLMWorker');
   });
 
   it("step 12: actors/DiscoverFromLifecycle identifies first visit, onboarding, power use, decline, exit, and return actors", () => {
-    expect(lifecycleActors.length).toBeGreaterThanOrEqual(1);
-    expect(lifecycleActors).toContain('ReturningUser');
+    const node = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+  });
+
+  it("connection: _actors/LLMWorker → actors/DiscoverFromLifecycle", () => {
+    const node = result.index.nodes['_actors/LLMWorker'];
+    expect(node.followed_by).toContain('actors/DiscoverFromLifecycle');
   });
 
   it("step 13: actors/LifecycleActorList stores the lifecycle-perspective actors", () => {
-    expect(lifecycleActors).toEqual(expect.arrayContaining(['NewUser', 'ReturningUser']));
+    const node = result.index.nodes['actors/LifecycleActorList'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('actors/DiscoverFromLifecycle');
   });
 
+  it("connection: actors/DiscoverFromLifecycle → actors/LifecycleActorList", () => {
+    const from = result.index.nodes['actors/DiscoverFromLifecycle'];
+    expect(from.followed_by).toContain('actors/LifecycleActorList');
+  });
+
+  it("all 3 discovery angles produce actor nodes in the compiled index", () => {
+    // Activities angle actors
+    expect(result.index.nodes['_actors/ProjectOwner']).toBeDefined();
+    expect(result.index.nodes['_actors/HumanDeveloper']).toBeDefined();
+    // Threats angle actors
+    expect(result.index.nodes['_actors/MaliciousSpecAuthor']).toBeDefined();
+    expect(result.index.nodes['_actors/YAMLTamperer']).toBeDefined();
+    // Lifecycle angle actors
+    expect(result.index.nodes['_actors/NewProjectAdopter']).toBeDefined();
+    expect(result.index.nodes['_actors/ReturningOwner']).toBeDefined();
+
+    // All should have type 'actor'
+    for (const name of ['LLMWorker', 'ProjectOwner', 'HumanDeveloper', 'MaliciousSpecAuthor', 'YAMLTamperer', 'NewProjectAdopter', 'ReturningOwner']) {
+      expect(result.index.nodes[`_actors/${name}`].type).toBe('actor');
+    }
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

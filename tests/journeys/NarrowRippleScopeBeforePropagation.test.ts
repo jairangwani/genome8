@@ -18,10 +18,20 @@ describe("NarrowRippleScopeBeforePropagation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/TargetedReconvergence → _actors/Compiler", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/ComputeInterfaceHash computes the new interface hash after reconvergence", () => {
     // Node: publish/ComputeInterfaceHash (process)
     // Action: computes the new interface hash after reconvergence
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → publish/ComputeInterfaceHash", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/ComparePreviousHash confirms the interface actually changed after reconvergence", () => {
@@ -30,10 +40,20 @@ describe("NarrowRippleScopeBeforePropagation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ComputeInterfaceHash → publish/ComparePreviousHash", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/ComputeChangelogDiff diffs the previous interface against the current to produce the full outgoing changelog", () => {
     // Node: publish/ComputeChangelogDiff (process)
     // Action: diffs the previous interface against the current to produce the full outgoing changelog
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/ComparePreviousHash → publish/ComputeChangelogDiff", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/ComputeRippleScope intersects the incoming event's changelog with local cross-module references to find the minimal set of changes that actually affected this box", () => {
@@ -42,10 +62,20 @@ describe("NarrowRippleScopeBeforePropagation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ComputeChangelogDiff → sync/ComputeRippleScope", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: sync/NarrowOutgoingChangelog removes entries from the outgoing changelog that only reflect upstream changes not relevant to this box", () => {
     // Node: sync/NarrowOutgoingChangelog (process)
     // Action: removes entries from the outgoing changelog that only reflect upstream changes not relevant to this box
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ComputeRippleScope → sync/NarrowOutgoingChangelog", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: sync/NarrowOutgoingChangelog produces the narrowed changelog containing only locally-relevant changes for downstream consumption", () => {
@@ -54,10 +84,20 @@ describe("NarrowRippleScopeBeforePropagation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/NarrowOutgoingChangelog → sync/NarrowOutgoingChangelog", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: sync/AppendBoxToOriginChain adds this box's ID to the ripple origin chain for downstream oscillation detection", () => {
     // Node: sync/AppendBoxToOriginChain (process)
     // Action: adds this box's ID to the ripple origin chain for downstream oscillation detection
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/NarrowOutgoingChangelog → sync/AppendBoxToOriginChain", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: publish/WriteEventFile writes the outgoing event with the narrowed changelog and extended origin chain", () => {
@@ -66,10 +106,20 @@ describe("NarrowRippleScopeBeforePropagation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/AppendBoxToOriginChain → publish/WriteEventFile", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: publish/EventFile the narrowed event file propagates only relevant changes to downstream dependents", () => {
     // Node: publish/EventFile (interface)
     // Action: the narrowed event file propagates only relevant changes to downstream dependents
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/WriteEventFile → publish/EventFile", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
 });

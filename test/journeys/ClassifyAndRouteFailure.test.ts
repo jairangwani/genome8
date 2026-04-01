@@ -17,10 +17,20 @@ describe("ClassifyAndRouteFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/TaskResult → llm/ClassifyFailureType", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/ClassifyFailureType checks whether the failure is a timeout by examining duration and response completeness", () => {
     // Node: llm/ClassifyFailureType (process)
     // Action: checks whether the failure is a timeout by examining duration and response completeness
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/ClassifyFailureType → llm/ClassifyFailureType", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/ClassifyFailureType checks whether the failure is malformed output by examining structural validation results", () => {
@@ -29,10 +39,20 @@ describe("ClassifyAndRouteFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/ClassifyFailureType → llm/ClassifyFailureType", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/ClassifyFailureType checks whether the failure is an empty response by examining output file existence", () => {
     // Node: llm/ClassifyFailureType (process)
     // Action: checks whether the failure is an empty response by examining output file existence
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/ClassifyFailureType → llm/ClassifyFailureType", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: llm/ClassifyFailureType checks whether the failure is a scope violation by examining unauthorized file changes", () => {
@@ -41,10 +61,20 @@ describe("ClassifyAndRouteFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/ClassifyFailureType → llm/ClassifyFailureType", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: llm/CrashReport records the classified failure type alongside the raw failure details", () => {
     // Node: llm/CrashReport (artifact)
     // Action: records the classified failure type alongside the raw failure details
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/ClassifyFailureType → llm/CrashReport", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: llm/RetryTaskWithFeedback handles malformed output and empty response failures by retrying with error context", () => {
@@ -53,16 +83,31 @@ describe("ClassifyAndRouteFailure", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/CrashReport → llm/RetryTaskWithFeedback", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: llm/CleanupFailedSession handles crash and timeout failures by tearing down the session for respawn", () => {
     // Node: llm/CleanupFailedSession (process)
     // Action: handles crash and timeout failures by tearing down the session for respawn
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/RetryTaskWithFeedback → llm/CleanupFailedSession", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
+  });
+
   it("step 10: convergence/DetectWorkerFailure receives failures that require orchestration-level recovery beyond local retry", () => {
     // Node: convergence/DetectWorkerFailure (process)
     // Action: receives failures that require orchestration-level recovery beyond local retry
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/CleanupFailedSession → convergence/DetectWorkerFailure", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
 });

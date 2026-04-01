@@ -17,10 +17,20 @@ describe("DetectIsolatedModules", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/ConnectionSet → compilation/IsolatedModuleDetection", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: compilation/ErrorReport records each isolated module as a validation error", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records each isolated module as a validation error
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/IsolatedModuleDetection → compilation/ErrorReport", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
 });

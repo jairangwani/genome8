@@ -23,10 +23,20 @@ describe("CompileFromCLI", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/HumanDeveloper → compilation/CompileCLI", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: _actors/Compiler executes the full compilation pipeline", () => {
     // Node: _actors/Compiler (actor)
     // Action: executes the full compilation pipeline
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompileCLI → _actors/Compiler", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: compilation/CompilationResult returns the validation output", () => {
@@ -35,10 +45,20 @@ describe("CompileFromCLI", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: compilation/CompileCLI displays errors, warnings, and summary to the developer", () => {
     // Node: compilation/CompileCLI (interface) — has code: src/cli.ts
     // Action: displays errors, warnings, and summary to the developer
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResult → compilation/CompileCLI", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
 });

@@ -17,10 +17,20 @@ describe("RecoverPartialWorkAfterCrash", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/CrashReport → llm/TaskPayload", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/DrainPartialOutput scans the expected output paths for any files the worker wrote before crashing", () => {
     // Node: llm/DrainPartialOutput (process)
     // Action: scans the expected output paths for any files the worker wrote before crashing
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/TaskPayload → llm/DrainPartialOutput", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/ValidateWorkerOutput checks whether any recovered files are complete and valid", () => {
@@ -29,16 +39,31 @@ describe("RecoverPartialWorkAfterCrash", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/DrainPartialOutput → llm/ValidateWorkerOutput", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/TaskResult packages any valid partial work as a recoverable result", () => {
     // Node: llm/TaskResult (artifact)
     // Action: packages any valid partial work as a recoverable result
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/ValidateWorkerOutput → llm/TaskResult", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
   it("step 6: convergence/ConvergenceState receives the partial result and decides whether to use it or discard and retry", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: receives the partial result and decides whether to use it or discard and retry
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/TaskResult → convergence/ConvergenceState", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
 });

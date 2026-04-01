@@ -18,10 +18,20 @@ describe("RogueWorkerDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/RogueWorker → actors/WriteActorsFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: actors/ActorsFile contains the hallucinated actors", () => {
     // Node: actors/ActorsFile (artifact)
     // Action: contains the hallucinated actors
     // TODO: agent fills assertion
+  });
+
+  it("connection: actors/WriteActorsFile → actors/ActorsFile", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: actors/ValidateActorCoverage checks that every actor appears in at least one journey", () => {
@@ -30,16 +40,31 @@ describe("RogueWorkerDefense", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/ActorsFile → actors/ValidateActorCoverage", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: compilation/OrphanDetection flags hallucinated actors that no journey references as orphans", () => {
     // Node: compilation/OrphanDetection (process)
     // Action: flags hallucinated actors that no journey references as orphans
     // TODO: agent fills assertion
   });
 
+  it("connection: actors/ValidateActorCoverage → compilation/OrphanDetection", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
   it("step 6: convergence/AuditGapFix targeted fix removes orphan actors that cannot be connected to any journey", () => {
     // Node: convergence/AuditGapFix (process)
     // Action: targeted fix removes orphan actors that cannot be connected to any journey
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/OrphanDetection → convergence/AuditGapFix", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
 });

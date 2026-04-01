@@ -19,10 +19,20 @@ describe("VerifyFullPublishIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/VerifyPublishDeterminism → graph/CompiledIndex", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: publish/CollectExportedNodes re-selects exported nodes from the same compiled index", () => {
     // Node: publish/CollectExportedNodes (process)
     // Action: re-selects exported nodes from the same compiled index
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → publish/CollectExportedNodes", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: publish/CollectExportedJourneys re-selects exported journeys from the same compiled index", () => {
@@ -31,10 +41,20 @@ describe("VerifyFullPublishIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/CollectExportedNodes → publish/CollectExportedJourneys", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: publish/ComputeInterfaceHash recomputes the interface hash from the re-collected exports", () => {
     // Node: publish/ComputeInterfaceHash (process)
     // Action: recomputes the interface hash from the re-collected exports
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/CollectExportedJourneys → publish/ComputeInterfaceHash", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: publish/InterfaceHash provides the recomputed hash for comparison against the first run", () => {
@@ -43,10 +63,20 @@ describe("VerifyFullPublishIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/ComputeInterfaceHash → publish/InterfaceHash", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/VerifyPublishPipelineIdempotency compares the recomputed hash against the hash from the first publish run", () => {
     // Node: publish/VerifyPublishPipelineIdempotency (process)
     // Action: compares the recomputed hash against the hash from the first publish run
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/InterfaceHash → publish/VerifyPublishPipelineIdempotency", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: publish/VerifyPublishPipelineIdempotency compares the regenerated interface.yaml bytes against the first run's interface.yaml", () => {
@@ -55,10 +85,20 @@ describe("VerifyFullPublishIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/VerifyPublishPipelineIdempotency → publish/VerifyPublishPipelineIdempotency", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: publish/VerifyPublishPipelineIdempotency compares the regenerated changelog.yaml bytes against the first run's changelog.yaml", () => {
     // Node: publish/VerifyPublishPipelineIdempotency (process)
     // Action: compares the regenerated changelog.yaml bytes against the first run's changelog.yaml
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/VerifyPublishPipelineIdempotency → publish/VerifyPublishPipelineIdempotency", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: publish/VerifyPublishPipelineIdempotency compares the normalized event content against the first run's normalized event content", () => {
@@ -67,16 +107,31 @@ describe("VerifyFullPublishIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/VerifyPublishPipelineIdempotency → publish/VerifyPublishPipelineIdempotency", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: publish/ReportPublishFailure if any output differs between runs, reports an idempotency violation with the specific divergent artifact", () => {
     // Node: publish/ReportPublishFailure (process)
     // Action: if any output differs between runs, reports an idempotency violation with the specific divergent artifact
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/VerifyPublishPipelineIdempotency → publish/ReportPublishFailure", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
+  });
+
   it("step 12: publish/NotifyPublishComplete if all outputs match, confirms the publish pipeline is fully idempotent for this input", () => {
     // Node: publish/NotifyPublishComplete (process)
     // Action: if all outputs match, confirms the publish pipeline is fully idempotent for this input
     // TODO: agent fills assertion
+  });
+
+  it("connection: publish/ReportPublishFailure → publish/NotifyPublishComplete", () => {
+    // Assert that the output of step 11 feeds into step 12
+    // TODO: agent fills connection assertion
   });
 
 });

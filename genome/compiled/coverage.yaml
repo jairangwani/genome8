@@ -1,10 +1,10 @@
-_generated: '2026-03-31T08:03:03.706Z'
+_generated: '2026-03-31T15:47:31.850Z'
 modules:
   actors:
     nodes: 25
-    journeys: 27
-    connections: 143
-    cross_module_connections: 53
+    journeys: 30
+    connections: 149
+    cross_module_connections: 59
     spec_sections:
       - 3
       - 4
@@ -12,31 +12,31 @@ modules:
   audit:
     nodes: 42
     journeys: 30
-    connections: 269
-    cross_module_connections: 76
+    connections: 270
+    cross_module_connections: 77
     spec_sections:
       - 3
       - 5
   codegen:
-    nodes: 35
+    nodes: 36
     journeys: 20
-    connections: 235
-    cross_module_connections: 68
+    connections: 241
+    cross_module_connections: 70
     spec_sections:
       - 3
       - 5
   compilation:
-    nodes: 41
+    nodes: 42
     journeys: 35
-    connections: 368
+    connections: 372
     cross_module_connections: 169
     spec_sections:
       - 3
   convergence:
-    nodes: 120
-    journeys: 98
-    connections: 955
-    cross_module_connections: 394
+    nodes: 129
+    journeys: 102
+    connections: 1013
+    cross_module_connections: 406
     spec_sections:
       - 1
       - 3
@@ -49,6 +49,7 @@ modules:
       - 11
       - 12
       - 13
+      - 14
   events:
     nodes: 52
     journeys: 42
@@ -61,8 +62,8 @@ modules:
   excerpt:
     nodes: 42
     journeys: 35
-    connections: 290
-    cross_module_connections: 61
+    connections: 293
+    cross_module_connections: 62
     spec_sections:
       - 3
   graph:
@@ -85,8 +86,8 @@ modules:
   llm:
     nodes: 71
     journeys: 46
-    connections: 454
-    cross_module_connections: 94
+    connections: 471
+    cross_module_connections: 103
     spec_sections:
       - 3
   metrics:
@@ -100,8 +101,8 @@ modules:
   organization:
     nodes: 34
     journeys: 26
-    connections: 242
-    cross_module_connections: 76
+    connections: 248
+    cross_module_connections: 78
     spec_sections:
       - 3
       - 5
@@ -133,19 +134,16 @@ modules:
   _actors:
     nodes: 22
     journeys: 3
-    connections: 364
-    cross_module_connections: 316
+    connections: 376
+    cross_module_connections: 326
     spec_sections:
       - 1
   _goals:
     nodes: 5
     journeys: 5
-    connections: 12
-    cross_module_connections: 10
+    connections: 15
+    cross_module_connections: 7
     spec_sections:
-      - all
-orphans:
-  - convergence/GenomeIsProtocolNotTool
-  - convergence/ProductionReadyNoShortcuts
-  - convergence/SelfSustainingWithoutHumans
+      - 8
+orphans: []
 isolated_modules: []

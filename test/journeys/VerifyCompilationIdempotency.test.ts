@@ -5,6 +5,10 @@
 
 import { describe, it, expect } from 'vitest';
 
+// Implementation: test/compile.test.ts
+// Implementation: test/pando8.test.ts
+// Implementation: test/pando9.test.ts
+
 describe("VerifyCompilationIdempotency", () => {
   it("step 1: _actors/Compiler runs full compilation on all module files and stores the first CompilationResult", () => {
     // Node: _actors/Compiler (actor)
@@ -13,9 +17,14 @@ describe("VerifyCompilationIdempotency", () => {
   });
 
   it("step 2: compilation/CompilationResult records the first compilation output with all counts and sorted lists", () => {
-    // Node: compilation/CompilationResult (artifact)
+    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: records the first compilation output with all counts and sorted lists
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
   });
 
   it("step 3: _actors/Compiler runs full compilation a second time on the same unmodified module files", () => {
@@ -24,10 +33,20 @@ describe("VerifyCompilationIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/CompilationResult → _actors/Compiler", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
+  });
+
   it("step 4: compilation/CompilationResult records the second compilation output", () => {
-    // Node: compilation/CompilationResult (artifact)
+    // Node: compilation/CompilationResult (artifact) — has code: test/compile.test.ts
     // Action: records the second compilation output
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
   });
 
   it("step 5: compilation/DeterministicOrdering confirms both results have identically sorted error, warning, orphan, and duplicate lists", () => {
@@ -36,16 +55,31 @@ describe("VerifyCompilationIdempotency", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/CompilationResult → compilation/DeterministicOrdering", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
   it("step 6: compilation/CompilationResultComparison compares the two results field by field and flags any difference as a non-determinism defect", () => {
     // Node: compilation/CompilationResultComparison (process)
     // Action: compares the two results field by field and flags any difference as a non-determinism defect
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/DeterministicOrdering → compilation/CompilationResultComparison", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: compilation/ErrorReport records any differences found between the two compilation runs", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records any differences found between the two compilation runs
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/CompilationResultComparison → compilation/ErrorReport", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

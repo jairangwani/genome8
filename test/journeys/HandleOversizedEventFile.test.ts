@@ -17,10 +17,20 @@ describe("HandleOversizedEventFile", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/DetectEventFileChange → events/ReadEventFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/StreamLargeEventPayload opens a streaming reader on the oversized event file", () => {
     // Node: events/StreamLargeEventPayload (process)
     // Action: opens a streaming reader on the oversized event file
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ReadEventFile → events/StreamLargeEventPayload", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: events/StreamLargeEventPayload extracts the interface hash field from the stream without loading the full file", () => {
@@ -29,10 +39,20 @@ describe("HandleOversizedEventFile", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/StreamLargeEventPayload → events/StreamLargeEventPayload", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: events/StreamLargeEventPayload extracts the sequence number and origin chain fields from the stream", () => {
     // Node: events/StreamLargeEventPayload (process)
     // Action: extracts the sequence number and origin chain fields from the stream
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/StreamLargeEventPayload → events/StreamLargeEventPayload", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: events/StreamLargeEventPayload extracts the changelog summary, skipping the detailed changelog body to stay within memory budget", () => {
@@ -41,10 +61,20 @@ describe("HandleOversizedEventFile", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/StreamLargeEventPayload → events/StreamLargeEventPayload", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: events/ValidateEventFileFormat validates the extracted fields have the required structure", () => {
     // Node: events/ValidateEventFileFormat (process)
     // Action: validates the extracted fields have the required structure
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/StreamLargeEventPayload → events/ValidateEventFileFormat", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: events/EventPayload stores the extracted fields as a lightweight payload", () => {
@@ -53,10 +83,20 @@ describe("HandleOversizedEventFile", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ValidateEventFileFormat → events/EventPayload", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: events/LogEventReceived records the oversized event with file size and streaming extraction details", () => {
     // Node: events/LogEventReceived (process)
     // Action: records the oversized event with file size and streaming extraction details
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/EventPayload → events/LogEventReceived", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: events/EventLog persists the oversized event log entry", () => {
@@ -65,10 +105,20 @@ describe("HandleOversizedEventFile", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/LogEventReceived → events/EventLog", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: events/DelegateToSync passes the lightweight payload to sync.ts for processing", () => {
     // Node: events/DelegateToSync (process)
     // Action: passes the lightweight payload to sync.ts for processing
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/EventLog → events/DelegateToSync", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
 });

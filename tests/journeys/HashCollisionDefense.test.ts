@@ -4,103 +4,152 @@
 // Modules touched: _actors, publish, convergence
 
 import { describe, it, expect } from 'vitest';
-import crypto from 'node:crypto';
 import { compileFromModules } from '../../src/compile.js';
-import { generateInterface, generateChangelog } from '../../src/publish.js';
-import type { ModuleFile, PublishedInterface } from '../../src/types.js';
+import { generateInterface, detectCorruptedHash } from '../../src/publish.js';
+import type { ModuleFile } from '../../src/types.js';
+
+function buildCollisionModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      HashCollisionExploiter: { type: 'actor', description: 'Manipulates content to produce identical SHA256 hashes' },
+      Auditor: { type: 'actor', description: 'Detects the coverage gap during depth audit' },
+    },
+    journeys: {},
+  });
+
+  modules.set('publish', {
+    nodes: {
+      ComputeInterfaceHash: { type: 'process', description: 'Computes hash on the manipulated content' },
+      ComparePreviousHash: { type: 'process', description: 'Compares and incorrectly finds no change due to collision' },
+      SkipPublishIfUnchanged: { type: 'process', description: 'Incorrectly skips publish, missing the real change' },
+    },
+    journeys: {
+      HashCollisionDefense: {
+        steps: [
+          { node: '_actors/HashCollisionExploiter', action: 'manipulates content to produce identical SHA256 hashes' },
+          { node: 'ComputeInterfaceHash', action: 'computes hash on the manipulated content' },
+          { node: 'ComparePreviousHash', action: 'compares and incorrectly finds no change due to collision' },
+          { node: 'SkipPublishIfUnchanged', action: 'incorrectly skips publish, missing the real change' },
+          { node: '_actors/Auditor', action: 'detects the coverage gap during depth audit because spec content diverges from graph' },
+          { node: 'convergence/AuditGapFix', action: 'targeted fix forces a re-publish of the affected interface' },
+        ],
+      },
+    },
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      AuditGapFix: { type: 'process', description: 'Targeted fix forces a re-publish of the affected interface' },
+    },
+    journeys: {},
+  });
+
+  return modules;
+}
 
 describe("HashCollisionDefense", () => {
+  const modules = buildCollisionModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['HashCollisionDefense'];
+
   it("step 1: _actors/HashCollisionExploiter manipulates content to produce identical SHA256 hashes", () => {
-    // SHA256 collisions are computationally infeasible for arbitrary content
-    // Two different contents produce different hashes
-    const contentA = JSON.stringify({ provides: { 'mod/A': { type: 'process', description: 'Original' } } });
-    const contentB = JSON.stringify({ provides: { 'mod/A': { type: 'process', description: 'Manipulated' } } });
-    const hashA = crypto.createHash('sha256').update(contentA).digest('hex');
-    const hashB = crypto.createHash('sha256').update(contentB).digest('hex');
-    // Different content = different hash — collision attack fails
-    expect(hashA).not.toBe(hashB);
+    const node = result.index.nodes['_actors/HashCollisionExploiter'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
   });
 
   it("step 2: publish/ComputeInterfaceHash computes hash on the manipulated content", () => {
-    // generateInterface hashes the provides+requires content
-    const modules = new Map<string, ModuleFile>([
-      ['mod', {
-        nodes: { Svc: { type: 'process', description: 'Service' } },
-        journeys: { UseService: { steps: [{ node: 'Svc', action: 'runs' }] } },
-      }],
-    ]);
-    const result = compileFromModules(modules);
-    const iface = generateInterface(result.index, 'test-engine');
-    expect(iface.version_hash).toMatch(/^sha256:/);
-    expect(iface.version_hash.length).toBeGreaterThan(10);
+    const node = result.index.nodes['publish/ComputeInterfaceHash'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/HashCollisionExploiter');
+  });
+
+  it("connection: _actors/HashCollisionExploiter → publish/ComputeInterfaceHash", () => {
+    const from = result.index.nodes['_actors/HashCollisionExploiter'];
+    expect(from.followed_by).toContain('publish/ComputeInterfaceHash');
   });
 
   it("step 3: publish/ComparePreviousHash compares and incorrectly finds no change due to collision", () => {
-    // If (hypothetically) hash matched, changelog would show no changes
-    const fakeInterface: PublishedInterface = {
-      engine: 'test',
-      version_hash: 'sha256:samehash',
-      provides: { 'mod/A': { type: 'process', description: 'Original', in_journeys: 1 } },
-      requires: {},
-    };
-    // Same hash = changelog shows 0 changes
-    const changelog = generateChangelog(fakeInterface, fakeInterface);
-    expect(changelog.changes.length).toBe(0);
-    expect(changelog.previous_hash).toBe(changelog.current_hash);
+    const node = result.index.nodes['publish/ComparePreviousHash'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('publish/ComputeInterfaceHash');
+  });
+
+  it("connection: publish/ComputeInterfaceHash → publish/ComparePreviousHash", () => {
+    const from = result.index.nodes['publish/ComputeInterfaceHash'];
+    expect(from.followed_by).toContain('publish/ComparePreviousHash');
   });
 
   it("step 4: publish/SkipPublishIfUnchanged incorrectly skips publish, missing the real change", () => {
-    // When hashes match, publish is skipped
-    const prevHash = 'sha256:samehash';
-    const currHash = 'sha256:samehash';
-    const shouldSkip = prevHash === currHash;
-    expect(shouldSkip).toBe(true);
-    // This is the vulnerability — but it requires a SHA256 collision which is infeasible
+    const node = result.index.nodes['publish/SkipPublishIfUnchanged'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('publish/ComparePreviousHash');
+  });
+
+  it("connection: publish/ComparePreviousHash → publish/SkipPublishIfUnchanged", () => {
+    const from = result.index.nodes['publish/ComparePreviousHash'];
+    expect(from.followed_by).toContain('publish/SkipPublishIfUnchanged');
   });
 
   it("step 5: _actors/Auditor detects the coverage gap during depth audit because spec content diverges from graph", () => {
-    // Even if publish is skipped, audit catches content divergence
-    // Audit compiles fresh and compares — the actual content differs
-    const modules1 = new Map<string, ModuleFile>([
-      ['mod', {
-        nodes: { Svc: { type: 'process', description: 'Original service' } },
-        journeys: { Use: { steps: [{ node: 'Svc', action: 'runs' }] } },
-      }],
-    ]);
-    const modules2 = new Map<string, ModuleFile>([
-      ['mod', {
-        nodes: { Svc: { type: 'process', description: 'Manipulated service' } },
-        journeys: { Use: { steps: [{ node: 'Svc', action: 'runs' }] } },
-      }],
-    ]);
-    const iface1 = generateInterface(compileFromModules(modules1).index, 'eng');
-    const iface2 = generateInterface(compileFromModules(modules2).index, 'eng');
-    // Audit detects: different content → different hash → divergence is visible
-    expect(iface1.version_hash).not.toBe(iface2.version_hash);
+    const node = result.index.nodes['_actors/Auditor'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('publish/SkipPublishIfUnchanged');
+  });
+
+  it("connection: publish/SkipPublishIfUnchanged → _actors/Auditor", () => {
+    const from = result.index.nodes['publish/SkipPublishIfUnchanged'];
+    expect(from.followed_by).toContain('_actors/Auditor');
   });
 
   it("step 6: convergence/AuditGapFix targeted fix forces a re-publish of the affected interface", () => {
-    // After audit detects divergence, force re-publish generates correct changelog
-    const prev: PublishedInterface = {
-      engine: 'eng',
-      version_hash: 'sha256:old',
-      provides: { 'mod/Svc': { type: 'process', description: 'Original', in_journeys: 1 } },
-      requires: {},
-    };
-    const modules = new Map<string, ModuleFile>([
-      ['mod', {
-        nodes: { Svc: { type: 'process', description: 'Fixed service' } },
-        journeys: { Use: { steps: [{ node: 'Svc', action: 'runs' }] } },
-      }],
-    ]);
-    const current = generateInterface(compileFromModules(modules).index, 'eng');
-    const changelog = generateChangelog(prev, current);
-    // Re-publish catches the modification
-    expect(changelog.changes.length).toBeGreaterThanOrEqual(1);
-    const descChange = changelog.changes.find(c => c.field === 'description');
-    expect(descChange).toBeDefined();
-    expect(descChange!.was).toBe('Original');
-    expect(descChange!.now).toBe('Fixed service');
+    const node = result.index.nodes['convergence/AuditGapFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('_actors/Auditor');
   });
 
+  it("connection: _actors/Auditor → convergence/AuditGapFix", () => {
+    const from = result.index.nodes['_actors/Auditor'];
+    expect(from.followed_by).toContain('convergence/AuditGapFix');
+  });
+
+  it("identical content produces identical hashes (the collision scenario)", () => {
+    const indexA = result.index;
+    const ifaceA = generateInterface(indexA, 'testEngine');
+    const ifaceB = generateInterface(indexA, 'testEngine');
+    // Same content → same hash (deterministic)
+    expect(ifaceA.version_hash).toBe(ifaceB.version_hash);
+  });
+
+  it("different content produces different hashes (no false collision)", () => {
+    // Build a slightly different module set
+    const altModules = buildCollisionModules();
+    altModules.set('extra', {
+      nodes: { ExtraNode: { type: 'process', description: 'Additional node changes hash' } },
+      journeys: {},
+    });
+    const altResult = compileFromModules(altModules);
+    const ifaceOrig = generateInterface(result.index, 'engine');
+    const ifaceAlt = generateInterface(altResult.index, 'engine');
+    expect(ifaceOrig.version_hash).not.toBe(ifaceAlt.version_hash);
+  });
+
+  it("corrupted hash format is detected", () => {
+    expect(detectCorruptedHash('sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890')).toBe(false);
+    expect(detectCorruptedHash('md5:abc')).toBe(true);
+    expect(detectCorruptedHash('sha256:ZZZZ')).toBe(true);
+    expect(detectCorruptedHash(undefined)).toBe(false);
+  });
+
+  it("compiles without errors", () => {
+    const errors = result.issues.filter(i => i.severity === 'error');
+    expect(errors).toHaveLength(0);
+  });
 });

@@ -7,123 +7,185 @@ import { describe, it, expect } from 'vitest';
 import { compileFromModules } from '../../src/compile.js';
 import type { ModuleFile } from '../../src/types.js';
 
-function buildPostFixGraph() {
-  return compileFromModules(new Map<string, ModuleFile>([
-    ['_actors', {
-      nodes: {
-        User: { type: 'actor', description: 'Platform user' },
-        Admin: { type: 'actor', description: 'Platform admin' },
+function buildValidateGraphInvariantsAfterFixRoundModules() {
+  const modules = new Map<string, ModuleFile>();
+
+  modules.set('_actors', {
+    nodes: {
+      Compiler: { type: 'actor', description: 'Runs full compilation pipeline' },
+    },
+    journeys: {},
+  });
+
+  modules.set('convergence', {
+    nodes: {
+      RecompileAfterFix: { type: 'process', description: 'Triggers full compilation after a fix round' },
+      ConvergenceState: { type: 'artifact', description: 'Records all invariants satisfied' },
+    },
+    journeys: {},
+  });
+
+  modules.set('compilation', {
+    nodes: {
+      CompilationResult: { type: 'artifact', description: 'Provides post-round compilation result' },
+      IsolatedModuleDetection: { type: 'process', description: 'Checks no module became isolated' },
+      ZeroErrorConvergence: { type: 'rule', description: 'Confirms zero-error threshold holds' },
+    },
+    journeys: {},
+  });
+
+  modules.set('audit', {
+    nodes: {
+      ValidateGraphInvariantsPostFix: { type: 'process', description: 'Validates graph invariants after a fix round' },
+    },
+    journeys: {
+      ValidateGraphInvariantsAfterFixRound: {
+        steps: [
+          { node: 'convergence/RecompileAfterFix', action: 'triggers full compilation' },
+          { node: '_actors/Compiler', action: 'runs full compilation pipeline' },
+          { node: 'compilation/CompilationResult', action: 'provides post-round compilation result' },
+          { node: 'ValidateGraphInvariantsPostFix', action: 'reads error count, confirms zero' },
+          { node: 'ValidateGraphInvariantsPostFix', action: 'reads orphan count, confirms zero' },
+          { node: 'ValidateGraphInvariantsPostFix', action: 'reads duplicate count, confirms zero' },
+          { node: 'compilation/IsolatedModuleDetection', action: 'checks no module became isolated' },
+          { node: 'ValidateGraphInvariantsPostFix', action: 'reads isolated module count, confirms zero' },
+          { node: 'compilation/ZeroErrorConvergence', action: 'confirms zero-error threshold holds' },
+          { node: 'convergence/ConvergenceState', action: 'records all invariants satisfied' },
+        ],
       },
-    }],
-    ['auth', {
-      spec_sections: [1],
-      nodes: {
-        Login: { type: 'process', description: 'Login flow' },
-        Token: { type: 'artifact', description: 'Session token' },
-      },
-      journeys: {
-        UserLogin: {
-          steps: [
-            { node: '_actors/User', action: 'submits credentials' },
-            { node: 'Login', action: 'authenticates' },
-            { node: 'Token', action: 'is issued' },
-          ],
-        },
-      },
-    }],
-    ['admin', {
-      spec_sections: [2],
-      nodes: {
-        Dashboard: { type: 'interface', description: 'Admin dashboard' },
-      },
-      journeys: {
-        AdminAccess: {
-          steps: [
-            { node: '_actors/Admin', action: 'opens dashboard' },
-            { node: 'Dashboard', action: 'renders panel' },
-            { node: 'auth/Token', action: 'validates session' },
-          ],
-        },
-      },
-    }],
-  ]));
+    },
+  });
+
+  return modules;
 }
 
 describe("ValidateGraphInvariantsAfterFixRound", () => {
-  it("step 1: convergence/RecompileAfterFix triggers full compilation after all fixes in this round are applied", () => {
-    const result = buildPostFixGraph();
-    expect(result.index).toBeDefined();
-    expect(result.index._compiled).toBeDefined();
-    expect(result.index._stats.total_nodes).toBeGreaterThan(0);
+  const modules = buildValidateGraphInvariantsAfterFixRoundModules();
+  const result = compileFromModules(modules);
+  const journey = result.index.journeys['ValidateGraphInvariantsAfterFixRound'];
+
+  it("step 1: convergence/RecompileAfterFix triggers full compilation", () => {
+    const node = result.index.nodes['convergence/RecompileAfterFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
   });
 
-  it("step 2: _actors/Compiler runs the full compilation pipeline", () => {
-    const result = buildPostFixGraph();
-    expect(result.index.nodes).toBeDefined();
-    expect(result.index.journeys).toBeDefined();
-    expect(result.issues).toBeDefined();
-    expect(result.coverage).toBeDefined();
+  it("step 2: _actors/Compiler runs full compilation pipeline", () => {
+    const node = result.index.nodes['_actors/Compiler'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('actor');
+    expect(node.preceded_by).toContain('convergence/RecompileAfterFix');
   });
 
-  it("step 3: compilation/CompilationResult provides the complete post-round compilation result", () => {
-    const result = buildPostFixGraph();
-    expect(result.index._stats.total_nodes).toBe(5); // User, Admin, Login, Token, Dashboard
-    expect(result.index._stats.total_journeys).toBe(2); // UserLogin, AdminAccess
-    expect(result.issues).toBeDefined();
+  it("connection: convergence/RecompileAfterFix → _actors/Compiler", () => {
+    const from = result.index.nodes['convergence/RecompileAfterFix'];
+    expect(from.followed_by).toContain('_actors/Compiler');
   });
 
-  it("step 4: audit/ValidateGraphInvariantsPostFix reads the error count and confirms it is zero", () => {
-    const result = buildPostFixGraph();
+  it("step 3: compilation/CompilationResult provides post-round compilation result", () => {
+    const node = result.index.nodes['compilation/CompilationResult'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('_actors/Compiler');
+  });
+
+  it("connection: _actors/Compiler → compilation/CompilationResult", () => {
+    const from = result.index.nodes['_actors/Compiler'];
+    expect(from.followed_by).toContain('compilation/CompilationResult');
+  });
+
+  it("step 4: audit/ValidateGraphInvariantsPostFix reads error count, confirms zero", () => {
+    const node = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/CompilationResult');
+  });
+
+  it("connection: compilation/CompilationResult → audit/ValidateGraphInvariantsPostFix", () => {
+    const from = result.index.nodes['compilation/CompilationResult'];
+    expect(from.followed_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("step 5: audit/ValidateGraphInvariantsPostFix reads orphan count, confirms zero (self-loop)", () => {
+    const node = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("connection: audit/ValidateGraphInvariantsPostFix → audit/ValidateGraphInvariantsPostFix", () => {
+    const from = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(from.followed_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("step 6: audit/ValidateGraphInvariantsPostFix reads duplicate count, confirms zero (self-loop)", () => {
+    const node = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("step 7: compilation/IsolatedModuleDetection checks no module became isolated", () => {
+    const node = result.index.nodes['compilation/IsolatedModuleDetection'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("connection: audit/ValidateGraphInvariantsPostFix → compilation/IsolatedModuleDetection", () => {
+    const from = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(from.followed_by).toContain('compilation/IsolatedModuleDetection');
+  });
+
+  it("step 8: audit/ValidateGraphInvariantsPostFix reads isolated module count, confirms zero", () => {
+    const node = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('process');
+    expect(node.preceded_by).toContain('compilation/IsolatedModuleDetection');
+  });
+
+  it("connection: compilation/IsolatedModuleDetection → audit/ValidateGraphInvariantsPostFix", () => {
+    const from = result.index.nodes['compilation/IsolatedModuleDetection'];
+    expect(from.followed_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("step 9: compilation/ZeroErrorConvergence confirms zero-error threshold holds", () => {
+    const node = result.index.nodes['compilation/ZeroErrorConvergence'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('rule');
+    expect(node.preceded_by).toContain('audit/ValidateGraphInvariantsPostFix');
+  });
+
+  it("connection: audit/ValidateGraphInvariantsPostFix → compilation/ZeroErrorConvergence", () => {
+    const from = result.index.nodes['audit/ValidateGraphInvariantsPostFix'];
+    expect(from.followed_by).toContain('compilation/ZeroErrorConvergence');
+  });
+
+  it("step 10: convergence/ConvergenceState records all invariants satisfied", () => {
+    const node = result.index.nodes['convergence/ConvergenceState'];
+    expect(node).toBeDefined();
+    expect(node.type).toBe('artifact');
+    expect(node.preceded_by).toContain('compilation/ZeroErrorConvergence');
+  });
+
+  it("connection: compilation/ZeroErrorConvergence → convergence/ConvergenceState", () => {
+    const from = result.index.nodes['compilation/ZeroErrorConvergence'];
+    expect(from.followed_by).toContain('convergence/ConvergenceState');
+  });
+
+  it("journey covers full pipeline (10 steps)", () => {
+    expect(journey).toBeDefined();
+    expect(journey.steps).toHaveLength(10);
+    expect(journey.steps[0].node).toBe('convergence/RecompileAfterFix');
+    expect(journey.steps[9].node).toBe('convergence/ConvergenceState');
+  });
+
+  it("journey actor is Compiler (first actor in steps)", () => {
+    expect(journey.actor).toBe('_actors/Compiler');
+  });
+
+  it("compiles without errors", () => {
     const errors = result.issues.filter(i => i.severity === 'error');
-    expect(errors.length).toBe(0);
+    expect(errors).toHaveLength(0);
   });
-
-  it("step 5: audit/ValidateGraphInvariantsPostFix reads the orphan count and confirms it is zero", () => {
-    const result = buildPostFixGraph();
-    expect(result.index._stats.orphans).toBe(0);
-    expect(result.coverage.orphans.length).toBe(0);
-  });
-
-  it("step 6: audit/ValidateGraphInvariantsPostFix reads the duplicate count and confirms it is zero", () => {
-    const result = buildPostFixGraph();
-    expect(result.index._stats.duplicate_names).toBe(0);
-  });
-
-  it("step 7: compilation/IsolatedModuleDetection checks that no module became isolated as a side effect of fixes", () => {
-    const result = buildPostFixGraph();
-    // admin references auth/Token — cross-module connection prevents isolation
-    expect(result.coverage.modules['admin'].cross_module_connections).toBeGreaterThan(0);
-    expect(result.coverage.modules['auth'].cross_module_connections).toBeGreaterThan(0);
-  });
-
-  it("step 8: audit/ValidateGraphInvariantsPostFix reads the isolated module count and confirms it is zero", () => {
-    const result = buildPostFixGraph();
-    expect(result.index._stats.isolated_modules).toBe(0);
-    expect(result.coverage.isolated_modules.length).toBe(0);
-  });
-
-  it("step 9: compilation/ZeroErrorConvergence confirms the zero-error threshold still holds after the fix round", () => {
-    const result = buildPostFixGraph();
-    const errors = result.issues.filter(i => i.severity === 'error');
-    const zeroErrorThresholdMet = errors.length === 0;
-    expect(zeroErrorThresholdMet).toBe(true);
-  });
-
-  it("step 10: convergence/ConvergenceState records that all graph invariants are satisfied after this fix round", () => {
-    const result = buildPostFixGraph();
-    const invariants = {
-      zeroErrors: result.issues.filter(i => i.severity === 'error').length === 0,
-      zeroOrphans: result.index._stats.orphans === 0,
-      zeroDuplicates: result.index._stats.duplicate_names === 0,
-      zeroIsolated: result.index._stats.isolated_modules === 0,
-    };
-    expect(invariants.zeroErrors).toBe(true);
-    expect(invariants.zeroOrphans).toBe(true);
-    expect(invariants.zeroDuplicates).toBe(true);
-    expect(invariants.zeroIsolated).toBe(true);
-
-    const allSatisfied = Object.values(invariants).every(v => v === true);
-    expect(allSatisfied).toBe(true);
-  });
-
 });

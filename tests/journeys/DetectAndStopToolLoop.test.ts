@@ -18,10 +18,20 @@ describe("DetectAndStopToolLoop", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → llm/NativeToolSet", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/DetectToolCallLoop counts tool calls and detects the repetitive pattern exceeding the threshold", () => {
     // Node: llm/DetectToolCallLoop (process)
     // Action: counts tool calls and detects the repetitive pattern exceeding the threshold
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/NativeToolSet → llm/DetectToolCallLoop", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/DetectToolCallLoop triggers an intervention to stop the runaway worker", () => {
@@ -30,10 +40,20 @@ describe("DetectAndStopToolLoop", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/DetectToolCallLoop → llm/DetectToolCallLoop", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/ShutdownWorker terminates the looping worker process to stop resource consumption", () => {
     // Node: llm/ShutdownWorker (process)
     // Action: terminates the looping worker process to stop resource consumption
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/DetectToolCallLoop → llm/ShutdownWorker", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: llm/CrashReport records the tool loop with call count, pattern, and last task context", () => {
@@ -42,10 +62,20 @@ describe("DetectAndStopToolLoop", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/ShutdownWorker → llm/CrashReport", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/DetectWorkerFailure receives the loop report for respawn and task retry decision", () => {
     // Node: convergence/DetectWorkerFailure (process)
     // Action: receives the loop report for respawn and task retry decision
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/CrashReport → convergence/DetectWorkerFailure", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

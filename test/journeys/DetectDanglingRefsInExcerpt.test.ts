@@ -20,10 +20,20 @@ describe("DetectDanglingRefsInExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/CollectCrossModuleConnections → graph/CompiledIndex", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: excerpt/ValidateCrossModuleRefIntegrity checks each BEFORE YOU reference to confirm the source node exists in its declared module", () => {
     // Node: excerpt/ValidateCrossModuleRefIntegrity (process)
     // Action: checks each BEFORE YOU reference to confirm the source node exists in its declared module
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/CompiledIndex → excerpt/ValidateCrossModuleRefIntegrity", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: excerpt/ValidateCrossModuleRefIntegrity checks each AFTER YOU reference to confirm the target node exists in its declared module", () => {
@@ -32,10 +42,20 @@ describe("DetectDanglingRefsInExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/ValidateCrossModuleRefIntegrity → excerpt/ValidateCrossModuleRefIntegrity", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: excerpt/ValidateCrossModuleRefIntegrity flags any dangling references where the target node was deleted or renamed since the connection was established", () => {
     // Node: excerpt/ValidateCrossModuleRefIntegrity (process)
     // Action: flags any dangling references where the target node was deleted or renamed since the connection was established
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/ValidateCrossModuleRefIntegrity → excerpt/ValidateCrossModuleRefIntegrity", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: excerpt/CollectWarnings adds dangling cross-module reference warnings to the module's warning list", () => {
@@ -44,10 +64,20 @@ describe("DetectDanglingRefsInExcerpt", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: excerpt/ValidateCrossModuleRefIntegrity → excerpt/CollectWarnings", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: excerpt/AssembleExcerpt includes the dangling reference warnings in the ISSUES section of the excerpt", () => {
     // Node: excerpt/AssembleExcerpt (process) — has code: src/excerpt.ts
     // Action: includes the dangling reference warnings in the ISSUES section of the excerpt
     // TODO: agent fills assertion
+  });
+
+  it("connection: excerpt/CollectWarnings → excerpt/AssembleExcerpt", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
 });

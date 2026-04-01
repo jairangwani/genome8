@@ -18,10 +18,20 @@ describe("DetectAndReportTimeout", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → llm/DetectTaskTimeout", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: llm/DetectProcessExit checks whether the worker subprocess is still alive or has silently exited", () => {
     // Node: llm/DetectProcessExit (process)
     // Action: checks whether the worker subprocess is still alive or has silently exited
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/DetectTaskTimeout → llm/DetectProcessExit", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: llm/DrainPartialOutput collects any files written and partial stream data produced so far", () => {
@@ -30,10 +40,20 @@ describe("DetectAndReportTimeout", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/DetectProcessExit → llm/DrainPartialOutput", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: llm/TaskPayload provides the timed-out task for inclusion in the report", () => {
     // Node: llm/TaskPayload (artifact)
     // Action: provides the timed-out task for inclusion in the report
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/DrainPartialOutput → llm/TaskPayload", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: llm/CrashReport records the timeout with duration, partial output, and process status", () => {
@@ -42,10 +62,20 @@ describe("DetectAndReportTimeout", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/TaskPayload → llm/CrashReport", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: llm/ShutdownWorker forcefully terminates the hanging worker process", () => {
     // Node: llm/ShutdownWorker (process)
     // Action: forcefully terminates the hanging worker process
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/CrashReport → llm/ShutdownWorker", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: llm/CleanupFailedSession tears down the timed-out session and communication channel", () => {
@@ -54,10 +84,20 @@ describe("DetectAndReportTimeout", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: llm/ShutdownWorker → llm/CleanupFailedSession", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: convergence/DetectWorkerFailure receives the timeout report and decides whether to respawn or abort", () => {
     // Node: convergence/DetectWorkerFailure (process)
     // Action: receives the timeout report and decides whether to respawn or abort
     // TODO: agent fills assertion
+  });
+
+  it("connection: llm/CleanupFailedSession → convergence/DetectWorkerFailure", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

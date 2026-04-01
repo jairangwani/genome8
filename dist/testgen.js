@@ -153,4 +153,110 @@ export function runTests(testDir) {
 export function generateJourneyTestString(name, journey, index) {
     return generateJourneyTest(name, journey, index);
 }
+/**
+ * Scan filled test assertions for trivial patterns that pass without
+ * verifying actual journey step behavior. Returns flagged test names.
+ * Enables RejectTrivialAssertionFill journey.
+ */
+export function detectTrivialAssertions(testContent) {
+    const trivialPatterns = [
+        /expect\s*\(\s*true\s*\)\s*\.\s*toBe\s*\(\s*true\s*\)/,
+        /expect\s*\(\s*1\s*\)\s*\.\s*toBe\s*\(\s*1\s*\)/,
+        /expect\s*\([^)]+\)\s*\.\s*toBeDefined\s*\(\s*\)\s*;?\s*$/,
+        /\/\/\s*TODO:\s*agent fills assertion/,
+    ];
+    const flagged = [];
+    const itBlocks = testContent.matchAll(/it\s*\(\s*["'](.+?)["']\s*,\s*\(\)\s*=>\s*\{([\s\S]*?)\}\s*\)/g);
+    for (const match of itBlocks) {
+        const testName = match[1];
+        const body = match[2].trim();
+        // Empty body
+        if (!body || body === '//') {
+            flagged.push(testName);
+            continue;
+        }
+        // Only trivial assertions
+        const hasSubstantive = body.split('\n').some(line => {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('//'))
+                return false;
+            return !trivialPatterns.some(p => p.test(trimmed));
+        });
+        if (!hasSubstantive) {
+            flagged.push(testName);
+        }
+    }
+    return flagged;
+}
+/**
+ * Compare describe/it blocks in a filled test file against the journey's
+ * step list. Returns mismatches (added, removed, or merged test cases).
+ * Enables RecoverFromTestCaseStructureMismatch journey.
+ */
+export function validateTestCaseStructure(testContent, journey) {
+    // Extract expected test names from journey steps
+    const expected = journey.steps.map(s => `step ${s.step_number}: ${s.node} ${s.action}`);
+    // Extract actual it() block names from test content
+    const actual = [];
+    const itMatches = testContent.matchAll(/it\s*\(\s*["'](.+?)["']/g);
+    for (const m of itMatches) {
+        actual.push(m[1]);
+    }
+    // Find step tests (exclude connection tests)
+    const actualSteps = actual.filter(a => a.startsWith('step '));
+    const missing = expected.filter(e => !actualSteps.includes(e));
+    const extra = actualSteps.filter(a => !expected.includes(a));
+    return {
+        valid: missing.length === 0 && extra.length === 0,
+        expected,
+        actual: actualSteps,
+        missing,
+        extra,
+    };
+}
+/**
+ * Classify a test failure's root cause after fix retries are exhausted.
+ * Returns 'code_bug', 'test_bug', or 'graph_bug'.
+ * Enables EscalateGraphBugToConvergence and EscalateGraphBugToAudit journeys.
+ */
+export function diagnoseFailureRoot(failure, fixHistory) {
+    // If all fixes were syntactically valid but semantically wrong → graph bug
+    const allSyntaxValid = fixHistory.every(f => !f.error.includes('SyntaxError') && !f.error.includes('Cannot find'));
+    if (allSyntaxValid && fixHistory.length >= 2) {
+        return 'graph_bug';
+    }
+    // If error mentions import/module resolution → code bug (missing implementation)
+    if (/cannot find module|import.*not found|is not exported/i.test(failure.error)) {
+        return 'code_bug';
+    }
+    // If error is assertion-related → test bug
+    if (/expect.*received|toBe|toEqual|assertion/i.test(failure.error)) {
+        return 'test_bug';
+    }
+    return 'code_bug';
+}
+/**
+ * Check whether implementation files exist for a module's nodes before
+ * generating or filling test skeletons. Returns missing file paths.
+ * Enables SkipTestsForUnfilledModule journey.
+ */
+export function detectMissingImplementation(journey, index, projectDir) {
+    const missing = [];
+    const checked = new Set();
+    for (const step of journey.steps) {
+        const node = index.nodes[step.node];
+        if (!node?.files?.length)
+            continue;
+        for (const file of node.files) {
+            if (checked.has(file))
+                continue;
+            checked.add(file);
+            const absPath = path.resolve(projectDir, file);
+            if (!fs.existsSync(absPath)) {
+                missing.push(file);
+            }
+        }
+    }
+    return missing;
+}
 //# sourceMappingURL=testgen.js.map

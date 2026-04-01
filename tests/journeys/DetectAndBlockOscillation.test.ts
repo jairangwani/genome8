@@ -20,10 +20,20 @@ describe("DetectAndBlockOscillation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/FileSystem → events/ReadEventFile", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: sync/ParseEventPayload extracts the ripple origin chain from the event payload", () => {
     // Node: sync/ParseEventPayload (process)
     // Action: extracts the ripple origin chain from the event payload
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ReadEventFile → sync/ParseEventPayload", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: sync/DetectOscillationInOriginChain reads the origin chain and searches for this box's ID in the list", () => {
@@ -32,10 +42,20 @@ describe("DetectAndBlockOscillation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/ParseEventPayload → sync/DetectOscillationInOriginChain", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: sync/DetectOscillationInOriginChain finds this box's ID in the chain, confirming an A→B→A oscillation cycle", () => {
     // Node: sync/DetectOscillationInOriginChain (process)
     // Action: finds this box's ID in the chain, confirming an A→B→A oscillation cycle
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/DetectOscillationInOriginChain → sync/DetectOscillationInOriginChain", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/OscillationBlocksSync enforces that sync must not proceed when oscillation is detected", () => {
@@ -44,10 +64,20 @@ describe("DetectAndBlockOscillation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/DetectOscillationInOriginChain → sync/OscillationBlocksSync", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: sync/SuppressSyncOnOscillation aborts the sync pipeline without marking any modules stale", () => {
     // Node: sync/SuppressSyncOnOscillation (process)
     // Action: aborts the sync pipeline without marking any modules stale
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/OscillationBlocksSync → sync/SuppressSyncOnOscillation", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: sync/SyncResult records that sync was suppressed due to oscillation detection", () => {
@@ -56,10 +86,20 @@ describe("DetectAndBlockOscillation", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: sync/SuppressSyncOnOscillation → sync/SyncResult", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: convergence/ConvergenceState receives the suppressed sync result and does not trigger reconvergence or republish", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: receives the suppressed sync result and does not trigger reconvergence or republish
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/SyncResult → convergence/ConvergenceState", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

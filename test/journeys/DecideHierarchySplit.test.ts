@@ -18,10 +18,20 @@ describe("DecideHierarchySplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/HierarchyDecision → hierarchy/TrackHierarchyDepth", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/HierarchyDepthCounter provides the current depth for the split decision", () => {
     // Node: hierarchy/HierarchyDepthCounter (artifact)
     // Action: provides the current depth for the split decision
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/TrackHierarchyDepth → hierarchy/HierarchyDepthCounter", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: hierarchy/EnforceMaxDepth checks whether current depth has reached the maximum allowed level", () => {
@@ -30,10 +40,20 @@ describe("DecideHierarchySplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/HierarchyDepthCounter → hierarchy/EnforceMaxDepth", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: hierarchy/MaxDepthLimit if at max depth, forces the decision to no-split regardless of module count", () => {
     // Node: hierarchy/MaxDepthLimit (rule)
     // Action: if at max depth, forces the decision to no-split regardless of module count
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/EnforceMaxDepth → hierarchy/MaxDepthLimit", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: hierarchy/AnalyzeModuleIndependence reads the independence analysis from ORGANIZATION.md", () => {
@@ -42,10 +62,20 @@ describe("DecideHierarchySplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/MaxDepthLimit → hierarchy/AnalyzeModuleIndependence", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: _actors/LLMWorker analyzes module groups, coupling, and independence to decide whether to split", () => {
     // Node: _actors/LLMWorker (actor)
     // Action: analyzes module groups, coupling, and independence to decide whether to split
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/AnalyzeModuleIndependence → _actors/LLMWorker", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: hierarchy/DecideSplit produces a split decision with child groupings or a no-split result", () => {
@@ -54,10 +84,20 @@ describe("DecideHierarchySplit", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/LLMWorker → hierarchy/DecideSplit", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: convergence/ConvergenceState records the hierarchy decision — split with groupings or no-split", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: records the hierarchy decision — split with groupings or no-split
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/DecideSplit → convergence/ConvergenceState", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

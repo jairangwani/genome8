@@ -17,10 +17,20 @@ describe("TrackAuditFixProgress", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ConvergenceState → audit/TrackAuditRound", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: audit/AuditFindingsList provides the current gap count remaining", () => {
     // Node: audit/AuditFindingsList (artifact)
     // Action: provides the current gap count remaining
     // TODO: agent fills assertion
+  });
+
+  it("connection: audit/TrackAuditRound → audit/AuditFindingsList", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: convergence/DataDecidesWhenToStop evaluates whether progress is being made based on gap count trending toward zero", () => {
@@ -29,16 +39,31 @@ describe("TrackAuditFixProgress", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: audit/AuditFindingsList → convergence/DataDecidesWhenToStop", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: audit/TrackAuditRound records the gap count delta between this round and the previous round", () => {
     // Node: audit/TrackAuditRound (artifact)
     // Action: records the gap count delta between this round and the previous round
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/DataDecidesWhenToStop → audit/TrackAuditRound", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
+  });
+
   it("step 6: convergence/ConvergenceState updates with the audit progress metrics for the current round", () => {
     // Node: convergence/ConvergenceState (artifact)
     // Action: updates with the audit progress metrics for the current round
     // TODO: agent fills assertion
+  });
+
+  it("connection: audit/TrackAuditRound → convergence/ConvergenceState", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
   });
 
 });

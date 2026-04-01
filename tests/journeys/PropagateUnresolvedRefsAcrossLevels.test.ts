@@ -22,10 +22,20 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/ChildEngine → hierarchy/CollectChildInterfaces", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: hierarchy/ValidateCrossEngineRefs attempts to resolve grandchild external refs against other grandchild siblings", () => {
     // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: attempts to resolve grandchild external refs against other grandchild siblings
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/CollectChildInterfaces → hierarchy/ValidateCrossEngineRefs", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: hierarchy/PropagateUnresolvedRefsUpward identifies refs that remain unresolved even after grandchild-sibling checking", () => {
@@ -34,10 +44,20 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/ValidateCrossEngineRefs → hierarchy/PropagateUnresolvedRefsUpward", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: hierarchy/PropagateUnresolvedRefsUpward re-emits those refs as warnings in the child's own published interface", () => {
     // Node: hierarchy/PropagateUnresolvedRefsUpward (process)
     // Action: re-emits those refs as warnings in the child's own published interface
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/PropagateUnresolvedRefsUpward → hierarchy/PropagateUnresolvedRefsUpward", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: compilation/WarningReport records the propagated warnings in the child's compilation output", () => {
@@ -46,10 +66,20 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: hierarchy/PropagateUnresolvedRefsUpward → compilation/WarningReport", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: publish/GenerateInterfaceYaml includes the propagated warnings in the child's interface metadata", () => {
     // Node: publish/GenerateInterfaceYaml (process) — has code: src/publish.ts
     // Action: includes the propagated warnings in the child's interface metadata
     // TODO: agent fills assertion
+  });
+
+  it("connection: compilation/WarningReport → publish/GenerateInterfaceYaml", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: _actors/ParentEngine receives the child's interface containing propagated grandchild warnings", () => {
@@ -58,16 +88,31 @@ describe("PropagateUnresolvedRefsAcrossLevels", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: publish/GenerateInterfaceYaml → _actors/ParentEngine", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: hierarchy/ValidateCrossEngineRefs attempts to resolve the propagated refs against sibling child interfaces", () => {
     // Node: hierarchy/ValidateCrossEngineRefs (process) — has code: src/compile.ts
     // Action: attempts to resolve the propagated refs against sibling child interfaces
     // TODO: agent fills assertion
   });
 
+  it("connection: _actors/ParentEngine → hierarchy/ValidateCrossEngineRefs", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
+  });
+
   it("step 10: hierarchy/PromoteExternalRefsToErrors converts any still-unresolved propagated refs to errors at the parent level", () => {
     // Node: hierarchy/PromoteExternalRefsToErrors (process)
     // Action: converts any still-unresolved propagated refs to errors at the parent level
     // TODO: agent fills assertion
+  });
+
+  it("connection: hierarchy/ValidateCrossEngineRefs → hierarchy/PromoteExternalRefsToErrors", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
   });
 
 });

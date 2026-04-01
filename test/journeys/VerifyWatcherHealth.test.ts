@@ -20,10 +20,20 @@ describe("VerifyWatcherHealth", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/WakeFromSleep → events/EventWatcherSet", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: events/ConfirmWatcherHealth iterates each watcher and checks it is still active and responsive", () => {
     // Node: events/ConfirmWatcherHealth (process)
     // Action: iterates each watcher and checks it is still active and responsive
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/EventWatcherSet → events/ConfirmWatcherHealth", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: events/ConfirmWatcherHealth identifies any watchers that were silently dropped by the OS", () => {
@@ -32,10 +42,20 @@ describe("VerifyWatcherHealth", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ConfirmWatcherHealth → events/ConfirmWatcherHealth", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: events/ConfirmWatcherHealth reports the list of dead watchers that need re-registration", () => {
     // Node: events/ConfirmWatcherHealth (process)
     // Action: reports the list of dead watchers that need re-registration
     // TODO: agent fills assertion
+  });
+
+  it("connection: events/ConfirmWatcherHealth → events/ConfirmWatcherHealth", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: sync/ReadDependencyList provides the dependency list to know which watchers to recreate", () => {
@@ -44,10 +64,20 @@ describe("VerifyWatcherHealth", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/ConfirmWatcherHealth → sync/ReadDependencyList", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: events/RegisterEventWatchers re-creates fs.watch instances for the dependencies whose watchers were dropped", () => {
     // Node: events/RegisterEventWatchers (process)
     // Action: re-creates fs.watch instances for the dependencies whose watchers were dropped
     // TODO: agent fills assertion
+  });
+
+  it("connection: sync/ReadDependencyList → events/RegisterEventWatchers", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: _actors/FileSystem registers the replacement watch callbacks at the kernel level", () => {
@@ -56,10 +86,20 @@ describe("VerifyWatcherHealth", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: events/RegisterEventWatchers → _actors/FileSystem", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: events/EventWatcherSet updated with the restored watcher set", () => {
     // Node: events/EventWatcherSet (artifact)
     // Action: updated with the restored watcher set
     // TODO: agent fills assertion
+  });
+
+  it("connection: _actors/FileSystem → events/EventWatcherSet", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
 });

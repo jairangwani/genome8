@@ -18,10 +18,20 @@ describe("EnforceMinimumSteps", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: graph/JourneyDefinition → graph/MinimumStepsRule", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: _actors/Compiler reports a validation error identifying the journey with insufficient steps", () => {
     // Node: _actors/Compiler (actor)
     // Action: reports a validation error identifying the journey with insufficient steps
     // TODO: agent fills assertion
+  });
+
+  it("connection: graph/MinimumStepsRule → _actors/Compiler", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
 });

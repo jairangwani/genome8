@@ -18,10 +18,20 @@ describe("DetectAndHaltStalledPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/ConvergenceState → convergence/DetectPipelineStall", () => {
+    // Assert that the output of step 1 feeds into step 2
+    // TODO: agent fills connection assertion
+  });
+
   it("step 3: convergence/DetectPipelineStall checks whether any new modules were completed since the last snapshot", () => {
     // Node: convergence/DetectPipelineStall (process)
     // Action: checks whether any new modules were completed since the last snapshot
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/DetectPipelineStall → convergence/DetectPipelineStall", () => {
+    // Assert that the output of step 2 feeds into step 3
+    // TODO: agent fills connection assertion
   });
 
   it("step 4: convergence/DetectPipelineStall checks whether any audit gaps were closed since the last snapshot", () => {
@@ -30,10 +40,20 @@ describe("DetectAndHaltStalledPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/DetectPipelineStall → convergence/DetectPipelineStall", () => {
+    // Assert that the output of step 3 feeds into step 4
+    // TODO: agent fills connection assertion
+  });
+
   it("step 5: convergence/DetectPipelineStall checks whether any compilation errors were reduced since the last snapshot", () => {
     // Node: convergence/DetectPipelineStall (process)
     // Action: checks whether any compilation errors were reduced since the last snapshot
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/DetectPipelineStall → convergence/DetectPipelineStall", () => {
+    // Assert that the output of step 4 feeds into step 5
+    // TODO: agent fills connection assertion
   });
 
   it("step 6: convergence/DetectPipelineStall determines that zero forward progress was made across the configured stall threshold of consecutive cycles", () => {
@@ -42,10 +62,20 @@ describe("DetectAndHaltStalledPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/DetectPipelineStall → convergence/DetectPipelineStall", () => {
+    // Assert that the output of step 5 feeds into step 6
+    // TODO: agent fills connection assertion
+  });
+
   it("step 7: convergence/NeverOpenEndedLoop enforces that the pipeline must not continue cycling without progress", () => {
     // Node: convergence/NeverOpenEndedLoop (rule)
     // Action: enforces that the pipeline must not continue cycling without progress
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/DetectPipelineStall → convergence/NeverOpenEndedLoop", () => {
+    // Assert that the output of step 6 feeds into step 7
+    // TODO: agent fills connection assertion
   });
 
   it("step 8: convergence/DataDecidesWhenToStop confirms that the data shows no improvement, overriding any remaining retry budget", () => {
@@ -54,10 +84,20 @@ describe("DetectAndHaltStalledPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: convergence/NeverOpenEndedLoop → convergence/DataDecidesWhenToStop", () => {
+    // Assert that the output of step 7 feeds into step 8
+    // TODO: agent fills connection assertion
+  });
+
   it("step 9: compilation/ErrorReport records the stall condition with the stagnant metrics and cycle count", () => {
     // Node: compilation/ErrorReport (artifact)
     // Action: records the stall condition with the stagnant metrics and cycle count
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/DataDecidesWhenToStop → compilation/ErrorReport", () => {
+    // Assert that the output of step 8 feeds into step 9
+    // TODO: agent fills connection assertion
   });
 
   it("step 10: convergence/ConvergenceState transitions to STALLED status, halting all pipeline activity", () => {
@@ -66,10 +106,20 @@ describe("DetectAndHaltStalledPipeline", () => {
     // TODO: agent fills assertion
   });
 
+  it("connection: compilation/ErrorReport → convergence/ConvergenceState", () => {
+    // Assert that the output of step 9 feeds into step 10
+    // TODO: agent fills connection assertion
+  });
+
   it("step 11: _actors/ProjectOwner receives notification that the pipeline has stalled and requires manual intervention", () => {
     // Node: _actors/ProjectOwner (actor)
     // Action: receives notification that the pipeline has stalled and requires manual intervention
     // TODO: agent fills assertion
+  });
+
+  it("connection: convergence/ConvergenceState → _actors/ProjectOwner", () => {
+    // Assert that the output of step 10 feeds into step 11
+    // TODO: agent fills connection assertion
   });
 
 });

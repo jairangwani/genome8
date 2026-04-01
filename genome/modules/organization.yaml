@@ -103,6 +103,9 @@ nodes:
   DetectUngroundedModules:
     type: process
     description: checks that every identified module maps to at least one spec section, catching hallucinated modules the LLM invented without spec basis
+  HandleOrganizationRepairExhaustion:
+    type: process
+    description: detects when an organization-level repair loop — malformed output, circular dependency, spec coverage gap, empty module list, duplicate names, dangling dependency ref, or ungrounded module — has exhausted its bounded retry budget without producing valid output, and reports the unresolvable validation failure to convergence to halt the pipeline
 
 journeys:
   AnalyzeSpecAndWriteOrganization:
@@ -633,3 +636,20 @@ journeys:
         action: supplies the declared dependency edges from ORGANIZATION.md
       - node: audit/DetectFixIntroducedDependency
         action: receives the dependency graph to validate that audit fixes do not introduce undeclared cross-module references
+
+  HandleOrganizationRepairExhaustion:
+    steps:
+      - node: ValidateLLMOrganizationOutput
+        action: detects a validation failure in the LLM-produced organization output after the most recent correction attempt
+      - node: llm/SendTask
+        action: has already sent the maximum number of correction tasks for this validation issue
+      - node: HandleOrganizationRepairExhaustion
+        action: detects that the bounded retry budget for this repair type has been exhausted
+      - node: HandleOrganizationRepairExhaustion
+        action: collects the final validation errors and the history of correction attempts
+      - node: HandleOrganizationRepairExhaustion
+        action: reports the unresolvable failure to convergence with the error details and retry history
+      - node: convergence/ConvergenceState
+        action: receives the fatal organization error and halts the pipeline with a clear message identifying which validation could not be repaired
+      - node: _actors/ProjectOwner
+        action: is notified that manual spec or organization intervention is needed before convergence can proceed
