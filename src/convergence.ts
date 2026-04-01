@@ -50,6 +50,7 @@ interface ConvergenceConfig {
   maxHierarchyDepth: number;   // Maximum nesting depth for hierarchy splits.
   maxAuditCycles: number;      // Maximum audit fix cycles before accepting current state.
   eventDebounceMs: number;     // Debounce window for rapid successive dependency events.
+  maxConcurrentChildren: number; // Max children converging in parallel. Controls cost/speed tradeoff.
 }
 
 const DEFAULT_CONFIG: ConvergenceConfig = {
@@ -64,6 +65,7 @@ const DEFAULT_CONFIG: ConvergenceConfig = {
   maxHierarchyDepth: 5,              // Prevent infinite recursive splitting.
   maxAuditCycles: 5,                 // Prevent infinite audit fix loops.
   eventDebounceMs: 2_000,            // Debounce rapid events within 2s window.
+  maxConcurrentChildren: 2,          // Max children converging at once. 2 = safe, 5 = fast, 1 = cheapest.
 };
 
 const LENSES = [
@@ -2595,11 +2597,14 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
   }
   } // end of if (!allChildrenExist) else block
 
-  // Spawn child convergence.ts processes
+  // Spawn child convergence.ts processes — with concurrency limit.
+  // Instead of spawning ALL children at once (28 workers!), spawn in batches.
+  // maxConcurrentChildren controls how many run simultaneously.
+  // Same quality, same result. Just fewer concurrent LLM sessions.
   const { spawn: spawnChild } = await import('node:child_process');
   const children: Array<{ name: string; proc: ReturnType<typeof spawnChild> }> = [];
 
-  for (const engine of engines) {
+  function spawnEngine(engine: { name: string; specSections: string }) {
     const childDir = path.join(absProjectDir, 'engines', engine.name);
     console.log(`  Spawning child: convergence.ts for ${engine.name}...`);
 
@@ -2608,7 +2613,7 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
       cwd: path.resolve(import.meta.dirname!, '..'),
       env: { ...process.env },
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true, // Required on Windows — npx is a cmd script, not a binary
+      shell: true,
     });
 
     proc.stdout?.on('data', (chunk: Buffer) => {
@@ -2622,38 +2627,43 @@ Build order: ${childModules.map((m, i) => `${i + 1}. \`${m}\``).join(', ')}
       console.log(`  [${engine.name} ERR] ${chunk.toString().trim()}`);
     });
 
-    children.push({ name: engine.name, proc });
-    // Register in global process tree for clean shutdown
     if (proc.pid) {
       childProcesses.push({ name: engine.name, pid: proc.pid, proc });
       writePidFile();
     }
+
+    return { name: engine.name, proc };
   }
 
-  console.log(`\n  Waiting for ${children.length} children to converge...`);
-
-  // Wait for children with health check — if a child's process dies silently,
-  // detect it via exitCode instead of waiting forever for an 'exit' event.
-  await Promise.all(children.map(child => new Promise<void>((resolve) => {
+  const waitForChild = (child: { name: string; proc: any }) => new Promise<void>((resolve) => {
     child.proc.on('exit', (code: number | null) => {
       console.log(`  [${child.name}] Completed with code ${code}`);
       resolve();
     });
-    // Health check: if process already exited (race condition), resolve immediately
     if (child.proc.exitCode !== null) {
       console.log(`  [${child.name}] Already exited with code ${child.proc.exitCode}`);
       resolve();
     }
-    // Safety: check every 30s if process is still alive
     const healthCheck = setInterval(() => {
       if (child.proc.exitCode !== null) {
         clearInterval(healthCheck);
-        console.log(`  [${child.name}] Detected exit (code ${child.proc.exitCode}) via health check`);
         resolve();
       }
     }, 30_000);
     child.proc.on('exit', () => clearInterval(healthCheck));
-  })));
+  });
+
+  // Spawn + wait in batches (concurrency-limited)
+  const limit = config.maxConcurrentChildren;
+  console.log(`\n  Converging ${engines.length} children (max ${limit} at a time)...`);
+
+  for (let i = 0; i < engines.length; i += limit) {
+    const batch = engines.slice(i, i + limit);
+    console.log(`\n  Batch ${Math.floor(i/limit) + 1}: ${batch.map(e => e.name).join(', ')}`);
+    const batchChildren = batch.map(e => spawnEngine(e));
+    children.push(...batchChildren);
+    await Promise.all(batchChildren.map(waitForChild));
+  }
 
   console.log('\n  All children converged.');
 
