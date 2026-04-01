@@ -61,3 +61,33 @@ export declare function compareResults(a: CompileResult, b: CompileResult): stri
 export declare function validateActionQuality(result: CompileResult): ValidationIssue[];
 export declare function compileFromModules(modules: Map<string, ModuleFile>, externalInterfaces?: Map<string, PublishedInterface>): CompileResult;
 export declare function loadAllModules(modulesDir: string): Map<string, ModuleFile>;
+/**
+ * Validate that every module listed in ORGANIZATION.md exists in the compiled index.
+ * Returns missing module names.
+ * Standalone export for the ValidateModuleCompleteness node.
+ */
+export declare function validateModuleCompleteness(expectedModules: string[], compiledModules: Map<string, ModuleFile>): string[];
+/**
+ * Compare compiled module files on disk against the organization module list.
+ * Returns modules that exist as YAML files but are not listed in the organization.
+ * Standalone export for the UnlistedModuleDetection node.
+ */
+export declare function detectUnlistedModules(modulesDir: string, expectedModules: string[]): string[];
+/**
+ * Detect when a module file was modified during compilation by comparing
+ * file modification timestamps before and after reading.
+ * Standalone export for the ConcurrentWriteDetection node.
+ */
+export declare function detectConcurrentWrite(filePath: string, readStartTime: number): boolean;
+/**
+ * Track which modules changed since last compilation and identify
+ * cross-module dependents.
+ * Standalone export for the DirtyModuleTracking node.
+ */
+export declare function trackDirtyModules(modulesDir: string, lastCompileTimestamp: number): string[];
+/**
+ * Find modules that depend on a set of changed modules via cross-module journey refs.
+ * Returns the set of dependent module names that need revalidation.
+ * Enables targeted revalidation after DirtyModuleTracking.
+ */
+export declare function findDependentModules(changedModules: string[], index: CompiledIndex): string[];

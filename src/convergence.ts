@@ -93,14 +93,15 @@ const currentDepth = depthArg >= 0 ? parseInt(process.argv[depthArg + 1]) || 0 :
 
 const absProjectDir = path.resolve(projectDir);
 const genomeDir = path.join(absProjectDir, 'genome');
+const internalDir = path.join(genomeDir, '.internal');  // Internal state — not user-facing
 const modulesDir = path.join(genomeDir, 'modules');
 const specPath = path.join(genomeDir, 'spec.md');
-const orgPath = path.join(genomeDir, 'ORGANIZATION.md');
-const compiledDir = path.join(genomeDir, 'compiled');
+const orgPath = path.join(internalDir, 'ORGANIZATION.md');
+const compiledDir = path.join(internalDir, 'compiled');
 const publishedDir = path.join(genomeDir, 'published');
 
 // Load project config (overrides defaults)
-const configPath = path.join(genomeDir, 'config.json');
+const configPath = path.join(internalDir, 'config.json');
 let config: ConvergenceConfig = { ...DEFAULT_CONFIG };
 if (fs.existsSync(configPath)) {
   try {
@@ -116,7 +117,7 @@ if (!fs.existsSync(specPath)) {
 }
 
 // Ensure directories exist
-for (const dir of [modulesDir, compiledDir, publishedDir]) {
+for (const dir of [modulesDir, compiledDir, publishedDir, internalDir]) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
@@ -208,7 +209,7 @@ async function run() {
   console.log(`\n=== GENOME CONVERGENCE: ${absProjectDir} ===`);
   cleanupOrphanPids(); // Clean stale PIDs from previous crashed processes
   // Clear stale sync locks from previous crashed sync operations
-  const syncStatePath0 = path.join(genomeDir, 'sync-state.json');
+  const syncStatePath0 = path.join(internalDir, 'sync-state.json');
   if (clearStaleSyncLock(syncStatePath0)) {
     console.log('  Cleared stale sync lock from previous crash.');
   }
@@ -216,7 +217,7 @@ async function run() {
   console.log(`Spec: ${spec.length} chars, ${spec.split('\n').length} lines\n`);
 
   // ── Check if already converged → skip to Step 7 (watch loop) ──
-  const convergeStatePath = path.join(genomeDir, 'convergence-state.json');
+  const convergeStatePath = path.join(internalDir, 'convergence-state.json');
   if (fs.existsSync(convergeStatePath) && !process.argv.includes('--once')) {
     try {
       const state = JSON.parse(fs.readFileSync(convergeStatePath, 'utf-8'));
@@ -248,8 +249,8 @@ async function run() {
             const finalResult = currentResult;
 
             // Import the Step 7 watch loop inline
-            const depsFilePath = path.join(genomeDir, 'dependencies.yaml');
-            const syncStateFilePath = path.join(genomeDir, 'sync-state.json');
+            const depsFilePath = path.join(internalDir, 'dependencies.yaml');
+            const syncStateFilePath = path.join(internalDir, 'sync-state.json');
             const eventsDir = path.join(publishedDir, 'events');
             if (!fs.existsSync(eventsDir)) fs.mkdirSync(eventsDir, { recursive: true });
 
@@ -279,7 +280,7 @@ async function run() {
                 const currentSpecContent = fs.readFileSync(specPath, 'utf-8');
                 const crypto3 = cryptoModule;
                 const newHash = crypto3.createHash('sha256').update(currentSpecContent).digest('hex');
-                const savedSpecHash = (() => { try { return JSON.parse(fs.readFileSync(path.join(genomeDir, 'convergence-state.json'), 'utf-8')).spec_hash; } catch { return null; } })();
+                const savedSpecHash = (() => { try { return JSON.parse(fs.readFileSync(path.join(internalDir, 'convergence-state.json'), 'utf-8')).spec_hash; } catch { return null; } })();
                 if (newHash !== savedSpecHash) {
                   console.log('\n  SPEC CHANGED — waking up for reconvergence...');
                   specWatcherResumed.close();
@@ -696,7 +697,7 @@ Write the file NOW using the Write tool.`);
   // If changed: ask LLM which modules are affected, only update those
   const crypto = await import('node:crypto');
   const specHash = crypto.createHash('sha256').update(spec).digest('hex');
-  const convergeStatePath2 = path.join(genomeDir, 'convergence-state.json');
+  const convergeStatePath2 = path.join(internalDir, 'convergence-state.json');
   const knownModuleNames = extractModuleNames(orgContent);
   let affectedModules: string[] | null = null; // null = all modules, string[] = only these
 
@@ -710,7 +711,7 @@ Write the file NOW using the Write tool.`);
         console.log('  Spec CHANGED since last convergence. Identifying affected modules...');
 
         // Load the previous spec if available (stored alongside state)
-        const prevSpecPath = path.join(genomeDir, '.prev-spec.md');
+        const prevSpecPath = path.join(internalDir, '.prev-spec.md');
         const prevSpec = fs.existsSync(prevSpecPath) ? fs.readFileSync(prevSpecPath, 'utf-8') : null;
 
         const affectedResponse = await worker.call(
@@ -766,7 +767,7 @@ Do NOT include any other text, just the JSON array.`
       }
 
       // Save current spec for next diff
-      fs.writeFileSync(path.join(genomeDir, '.prev-spec.md'), spec);
+      fs.writeFileSync(path.join(internalDir, '.prev-spec.md'), spec);
     } catch { /* no valid state, run full */ }
   }
 
@@ -1193,7 +1194,7 @@ Update the appropriate YAML module file using the Write tool if needed.`);
   // Check if hash changed since last publish — skip event write if unchanged
   const prevPublishHash = (() => {
     try {
-      const prevState = JSON.parse(fs.readFileSync(path.join(genomeDir, 'convergence-state.json'), 'utf-8'));
+      const prevState = JSON.parse(fs.readFileSync(path.join(internalDir, 'convergence-state.json'), 'utf-8'));
       return prevState.interface_hash;
     } catch { return null; }
   })();
@@ -1585,7 +1586,7 @@ Read the relevant source files, fix the problem using Edit tool. Do NOT rewrite 
 
   // Write metrics
   const metrics = getMetrics();
-  const metricsPath = path.join(genomeDir, 'metrics.json');
+  const metricsPath = path.join(internalDir, 'metrics.json');
   fs.writeFileSync(metricsPath, JSON.stringify(metrics, null, 2));
   console.log(`  Metrics written: ${metrics.llmCalls} LLM calls, ${Object.keys(metrics.stepTimings).length} steps tracked`);
 
@@ -1769,7 +1770,7 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
 
   // Auto-create dependencies.yaml if external refs exist and no deps file yet
   {
-    const autoDepsPath = path.join(genomeDir, 'dependencies.yaml');
+    const autoDepsPath = path.join(internalDir, 'dependencies.yaml');
     if (!fs.existsSync(autoDepsPath)) {
       const localModules = new Set(Object.keys(finalResult.coverage.modules));
       const externalDeps = new Set<string>();
@@ -1795,7 +1796,7 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
 
   // ═══ STEP 7 — Sleep / Watch / Reconverge ═══
   // Write state file so runner/parent knows we converged
-  const statePath = path.join(genomeDir, 'convergence-state.json');
+  const statePath = path.join(internalDir, 'convergence-state.json');
   fs.writeFileSync(statePath, JSON.stringify({
     status: testsPassed ? 'sleeping' : 'unstable',
     tests_passed: testsPassed,
@@ -1815,8 +1816,8 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
   // Zero cost when nothing changes. Only wake when an event file appears.
   console.log('\n═══ STEP 7: Event-Driven Watch ═══');
 
-  const depsPath = path.join(genomeDir, 'dependencies.yaml');
-  const syncStatePath = path.join(genomeDir, 'sync-state.json');
+  const depsPath = path.join(internalDir, 'dependencies.yaml');
+  const syncStatePath = path.join(internalDir, 'sync-state.json');
   const recentHashes = new Map<string, number>();
   const OSCILLATION_COOLDOWN = 10 * 60 * 1000;
 
@@ -1847,7 +1848,7 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
     if (filename === 'spec.md') {
       const currentSpec = fs.readFileSync(specPath, 'utf-8');
       const currentHash = cryptoModule.createHash('sha256').update(currentSpec).digest('hex');
-      const stateFile = path.join(genomeDir, 'convergence-state.json');
+      const stateFile = path.join(internalDir, 'convergence-state.json');
       const savedHash = (() => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash; } catch { return null; } })();
       if (currentHash !== savedHash) {
         console.log('\n  SPEC CHANGED — waking up for reconvergence...');
@@ -1865,7 +1866,7 @@ For EACH goal: PROVEN / PARTIAL / UNPROVEN — one line per goal.`);
         if (filename === 'spec.md') {
           const currentSpec = fs.readFileSync(specPath, 'utf-8');
           const currentHash = cryptoModule.createHash('sha256').update(currentSpec).digest('hex');
-          const stateFile = path.join(genomeDir, 'convergence-state.json');
+          const stateFile = path.join(internalDir, 'convergence-state.json');
           const savedHash = (() => { try { return JSON.parse(fs.readFileSync(stateFile, 'utf-8')).spec_hash; } catch { return null; } })();
           if (currentHash !== savedHash) {
             console.log('\n  SPEC CHANGED — waking up for reconvergence...');
@@ -2839,7 +2840,7 @@ Write the file using the Write tool NOW.`);
 
 const childProcesses: Array<{ name: string; pid: number; proc: any }> = [];
 const activeWatchers: fs.FSWatcher[] = []; // Track fs.watch instances for clean teardown
-const pidFilePath = path.join(genomeDir, 'pids.json');
+const pidFilePath = path.join(internalDir, 'pids.json');
 
 /**
  * Check if a process with the given PID is still alive.

@@ -94,3 +94,33 @@ export declare function drainPartialOutput(expectedPaths: string[], projectDir: 
  * Defense-in-depth against path traversal — Claude Code also has its own checks.
  */
 export declare function isPathWithinScope(filePath: string, allowedDir: string): boolean;
+/**
+ * Scan task context for common prompt injection patterns.
+ * Returns suspicious patterns found, empty array if clean.
+ * Standalone export for the DetectPromptInjection node.
+ */
+export declare function detectPromptInjection(context: string): string[];
+/**
+ * Check if a bash command is dangerous and should be blocked.
+ * Returns the reason for blocking, or null if safe.
+ * Standalone export for the FilterBashCommands node.
+ */
+export declare function filterBashCommand(command: string): string | null;
+/**
+ * Classify a worker failure into a category for routing to the correct
+ * recovery handler.
+ * Standalone export for the ClassifyFailureType node.
+ */
+export declare function classifyFailureType(report: CrashReport): 'crash' | 'timeout' | 'stream_failure' | 'rate_limit' | 'unknown';
+/**
+ * Detect when a worker process is unresponsive by checking if the process
+ * is still running and how long since last output.
+ * Standalone export for the DetectStaleWorkerProcess node.
+ */
+export declare function detectStaleWorkerProcess(pid: number, lastActivityMs: number, maxIdleMs?: number): boolean;
+/**
+ * Scan for leftover worker subprocesses from a previous run.
+ * Returns PIDs of orphan processes found.
+ * Standalone export for the DetectOrphanWorkerProcess node.
+ */
+export declare function detectOrphanWorkerProcesses(expectedPids: number[]): number[];

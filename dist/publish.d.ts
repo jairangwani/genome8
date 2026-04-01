@@ -55,3 +55,101 @@ export declare function detectOrphanTempFiles(publishedDir: string): string[];
  * Enables GuardSequenceCounterOnPublishRetry journey.
  */
 export declare function guardSequenceCounter(eventPath: string, expectedNext: number): boolean;
+/**
+ * Collect nodes to be exported as the box's public interface.
+ * Standalone export for the CollectExportedNodes node.
+ */
+export declare function collectExportedNodes(index: CompiledIndex): Record<string, {
+    type: string;
+    description: string;
+    in_journeys: number;
+}>;
+/**
+ * Collect journeys to be exported as the box's public interface.
+ * Standalone export for the CollectExportedJourneys node.
+ */
+export declare function collectExportedJourneys(index: CompiledIndex): Record<string, {
+    steps: number;
+    module: string;
+}>;
+/**
+ * Compute the SHA256 interface hash from the provides and requires maps.
+ * Standalone export for the ComputeInterfaceHash node.
+ */
+export declare function computeInterfaceHash(provides: PublishedInterface['provides'], requires: Record<string, string>): string;
+/**
+ * Compare new hash against the previously published hash.
+ * Returns 'changed', 'unchanged', or 'first_publish'.
+ * Standalone export for the ComparePreviousHash node.
+ */
+export declare function comparePreviousHash(previousHash: string | null, currentHash: string): 'changed' | 'unchanged' | 'first_publish';
+/**
+ * After writing interface.yaml, re-read it, recompute the SHA256 from
+ * the file content, and verify it matches the embedded hash.
+ * Standalone export for the VerifyPublishedHashIntegrity node.
+ */
+export declare function verifyPublishedHashIntegrity(interfacePath: string): {
+    verified: boolean;
+    error?: string;
+};
+/**
+ * After writing both event file and interface.yaml, verify their hashes match.
+ * Standalone export for the CrossCheckEventInterfaceHash node.
+ */
+export declare function crossCheckEventInterfaceHash(interfacePath: string, eventFilePath: string): {
+    match: boolean;
+    interfaceHash?: string;
+    eventHash?: string;
+};
+/**
+ * Remove partially written publish artifacts to restore pre-publish state.
+ * Standalone export for the RollbackPartialPublish node.
+ */
+export declare function rollbackPartialPublish(publishedDir: string, artifacts?: string[]): string[];
+/**
+ * Detect exactly which publish pipeline step was interrupted after a crash.
+ * Standalone export for the DetectPublishInterruptionPoint node.
+ */
+export declare function detectPublishInterruptionPoint(publishedDir: string): 'pre-interface' | 'post-interface-pre-changelog' | 'post-changelog-pre-event' | 'complete';
+/**
+ * On cold start, read the sequence number from the last event file on disk
+ * to restore the counter baseline.
+ * Standalone export for the RestoreSequenceCounterFromDisk node.
+ */
+export declare function restoreSequenceCounterFromDisk(eventsDir: string): number;
+/**
+ * Validate the in-memory interface structure against required schema
+ * before serialization.
+ * Standalone export for the ValidateInterfaceYamlSchema node.
+ */
+export declare function validateInterfaceSchema(iface: PublishedInterface): {
+    valid: boolean;
+    errors: string[];
+};
+/**
+ * Validate changelog structure before serialization.
+ * Standalone export for the ValidateChangelogYamlSchema node.
+ */
+export declare function validateChangelogSchema(changelog: Changelog): {
+    valid: boolean;
+    errors: string[];
+};
+/**
+ * Sort exported nodes and journeys alphabetically before hash computation
+ * to guarantee identical content always produces identical hash.
+ * Standalone export for the CanonicalizeHashInput node.
+ */
+export declare function canonicalizeHashInput(provides: PublishedInterface['provides'], requires: Record<string, string>): {
+    provides: PublishedInterface['provides'];
+    requires: Record<string, string>;
+};
+/**
+ * Sort changelog changes alphabetically by name for deterministic output.
+ * Standalone export for the CanonicalizeChangelogDiffOutput node.
+ */
+export declare function canonicalizeChangelogDiff(changelog: Changelog): Changelog;
+/**
+ * Detect when previous interface.yaml is present but unparsable.
+ * Standalone export for the DetectCorruptedPreviousInterface node.
+ */
+export declare function detectCorruptedPreviousInterface(interfacePath: string): boolean;

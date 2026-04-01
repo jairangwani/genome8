@@ -420,4 +420,102 @@ export function isPathWithinScope(filePath, allowedDir) {
     const allowed = path.resolve(allowedDir);
     return resolved.startsWith(allowed + path.sep) || resolved === allowed;
 }
+/**
+ * Scan task context for common prompt injection patterns.
+ * Returns suspicious patterns found, empty array if clean.
+ * Standalone export for the DetectPromptInjection node.
+ */
+export function detectPromptInjection(context) {
+    const suspicious = [];
+    const patterns = [
+        { pattern: /ignore\s+(?:all\s+)?(?:previous|prior|above)\s+instructions/i, label: 'instruction override' },
+        { pattern: /you\s+are\s+now\s+(?:a|an)\s+/i, label: 'role reassignment' },
+        { pattern: /system\s*:\s*/i, label: 'system prompt injection' },
+        { pattern: /\<\/?system(?:-reminder)?\>/i, label: 'system tag injection' },
+        { pattern: /do\s+not\s+follow\s+(?:the|your)\s+(?:original|initial)/i, label: 'instruction negation' },
+    ];
+    for (const { pattern, label } of patterns) {
+        if (pattern.test(context)) {
+            suspicious.push(label);
+        }
+    }
+    return suspicious;
+}
+/**
+ * Check if a bash command is dangerous and should be blocked.
+ * Returns the reason for blocking, or null if safe.
+ * Standalone export for the FilterBashCommands node.
+ */
+export function filterBashCommand(command) {
+    const dangerous = [
+        { pattern: /rm\s+-rf\s+[\/~]/, reason: 'recursive delete of root or home' },
+        { pattern: /:\(\)\s*\{/, reason: 'fork bomb' },
+        { pattern: /mkfs\b/, reason: 'filesystem format' },
+        { pattern: /dd\s+.*of=\/dev\//, reason: 'raw device write' },
+        { pattern: />\s*\/dev\/sd/, reason: 'raw device redirect' },
+        { pattern: /curl\s+.*\|\s*(?:bash|sh)/, reason: 'pipe remote script to shell' },
+        { pattern: /wget\s+.*\|\s*(?:bash|sh)/, reason: 'pipe remote script to shell' },
+    ];
+    for (const { pattern, reason } of dangerous) {
+        if (pattern.test(command))
+            return reason;
+    }
+    return null;
+}
+/**
+ * Classify a worker failure into a category for routing to the correct
+ * recovery handler.
+ * Standalone export for the ClassifyFailureType node.
+ */
+export function classifyFailureType(report) {
+    if (report.type === 'timeout')
+        return 'timeout';
+    if (report.type === 'stream_failure')
+        return 'stream_failure';
+    if (report.type === 'crash') {
+        // Check if it was a rate limit
+        const partialText = report.partialOutput.join('\n').toLowerCase();
+        if (partialText.includes('rate limit') || partialText.includes('429')) {
+            return 'rate_limit';
+        }
+        return 'crash';
+    }
+    return 'unknown';
+}
+/**
+ * Detect when a worker process is unresponsive by checking if the process
+ * is still running and how long since last output.
+ * Standalone export for the DetectStaleWorkerProcess node.
+ */
+export function detectStaleWorkerProcess(pid, lastActivityMs, maxIdleMs = 120_000) {
+    const idleTime = Date.now() - lastActivityMs;
+    if (idleTime < maxIdleMs)
+        return false;
+    // Check if process is still running
+    try {
+        process.kill(pid, 0); // Signal 0 = check existence
+        return true; // Process exists but idle too long = stale
+    }
+    catch {
+        return false; // Process doesn't exist = not stale, just dead
+    }
+}
+/**
+ * Scan for leftover worker subprocesses from a previous run.
+ * Returns PIDs of orphan processes found.
+ * Standalone export for the DetectOrphanWorkerProcess node.
+ */
+export function detectOrphanWorkerProcesses(expectedPids) {
+    const orphans = [];
+    for (const pid of expectedPids) {
+        try {
+            process.kill(pid, 0); // Check if still running
+            orphans.push(pid);
+        }
+        catch {
+            // Process already terminated — not an orphan
+        }
+    }
+    return orphans;
+}
 //# sourceMappingURL=llm.js.map

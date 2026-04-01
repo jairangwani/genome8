@@ -609,4 +609,82 @@ function computeCoverage(modules, nodes, journeys) {
         .sort();
     return { _generated: new Date().toISOString(), modules: modCov, orphans, isolated_modules: isolated };
 }
+/**
+ * Validate that every module listed in ORGANIZATION.md exists in the compiled index.
+ * Returns missing module names.
+ * Standalone export for the ValidateModuleCompleteness node.
+ */
+export function validateModuleCompleteness(expectedModules, compiledModules) {
+    return expectedModules.filter(m => !compiledModules.has(m));
+}
+/**
+ * Compare compiled module files on disk against the organization module list.
+ * Returns modules that exist as YAML files but are not listed in the organization.
+ * Standalone export for the UnlistedModuleDetection node.
+ */
+export function detectUnlistedModules(modulesDir, expectedModules) {
+    if (!fs.existsSync(modulesDir))
+        return [];
+    const expectedSet = new Set(expectedModules);
+    const diskModules = fs.readdirSync(modulesDir)
+        .filter(f => /\.ya?ml$/.test(f))
+        .map(f => f.replace(/\.ya?ml$/, ''))
+        .filter(m => !m.startsWith('_')); // exclude _actors, _goals etc.
+    return diskModules.filter(m => !expectedSet.has(m));
+}
+/**
+ * Detect when a module file was modified during compilation by comparing
+ * file modification timestamps before and after reading.
+ * Standalone export for the ConcurrentWriteDetection node.
+ */
+export function detectConcurrentWrite(filePath, readStartTime) {
+    try {
+        const stat = fs.statSync(filePath);
+        return stat.mtimeMs > readStartTime;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Track which modules changed since last compilation and identify
+ * cross-module dependents.
+ * Standalone export for the DirtyModuleTracking node.
+ */
+export function trackDirtyModules(modulesDir, lastCompileTimestamp) {
+    if (!fs.existsSync(modulesDir))
+        return [];
+    const dirty = [];
+    for (const file of fs.readdirSync(modulesDir).filter(f => /\.ya?ml$/.test(f))) {
+        const fullPath = path.join(modulesDir, file);
+        try {
+            const stat = fs.statSync(fullPath);
+            if (stat.mtimeMs > lastCompileTimestamp) {
+                dirty.push(file.replace(/\.ya?ml$/, ''));
+            }
+        }
+        catch { /* skip unreadable */ }
+    }
+    return dirty;
+}
+/**
+ * Find modules that depend on a set of changed modules via cross-module journey refs.
+ * Returns the set of dependent module names that need revalidation.
+ * Enables targeted revalidation after DirtyModuleTracking.
+ */
+export function findDependentModules(changedModules, index) {
+    const changedSet = new Set(changedModules);
+    const dependents = new Set();
+    for (const [, node] of Object.entries(index.nodes)) {
+        if (changedSet.has(node.module))
+            continue; // skip the changed modules themselves
+        for (const ref of node.cross_module_connections) {
+            const refModule = ref.split('/')[0];
+            if (changedSet.has(refModule)) {
+                dependents.add(node.module);
+            }
+        }
+    }
+    return [...dependents];
+}
 //# sourceMappingURL=compile.js.map

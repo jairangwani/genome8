@@ -57,3 +57,28 @@ export declare function detectNodeStubMismatch(content: string, expectedNodes: s
  * Enables UpdateExistingCodeFromGraph journey.
  */
 export declare function detectCodeNeedsUpdate(existingContent: string, node: CompiledNode): boolean;
+/**
+ * Check that every module in the build list has a filled source file on disk.
+ * Returns modules still missing their filled implementation file.
+ * Standalone export for the ConfirmAllModulesFilled node.
+ */
+export declare function confirmAllModulesFilled(index: CompiledIndex, projectDir: string): string[];
+/**
+ * On restart after a partial crash, scan the generated code directory
+ * to find which modules already have filled files and return the next
+ * unfilled module in alphabetical order.
+ * Standalone export for the ResumeFromLastFilledModule node.
+ */
+export declare function resumeFromLastFilledModule(index: CompiledIndex, projectDir: string): string | null;
+/**
+ * Revert a filled file back to its skeleton state when the fill causes
+ * downstream type errors.
+ * Standalone export for the RollbackCorruptedFill node.
+ */
+export declare function rollbackCorruptedFill(filePath: string, fullNodeName: string, node: CompiledNode): void;
+/**
+ * Generate the diff between previous and current graph state for a node,
+ * producing targeted edit instructions.
+ * Standalone export for the GenerateUpdateContext node.
+ */
+export declare function generateUpdateContext(previousNode: CompiledNode | null, currentNode: CompiledNode): string[];

@@ -254,4 +254,228 @@ export function guardSequenceCounter(eventPath, expectedNext) {
         return false;
     }
 }
+/**
+ * Collect nodes to be exported as the box's public interface.
+ * Standalone export for the CollectExportedNodes node.
+ */
+export function collectExportedNodes(index) {
+    const nodes = {};
+    for (const [name, node] of Object.entries(index.nodes)) {
+        nodes[name] = {
+            type: node.type,
+            description: node.description,
+            in_journeys: node.in_journeys.length,
+        };
+    }
+    return nodes;
+}
+/**
+ * Collect journeys to be exported as the box's public interface.
+ * Standalone export for the CollectExportedJourneys node.
+ */
+export function collectExportedJourneys(index) {
+    const journeys = {};
+    for (const [name, journey] of Object.entries(index.journeys)) {
+        journeys[name] = {
+            steps: journey.steps.length,
+            module: journey.module,
+        };
+    }
+    return journeys;
+}
+/**
+ * Compute the SHA256 interface hash from the provides and requires maps.
+ * Standalone export for the ComputeInterfaceHash node.
+ */
+export function computeInterfaceHash(provides, requires) {
+    const content = JSON.stringify({ provides, requires }, null, 2);
+    return 'sha256:' + crypto.createHash('sha256').update(content).digest('hex');
+}
+/**
+ * Compare new hash against the previously published hash.
+ * Returns 'changed', 'unchanged', or 'first_publish'.
+ * Standalone export for the ComparePreviousHash node.
+ */
+export function comparePreviousHash(previousHash, currentHash) {
+    if (!previousHash)
+        return 'first_publish';
+    return previousHash === currentHash ? 'unchanged' : 'changed';
+}
+/**
+ * After writing interface.yaml, re-read it, recompute the SHA256 from
+ * the file content, and verify it matches the embedded hash.
+ * Standalone export for the VerifyPublishedHashIntegrity node.
+ */
+export function verifyPublishedHashIntegrity(interfacePath) {
+    if (!fs.existsSync(interfacePath)) {
+        return { verified: false, error: 'interface.yaml not found' };
+    }
+    try {
+        const raw = fs.readFileSync(interfacePath, 'utf-8');
+        const iface = yaml.load(raw);
+        if (!iface?.version_hash) {
+            return { verified: false, error: 'no version_hash in interface' };
+        }
+        const recomputed = computeInterfaceHash(iface.provides, iface.requires ?? {});
+        if (recomputed !== iface.version_hash) {
+            return { verified: false, error: `hash mismatch: file=${iface.version_hash}, recomputed=${recomputed}` };
+        }
+        return { verified: true };
+    }
+    catch (e) {
+        return { verified: false, error: `parse error: ${e.message}` };
+    }
+}
+/**
+ * After writing both event file and interface.yaml, verify their hashes match.
+ * Standalone export for the CrossCheckEventInterfaceHash node.
+ */
+export function crossCheckEventInterfaceHash(interfacePath, eventFilePath) {
+    try {
+        const iface = yaml.load(fs.readFileSync(interfacePath, 'utf-8'));
+        const event = JSON.parse(fs.readFileSync(eventFilePath, 'utf-8'));
+        const interfaceHash = iface?.version_hash;
+        const eventHash = event?.interface_hash ?? event?.hash;
+        return {
+            match: interfaceHash === eventHash,
+            interfaceHash,
+            eventHash,
+        };
+    }
+    catch {
+        return { match: false };
+    }
+}
+/**
+ * Remove partially written publish artifacts to restore pre-publish state.
+ * Standalone export for the RollbackPartialPublish node.
+ */
+export function rollbackPartialPublish(publishedDir, artifacts = ['interface.yaml', 'changelog.yaml']) {
+    const rolledBack = [];
+    for (const artifact of artifacts) {
+        const tempPath = path.join(publishedDir, artifact + '.tmp');
+        if (fs.existsSync(tempPath)) {
+            fs.unlinkSync(tempPath);
+            rolledBack.push(artifact + '.tmp');
+        }
+    }
+    return rolledBack;
+}
+/**
+ * Detect exactly which publish pipeline step was interrupted after a crash.
+ * Standalone export for the DetectPublishInterruptionPoint node.
+ */
+export function detectPublishInterruptionPoint(publishedDir) {
+    const interfaceExists = fs.existsSync(path.join(publishedDir, 'interface.yaml'));
+    const changelogExists = fs.existsSync(path.join(publishedDir, 'changelog.yaml'));
+    const eventsDir = path.join(publishedDir, 'events');
+    const hasEvents = fs.existsSync(eventsDir) && fs.readdirSync(eventsDir).some(f => f.endsWith('.event'));
+    if (!interfaceExists)
+        return 'pre-interface';
+    if (!changelogExists)
+        return 'post-interface-pre-changelog';
+    if (!hasEvents)
+        return 'post-changelog-pre-event';
+    return 'complete';
+}
+/**
+ * On cold start, read the sequence number from the last event file on disk
+ * to restore the counter baseline.
+ * Standalone export for the RestoreSequenceCounterFromDisk node.
+ */
+export function restoreSequenceCounterFromDisk(eventsDir) {
+    if (!fs.existsSync(eventsDir))
+        return 0;
+    const files = fs.readdirSync(eventsDir).filter(f => f.endsWith('.event')).sort();
+    if (files.length === 0)
+        return 0;
+    try {
+        const last = JSON.parse(fs.readFileSync(path.join(eventsDir, files[files.length - 1]), 'utf-8'));
+        return typeof last.sequence_number === 'number' ? last.sequence_number : 0;
+    }
+    catch {
+        return 0;
+    }
+}
+/**
+ * Validate the in-memory interface structure against required schema
+ * before serialization.
+ * Standalone export for the ValidateInterfaceYamlSchema node.
+ */
+export function validateInterfaceSchema(iface) {
+    const errors = [];
+    if (!iface.engine || typeof iface.engine !== 'string')
+        errors.push('missing or invalid engine name');
+    if (!iface.version_hash || typeof iface.version_hash !== 'string')
+        errors.push('missing version_hash');
+    if (iface.version_hash && !/^sha256:[a-f0-9]{64}$/.test(iface.version_hash))
+        errors.push('version_hash not a valid sha256 hex');
+    if (!iface.provides || typeof iface.provides !== 'object')
+        errors.push('missing provides map');
+    return { valid: errors.length === 0, errors };
+}
+/**
+ * Validate changelog structure before serialization.
+ * Standalone export for the ValidateChangelogYamlSchema node.
+ */
+export function validateChangelogSchema(changelog) {
+    const errors = [];
+    if (typeof changelog.previous_hash !== 'string')
+        errors.push('missing previous_hash');
+    if (typeof changelog.current_hash !== 'string')
+        errors.push('missing current_hash');
+    if (!Array.isArray(changelog.changes))
+        errors.push('changes is not an array');
+    for (const entry of changelog.changes) {
+        if (!entry.node)
+            errors.push(`changelog entry missing node field`);
+        if (!entry.type)
+            errors.push(`changelog entry missing type field`);
+    }
+    return { valid: errors.length === 0, errors };
+}
+/**
+ * Sort exported nodes and journeys alphabetically before hash computation
+ * to guarantee identical content always produces identical hash.
+ * Standalone export for the CanonicalizeHashInput node.
+ */
+export function canonicalizeHashInput(provides, requires) {
+    const sortedProvides = {};
+    for (const key of Object.keys(provides).sort()) {
+        sortedProvides[key] = provides[key];
+    }
+    const sortedRequires = {};
+    for (const key of Object.keys(requires).sort()) {
+        sortedRequires[key] = requires[key];
+    }
+    return { provides: sortedProvides, requires: sortedRequires };
+}
+/**
+ * Sort changelog changes alphabetically by name for deterministic output.
+ * Standalone export for the CanonicalizeChangelogDiffOutput node.
+ */
+export function canonicalizeChangelogDiff(changelog) {
+    return {
+        previous_hash: changelog.previous_hash,
+        current_hash: changelog.current_hash,
+        changes: [...changelog.changes].sort((a, b) => a.node.localeCompare(b.node)),
+    };
+}
+/**
+ * Detect when previous interface.yaml is present but unparsable.
+ * Standalone export for the DetectCorruptedPreviousInterface node.
+ */
+export function detectCorruptedPreviousInterface(interfacePath) {
+    if (!fs.existsSync(interfacePath))
+        return false;
+    try {
+        const iface = yaml.load(fs.readFileSync(interfacePath, 'utf-8'));
+        if (!iface?.provides || !iface?.version_hash)
+            return true;
+        return false;
+    }
+    catch {
+        return true;
+    }
+}
 //# sourceMappingURL=publish.js.map
