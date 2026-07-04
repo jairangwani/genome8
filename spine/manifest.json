@@ -1,0 +1,13 @@
+{
+  "shapeVersion": 1,
+  "id": "genome8",
+  "name": "genome8",
+  "type": "solo",
+  "profile": "software",
+  "lifecycle": "archived",
+  "owner": "jai",
+  "space": "personal",
+  "repo": { "path": "C:/Users/jaira/Desktop/code/genome8", "remote": null },
+  "branches": [],
+  "bones": { "identity": true }
+}
