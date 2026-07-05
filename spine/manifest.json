@@ -7,7 +7,12 @@
   "lifecycle": "archived",
   "owner": "jai",
   "space": "personal",
-  "repo": { "path": "C:/Users/jaira/Desktop/code/genome8", "remote": null },
+  "repo": {
+    "path": "C:/Users/jaira/Desktop/code/_archive/genome8",
+    "remote": null
+  },
   "branches": [],
-  "bones": { "identity": true }
+  "bones": {
+    "identity": true
+  }
 }
