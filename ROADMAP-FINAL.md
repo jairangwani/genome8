@@ -59,26 +59,19 @@
 
 ### Pass 1: Root cause fixes
 
-- [x] **L1+H1**: Scope child specs. Remove --max-depth band-aid.
+> 📋 Tracked tasks moved to [`spine/tasks.md`](spine/tasks.md) — the one live roadmap (invariant #7).
   - LLM writes scoped spec per child (only relevant sections)
   - --max-depth removed entirely. LLM decides based on scope.
 
-- [x] **L2+I5**: Parent cross-engine validation
   - Loads children's published interfaces as externalInterfaces
   - compile() validates cross-engine refs properly
 
-- [x] **I6**: Child scoped spec (merged with L1)
   - LLM extracts relevant spec sections per child's module list
 
-- [x] **H2-H5**: Remove all substring truncation hacks
   - All spec/org/module/actor content sent in full. No truncation.
 
 ### Pass 2: Complete Step 6
 
-- [x] **I1-I4**: Step 6 complete (code fill + test fill + run tests + fix failures loop)
-- [x] **Step 4 redesign**: bounded creation + compile convergence + targeted audit (replaces infinite delta loop)
-- [x] **Event-driven Step 7**: fs.watch + event files (replaces 60s polling)
-- [x] **Domain-specific lenses**: LLM discovers perspectives per project (replaces hardcoded 8)
   - LLM fills code skeletons with journey context
   - LLM fills test assertions
   - Runs vitest, captures failures
@@ -86,138 +79,52 @@
 
 ### Pass 3: Clean up
 
-- [x] **X1-X5**: Remove all legacy
   - runner.ts.deprecated deleted
   - LEAD-PROMPT.md deleted
   - No genome3/validate()/regression.py/Lead agent/--print references in any .ts file
   - All test files clean
-- [x] **H6-H8**: Made all values configurable via genome/config.json
   - maxRounds, watchIntervalMs, sessionResetChars, model, maxFixAttempts
-- [x] **L4**: Auto-create dependencies.yaml from external refs after convergence
-- [x] **L5**: Compile validation after actor merge in runAsParent
 
 ---
 
 ## Phase 3: Audit (run 2 separate audits)
 
 ### Audit 1: Code completeness ✅ COMPLETE
-- [x] 22/22 exported functions used (removed 1 dead code: nodeTypeLabel)
-- [x] All 7 steps + parent steps verified complete
-- [x] Fixed: _actors.yaml crash, module retry, hash truncation
 
 ### Audit 2: Logic flow ✅ COMPLETE
-- [x] Single-engine trace: all steps work, Step 7 needs --once for testing
-- [x] Hierarchy trace: scoped specs, shared actors, cross-engine validation verified
-- [x] Change cascade trace: works for 1-way deps, oscillation cooldown added for 2-way
-- [x] Race conditions: separate dirs = no file contention
-- [x] Infinite loops: maxRounds + oscillation cooldown + child timeout prevent all cases
 
 ### Audit findings fixed:
-- [x] _actors.yaml existence guard in depthCheck
-- [x] Module creation retry (3 attempts)
-- [x] Circular dependency oscillation cooldown (10 min)
-- [x] Test failures → "unstable" status
-- [x] Spec scoping fallback warning
-- [x] Dead code nodeTypeLabel removed
-- [x] Full SHA256 hash (no truncation)
-- [x] Child process timeout (30 min)
 
 ---
 
 ## Phase 4: Update Pando Spec ✅ COMPLETE
 
-- [x] Full pass: replaced ALL genome3 references with genome8
-- [x] Updated Layer 2 description with genome8 pipeline
-- [x] Replaced convergence cycle with genome8 7-step pipeline
-- [x] Replaced Section 15 (Planning System) with genome8 YAML/compile architecture
-- [x] Replaced context.yaml with spec.md throughout
-- [x] Removed Python node/validate()/regression.py references
-- [x] Copied updated spec to pando12 for clean production test
-- [x] Verified: 0 old patterns remaining
 
 ---
 
 ## Phase 5: Production Test ✅ COMPLETE (pando20)
 
-- [x] Clean pando directory — pando20 fresh
-- [x] Run convergence.ts with `--once` — completed, exit code 0
-- [x] Org written with 16 proper modules
-- [x] 39 actors discovered
-- [x] Hierarchy split: 3 top engines (tooling, agents, network), network split into 3 children (trust, economy, infra)
-- [x] Children get SCOPED specs (code-based section matching)
-- [x] Children create correct modules (16/16 spec modules covered)
-- [x] Children converge with 0 errors (all 5 engines: 0 compile errors)
-- [x] Children publish interfaces (all 5 published with full SHA256 hash)
-- [x] Parent creates cross-engine journeys (40 nodes at each parent level)
-- [x] Cross-engine refs validate (all children: YES)
-- [x] Actor merge works (0 errors at both parent levels)
-- [x] Code skeletons generated (economy: 0 generated/skipped, agents: 0/131 — Gap 6)
-- [x] Test skeletons generated (868 total across 5 engines)
-- [x] Tests: economy PASSED (failed 1, fixed, passed 2). trust/agents failed 3/3 (stub code — Gap 8)
-- [x] Published interfaces with correct full SHA256 hashes
 
 ---
 
 ## Phase 6: Legacy Removal (3 passes)
 
 ### Pass 1: Grep for old patterns ✅ CLEAN
-- [x] `genome3` — none found
-- [x] `validate()` — none found
-- [x] `regression.py` — none found
-- [x] `Lead agent` / `Lead prompt` — none found
-- [x] `--print` — only in comment explaining what we DON'T do
-- [x] `runner.ts` — none found (file deleted)
 
 ### Pass 2: Check logic flow ✅ CLEAN
-- [x] 58 if/else branches in convergence.ts — all reviewed
-- [x] 18 LLM prompts — all clear and specific
-- [x] File writes use Write tool correctly
-- [x] Compile calls at correct positions (after every module write, before convergence check)
 
 ### Pass 3: Final verification (partial)
-- [x] Run full test suite: 44/44 pass
-- [x] Type check: 0 errors
-- [x] Run todo app: converged (88 nodes, 0 errors) ✅
-- [x] Run Pando: hierarchy + convergence + publish — pando20: network/infra CONVERGED + PUBLISHED (82 nodes, 114 journeys, 262 connections, 0 errors). First engine ever to complete full pipeline on Pando. 4 more engines in progress.
-- [x] No TODOs, no stubs in genome code (only in generated skeleton output — intentional)
-- [x] BLUEPRINT matches code — verified via agent audit
-- [x] GOALPOST matches BLUEPRINT — fixed lens count mismatch (was "50 rounds/10 perspectives", now "8 lenses/unlimited rounds")
 
 ### Phase 5b: End-to-End + Bottom-Up Tests
 
-- [x] pando20: ALL 5 engines publish interfaces (infra 82n, trust 170n, economy 127n, tooling 121n, agents 207n = 707 total)
-- [x] pando20: parent creates cross-engine journeys — BOTH parents published 40 cross-engine nodes each ✅
-- [x] pando20: parent validates cross-engine refs against child interfaces — all children YES ✅
-- [x] pando20: actor merge + redistribute works — 0 errors at both parent levels ✅
-- [x] pando20: Step 6 code gen runs — economy tests PASSED, trust/agents tests failed 3/3 (stub code, expected per Gap 8)
-- [x] Step 6 end-to-end: graph → code skeletons → LLM fills → tests run → PASS (network/economy: failed attempt 1, LLM fixed, passed attempt 2)
 
 ### Phase 5c: Bottom-Up Tests (code drives plan changes)
 
-- [x] Test 1: Edit module YAML directly (added BiometricAuth node) → convergence detected 171 nodes (was 170), 1 orphan warning. Creation passes run to add journeys. WORKS.
-- [ ] Test 2: Edit generated code (add a function that doesn't match journey) → verify mismatch detected → journey updated to match code (requires real code, skipping for now — Gap 6)
-- [x] Test 3: Added audit-trail.yaml manually → convergence detected (174 nodes, 152 journeys, 3 cross-module refs). New module integrated into graph. WORKS.
-- [x] Test 4: Deleted CredentialVaultStore from identity.yaml → compile detected: "node CredentialVaultStore does not exist in module identity". Broken ref caught instantly. WORKS.
-- [x] Test 5: Event ripple WORKS — wrote event to economy's dir → trust's fs.watch detected instantly → "EVENT DETECTED: economy" ✅
-- [x] Test 6: Sibling wakes via fs.watch — trust watching economy+infra. Converged engine skips to Step 7 directly (no re-running Steps 1-4). ✅
-- [ ] Full cycle: developer edits code → plan updates → tests regenerate → everything reconverges (needs real code implementation — Gap 6. Deferred to production phase)
 
 ---
 
 ## Phase 7: Genome Manages Itself (after Phase 6)
 
-- [x] Write `genome8/genome/spec.md` — genome's own spec (derived from BLUEPRINT.md)
-- [x] Run `convergence.ts` on genome8 itself — 453 nodes, 250 journeys, 1412 connections. 22 actors (including threat actors). 14 modules. Audit passed. Published.
-- [x] Verify: genome's actors, processes, interfaces, rules all captured (22 actors, 230 processes, 55 artifacts, 58 rules, 5 interfaces = 370 nodes)
-- [x] Verify: journeys describe compilation, convergence, publishing, hierarchy (173 journeys, 969 connections)
-- [x] Goals captured as RULE nodes (58 rule nodes governing genome behavior)
-- [x] Architecture captured as PROCESS + INTERFACE nodes (230 processes, 5 interfaces)
-- [ ] Roadmap as PROCESS nodes with status — not yet (needs convergence to complete)
-- [ ] Deprecate BLUEPRINT.md — the living graph IS the documentation
-- [ ] Deprecate GOALPOST.md — goals are rule nodes in the graph
-- [ ] Deprecate ROADMAP-FINAL.md — progress tracked as node status in the graph
-- [ ] Only human file remaining: genome/spec.md (plain English entry point)
-- [ ] Any future change to genome code → reconvergence of genome's own graph
 
 This is the ultimate test: genome replaces ALL its own documentation with a living, self-updating context graph. No separate docs. Everything connected. Everything in sync.
 
@@ -228,46 +135,18 @@ This is the ultimate test: genome replaces ALL its own documentation with a livi
 Use genome as the test subject. Real code. Real changes. Real ripple. No stubs.
 
 ### Test 1: Code change → graph updates → test generates
-- [x] Added detectDuplicateSequences() to compile.ts
-- [x] Step 4d detected new function → added DetectDuplicateSequences node + journey
-- [x] Graph: 577→578 nodes, 375→376 journeys
-- [x] Test generated: 373→374 test files (1 new)
-- [x] PASSED: code change → graph update → test generation ✅
 
 ### Test 2: Plan change → code updates
-- [x] Added RetryOnLLMTimeout node to convergence.yaml (graph says it should exist)
-- [x] Code didn't have it → DRIFT detected
-- [x] LLM read convergence.ts, wrote retry function with exponential backoff
-- [x] DRIFT RESOLVED: graph drove code implementation ✅
 
 ### Test 3: Multi-module ripple within genome
-- [x] Started trust engine watching economy + infra (skipped to Step 7)
-- [x] Wrote event to economy → trust detected: "EVENT DETECTED: economy — stress_test_3.event" ✅
-- [x] Wrote event to infra → trust detected: "EVENT DETECTED: infra — stress_test_3.event" ✅
-- [x] Multi-source ripple works: one engine watches 2+ dependencies, wakes on either ✅
 
 ### Test 4: Break something and watch self-healing
-- [x] Deleted validateActionQuality from compile.ts (simulated breakage)
-- [x] Step 4d detected: graph says function should exist, code has "DELETED" comment
-- [x] LLM restored the function automatically
-- [x] SELF-HEALING WORKS: broken code → detected → restored ✅
 
 ### Test 5: Add a whole new module
-- [x] Wrote src/metrics.ts (tracks LLM calls, tokens, step timings)
-- [x] Graph had 0 metrics nodes — file completely untracked
-- [x] Step 4d created metrics.yaml with 11 nodes (TrackLLMCall, StartStepTimer, etc.)
-- [x] Graph: 579→589 nodes, 375→380 journeys
-- [x] New module fully integrated into graph autonomously ✅
 
 ### Test 6: Full cycle with hierarchy
-- [ ] Test 6 DEFERRED: Split genome into hierarchy (would need 30+ min creation passes — proven on pando20 already)
 
 ### Test 7: Stress the event ripple
-- [x] Fired 3 rapid events (RAPID_1, RAPID_2, RAPID_1 again) in 2 seconds
-- [x] All 3 detected instantly ✅
-- [x] Oscillation cooldown triggered: "SKIP: economy hash seen recently" ✅
-- [x] No infinite loops, no rogue processes
-- [x] RAPID RIPPLE STRESS TEST PASSED ✅
 
 ### What these prove (that we haven't proven):
 - Real code written by the system (not skeletons)
@@ -286,29 +165,12 @@ Use genome as the test subject. Real code. Real changes. Real ripple. No stubs.
 This is THE core feature. If plan ≠ reality, genome is useless. MUST test before anything else.
 
 ### Test A: Genome on itself (code exists, graph being built)
-- [x] Run convergence.ts on genome8 WITH Step 4d — 10 untracked files linked, code drift detected + fixed ✅
-- [x] Step 4d scans src/*.ts → found 10 untracked files
-- [x] LLM reconciled all 10 → linked to 11 graph nodes (cli.ts maps to 2 nodes)
-- [x] Graph now has files: fields pointing to actual source code
-- [x] Bidirectional sync PROVEN: code drives plan, plan links to code
 
 ### Test B: Edit code, verify graph updates
-- [x] Added validateActionQuality() to compile.ts
-- [x] Step 4d detected: "code has new function not in graph"
-- [x] LLM added node ValidateActionQuality + journey ValidateActionDescriptions
-- [x] Graph now reflects reality — code drift resolved automatically
 
 ### Test C: Graph has something code doesn't
-- [x] Added BiometricAuthValidator node with files: ["src/biometric-auth.ts"]
-- [x] File doesn't exist → grep detected: "DRIFT: Node references src/biometric-auth.ts but file DOES NOT EXIST"
-- [x] Step 4d would flag this and either create the file or remove the node
-- [x] Drift detection proven in both directions (code→graph AND graph→code)
 
 ### Test D: Non-code domain (storybook)
-- [x] Create storybook project (mystery story, 17-line spec, chapter1.md written)
-- [x] Run convergence → 10 modules, 75+ nodes, 72+ journeys, 10 story-specific lenses. WORKS.
-- [x] Wrote chapter2.md manually → Step 4d detected 2 untracked chapters → LLM edited 8 modules (actors, museum, characters, evidence, security, investigation, narrative, conspiracy) → graph updated with chapter content. WORKS.
-- [x] Chapter content reconciled: MarcusIntroduction, ElenaIntroduction, NervousnessAmbiguity mapped to chapter files. Bottom-up for NON-CODE domain PROVEN.
 
 ---
 
