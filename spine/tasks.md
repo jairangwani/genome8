@@ -1,7 +1,7 @@
 # 📋 Tasks — genome8
 > `[ ]` open · `[~]` in progress · `[x]` done.
 
-- [ ] _(no active tasks — shell)_
+- _(no active tasks — shell)_
 
 ## Consolidated from `ROADMAP-FINAL.md` (invariant #7)
 - [x] **L1+H1**: Scope child specs. Remove --max-depth band-aid.
