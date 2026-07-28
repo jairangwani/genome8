@@ -14,5 +14,112 @@
   "branches": [],
   "bones": {
     "identity": true
-  }
+  },
+  "components": [
+    {
+      "id": "compile",
+      "name": "The connector",
+      "path": "src/compile.ts",
+      "plain": "Reads every module's description and works out for itself how the pieces connect, instead of anyone drawing the lines by hand.",
+      "does": "The heart of the tool: reads all module YAML files and derives every connection from journey steps — consecutive steps are a connection, so there are no manual edges to keep in sync.",
+      "connectsTo": [
+        "excerpt",
+        "convergence"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "excerpt",
+      "name": "The context slice",
+      "path": "src/excerpt.ts",
+      "plain": "Hands an agent only the part of the picture it actually needs — its own pieces, what comes just before and after, and anything left dangling.",
+      "does": "Generates roughly 200 lines of focused context per module per turn: its nodes and journeys, neighbouring steps, cross-module connections, orphans and warnings. This is the answer to agents drowning in a large plan.",
+      "connectsTo": [
+        "compile"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "convergence",
+      "name": "The pipeline",
+      "path": "src/convergence.ts",
+      "plain": "The actual product — it runs the whole sequence from a rough description to a settled plan, calling an AI at each step.",
+      "does": "The orchestrator every other file is a library for: organization, then actor discovery, then the rest of the pipeline, tracking how many rounds it takes for the design to stop changing.",
+      "connectsTo": [
+        "compile",
+        "excerpt",
+        "llm",
+        "metrics",
+        "codegen"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "llm",
+      "name": "The link to the coding agent",
+      "path": "src/llm.ts",
+      "plain": "How the tool talks to the AI that does the work, letting it keep its own ability to read and write files rather than working blind.",
+      "does": "Speaks the streaming JSON protocol to Claude Code so the agent retains its native tools (read, write, edit, run) with no wrapper hacks. The protocol was proven in the earlier crew3 attempt.",
+      "connectsTo": [
+        "convergence"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "codegen",
+      "name": "The skeleton writer",
+      "path": "src/codegen.ts",
+      "plain": "Turns the settled plan into empty starter files in the right places, so the agent fills in real work rather than inventing a structure.",
+      "does": "For each process node declaring files, generates a skeleton implementation file for the agent to complete.",
+      "connectsTo": [
+        "convergence"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "metrics",
+      "name": "The cost meter",
+      "path": "src/metrics.ts",
+      "plain": "Counts what each run actually cost in AI calls, words and time, so the approach could be judged on more than a feeling.",
+      "does": "Tracks calls, tokens and time per pipeline step and writes them out after each convergence run.",
+      "connectsTo": [
+        "convergence"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "cli",
+      "name": "The commands you type",
+      "path": "src/cli.ts",
+      "plain": "The few commands used to drive it — build the picture, get a module's context, or see how settled the design is.",
+      "does": "Exposes compile (writing the index, coverage and stats), excerpt for one module and round, and status for convergence.",
+      "connectsTo": [
+        "compile",
+        "excerpt",
+        "convergence"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    },
+    {
+      "id": "tests",
+      "name": "The test suites",
+      "path": "tests",
+      "plain": "By far the largest thing in the repo — many times more test code than tool code, which is the clearest signal of how hard the idea was to pin down.",
+      "does": "Around 1,180 of the repo's 1,197 code files sit in the two test trees, against roughly 11 source files.",
+      "connectsTo": [
+        "compile",
+        "convergence"
+      ],
+      "runsOn": "a developer machine",
+      "repo": "genome8"
+    }
+  ],
+  "description": "An abandoned attempt at the plan rather than the coding — describe a system as modules and user journeys, let the tool work out how everything connects, and feed each AI agent only the slice of context it needs to build its part."
 }
