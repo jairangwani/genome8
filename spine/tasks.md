@@ -93,10 +93,9 @@
 - [x] Goals captured as RULE nodes (58 rule nodes governing genome behavior)
 - [x] Architecture captured as PROCESS + INTERFACE nodes (230 processes, 5 interfaces)
 - [ ] Roadmap as PROCESS nodes with status — not yet (needs convergence to complete)
-- [ ] Deprecate BLUEPRINT.md — the living graph IS the documentation
-- [ ] Deprecate GOALPOST.md — goals are rule nodes in the graph
-- [ ] Deprecate ROADMAP-FINAL.md — progress tracked as node status in the graph
-- [ ] Only human file remaining: genome/spec.md (plain English entry point)
+- [ ] **Cut genome8's docs down to the one file a person reads**
+  - summary: Delete the three documents the graph has already replaced, so there is one plain-English page left for a person to read.
+  - detail: BLUEPRINT.md, GOALPOST.md and ROADMAP-FINAL.md are each superseded by the living graph — the graph IS the documentation, goals are rule nodes in it, and progress is node status. Merged from four separate one-line entries on 2026-07-31; they described one intent and read as four fragments.
 - [ ] Any future change to genome code → reconvergence of genome's own graph
 - [x] Added detectDuplicateSequences() to compile.ts
 - [x] Step 4d detected new function → added DetectDuplicateSequences node + journey
